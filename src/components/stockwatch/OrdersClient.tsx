@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
-import type { Order } from "@/lib/types";
+import { useState, useEffect, useCallback } from "react";
+import type { Order, Portfolio, Stock } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -15,6 +15,27 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import { getStockData } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 
+// Heuristic to check if market is open (9:15 AM to 3:30 PM India time on weekdays)
+function isMarketOpen() {
+    const now = new Date();
+    const istOffset = 330; // 5.5 hours in minutes
+    const utcOffset = now.getTimezoneOffset();
+    const istTime = new Date(now.getTime() + (istOffset + utcOffset) * 60000);
+    
+    const day = istTime.getDay(); // Sunday = 0, Monday = 1, etc.
+    const hour = istTime.getHours();
+    const minute = istTime.getMinutes();
+
+    if (day > 0 && day < 6) { // Monday to Friday
+        if (hour > 9 || (hour === 9 && minute >= 15)) {
+            if (hour < 15 || (hour === 15 && minute <= 30)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 export function OrdersClient() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Pending");
@@ -22,27 +43,71 @@ export function OrdersClient() {
   const [orders, setOrders] = useState<Order[]>([]);
   const { toast } = useToast();
 
-  useEffect(() => {
-    const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
-    setOrders(storedOrders);
-  }, []);
-
-  const executeOrder = (order: Order) => {
+  const executeOrder = useCallback((order: Order, ltp: number) => {
     // This is a simulation. In a real app, this would be handled by a backend.
-    const updatedOrders = orders.map(o => 
-      o.id === order.id ? { ...o, status: 'Executed' as const, filledQuantity: o.quantity } : o
-    );
-    setOrders(updatedOrders);
-    localStorage.setItem('orders', JSON.stringify(updatedOrders));
+    const executedOrder = { ...order, status: 'Executed' as const, filledQuantity: order.quantity, ltp: ltp };
     
-    // In a real app you would also handle fund deduction and portfolio updates here
-    // For simplicity, we are handling that on the TradeClient side for immediate feedback.
+    // Update orders in state and local storage
+    setOrders(prevOrders => {
+        const updated = prevOrders.map(o => o.id === executedOrder.id ? executedOrder : o);
+        localStorage.setItem('orders', JSON.stringify(updated));
+        return updated;
+    });
+
+    // Simulate Tax & Fund deduction/addition
+    const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
+    const brokerage = Math.min(20, finalTradeValue * 0.0005);
+    const product = executedOrder.orderType.split(' ')[0];
+    const stt = executedOrder.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
+    const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
+    
+    const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
+    const newBalance = executedOrder.type === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
+    localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
+    
+    // Update portfolio
+    const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
+    let newHoldings = [...(portfolioData.holdings || [])];
+    const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
+
+    if (executedOrder.type === 'BUY') {
+        if (holdingIndex > -1) {
+            const existingHolding = newHoldings[holdingIndex];
+            const totalQuantity = existingHolding.quantity + executedOrder.quantity;
+            const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
+            newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
+        } else {
+            newHoldings.push({
+                id: `holding-${Date.now()}`,
+                ticker: executedOrder.ticker,
+                quantity: executedOrder.quantity,
+                avgPrice: executedOrder.ltp,
+                ltp: executedOrder.ltp,
+                pnl: 0,
+                pnlPercent: 0,
+                dayChange: 0, // This would ideally come from getStockData
+                dayChangePercent: 0, // This would ideally come from getStockData
+                investedValue: executedOrder.ltp * executedOrder.quantity,
+            });
+        }
+    } else { // SELL
+        if (holdingIndex > -1) {
+            const existingHolding = newHoldings[holdingIndex];
+            existingHolding.quantity -= executedOrder.quantity;
+            if (existingHolding.quantity <= 0) {
+                newHoldings.splice(holdingIndex, 1);
+            }
+        }
+    }
+    const newPortfolioData = { ...portfolioData, holdings: newHoldings };
+    localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
     
     toast({
         title: `Order Executed!`,
-        description: `${order.type} ${order.quantity} ${order.ticker}.`
+        description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}. Est. charges: ₹${totalCharges.toFixed(2)}`,
     });
-  }
+
+  }, [toast]);
 
 
   useEffect(() => {
@@ -51,60 +116,62 @@ export function OrdersClient() {
         const pendingOrders = storedOrders.filter((o:Order) => o.status === 'Pending');
 
         if (pendingOrders.length === 0) {
+            // Still update the LTP for all orders
+            const allTickers = [...new Set(storedOrders.map((o:Order) => o.ticker))];
+            if (allTickers.length > 0) {
+                const stockData = await getStockData(allTickers);
+                const ltpMap = new Map(stockData.map(s => [s.ticker, s.price]));
+                const ordersWithFreshLtp = storedOrders.map((o: Order) => ({...o, ltp: ltpMap.get(o.ticker) || o.ltp}));
+                setOrders(ordersWithFreshLtp);
+            } else {
+                 setOrders(storedOrders);
+            }
+            return;
+        }
+
+        const marketIsOpen = isMarketOpen();
+        if (!marketIsOpen) {
             setOrders(storedOrders);
             return;
         }
 
         const tickers = [...new Set(pendingOrders.map((o: Order) => o.ticker))];
         const stockData = await getStockData(tickers);
-        
-        const updatedOrders = storedOrders.map((order: Order) => {
-            const relevantStock = stockData.find(s => s.ticker === order.ticker);
-            const ltp = relevantStock?.price || order.ltp;
-            
-            // Logic to execute pending orders
-            if (order.status === 'Pending') {
-                let shouldExecute = false;
-                if (order.orderType.includes("MARKET")) {
-                    // Market orders execute immediately if placed during market hours (simulated)
-                    shouldExecute = true; 
-                } else if (order.orderType.includes("LIMIT")) {
-                    if (order.type === 'BUY' && ltp <= order.limitPrice) {
-                        shouldExecute = true;
-                    } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
-                        shouldExecute = true;
-                    }
-                }
-                
-                if (shouldExecute) {
-                    // In a real app, you'd call a backend to confirm execution.
-                    // Here we'll just optimistically update the state.
-                    const executedOrder = { ...order, status: 'Executed' as const, filledQuantity: order.quantity, ltp };
-                    
-                    // This part should ideally be in a centralized service.
-                    // For now, we show a toast. Fund/portfolio updates happen on trade confirmation.
-                    toast({
-                        title: `Order Executed!`,
-                        description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}.`
-                    });
+        const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
 
-                    return executedOrder;
+        pendingOrders.forEach((order: Order) => {
+            const ltp = stockPriceMap.get(order.ticker);
+            if (ltp === undefined) return;
+
+            let shouldExecute = false;
+            if (order.orderType.includes("MARKET") && order.isAMO) {
+                shouldExecute = true; 
+            } else if (order.orderType.includes("LIMIT")) {
+                if (order.type === 'BUY' && ltp <= order.limitPrice) {
+                    shouldExecute = true;
+                } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
+                    shouldExecute = true;
+                }
+            } else if(order.orderType.includes("SL")) { // SL and SL-M
+                 if (order.type === 'BUY' && ltp >= order.triggerPrice!) {
+                    shouldExecute = true;
+                } else if (order.type === 'SELL' && ltp <= order.triggerPrice!) {
+                    shouldExecute = true;
                 }
             }
-
-            return {
-                ...order,
-                ltp: ltp,
-            };
+            
+            if (shouldExecute) {
+                 // For SL-Limit orders, the actual execution price is the limit price. For others, it's LTP.
+                const executionPrice = order.orderType === "SL" ? order.limitPrice : ltp;
+                executeOrder(order, executionPrice);
+            }
         });
         
-        // This check prevents unnecessary writes to localStorage
-        if (JSON.stringify(updatedOrders) !== JSON.stringify(storedOrders)) {
-            setOrders(updatedOrders);
-            localStorage.setItem('orders', JSON.stringify(updatedOrders));
-        } else {
-             // Only update orders state if no executions happened, just LTP update
-             setOrders(storedOrders.map(o => ({...o, ltp: stockData.find(s => s.ticker === o.ticker)?.price || o.ltp})));
+        // Update LTP for all orders after potential executions
+        const latestOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+        const updatedOrdersWithLtp = latestOrders.map((o: Order) => ({...o, ltp: stockPriceMap.get(o.ticker) || o.ltp}));
+        if(JSON.stringify(orders) !== JSON.stringify(updatedOrdersWithLtp)){
+            setOrders(updatedOrdersWithLtp);
         }
     };
 
@@ -112,7 +179,7 @@ export function OrdersClient() {
     const interval = setInterval(fetchOrdersDataAndCheckPending, 5000); // Check every 5 seconds
 
     return () => clearInterval(interval);
-  }, []);
+  }, [executeOrder, orders]);
 
   const handleEditClick = (order: Order) => {
     if (order.status === 'Pending') {
@@ -166,7 +233,7 @@ export function OrdersClient() {
                     </div>
                     <div className="text-xs text-muted-foreground text-right">
                         <span>{order.timestamp}</span>
-                        {order.isAMO && <div className="text-gray-400">AMO REQ...</div>}
+                        {order.isAMO && <div className="text-primary font-semibold">AMO REQ...</div>}
                     </div>
                   </div>
                   <div className="flex justify-between items-end mt-1">
@@ -222,3 +289,5 @@ export function OrdersClient() {
     </div>
   );
 }
+
+    
