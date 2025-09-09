@@ -51,10 +51,10 @@ export function WatchlistDashboard() {
     return watchlists.find((w) => w.id === activeTab);
   }, [activeTab, watchlists]);
 
-  const fetchStockData = useCallback(async () => {
+  const fetchStockData = useCallback(async (isSilent = false) => {
     if (!activeWatchlist) return;
 
-    setIsLoadingStocks(true);
+    if (!isSilent) setIsLoadingStocks(true);
     try {
       const data = await getStockData(activeWatchlist.stocks);
       setStocks(data);
@@ -67,14 +67,14 @@ export function WatchlistDashboard() {
       });
       setStocks([]);
     } finally {
-      setIsLoadingStocks(false);
+      if (!isSilent) setIsLoadingStocks(false);
     }
   }, [activeWatchlist, toast]);
 
   useEffect(() => {
     if (activeWatchlist) {
       fetchStockData();
-      const interval = setInterval(fetchStockData, 30000); // Refresh every 30 seconds
+      const interval = setInterval(() => fetchStockData(true), 30000); // Silent refresh
       return () => clearInterval(interval);
     }
   }, [activeWatchlist, fetchStockData]);
@@ -278,7 +278,7 @@ export function WatchlistDashboard() {
                         <TableRow key={stock.ticker} onClick={() => handleStockClick(stock)} className="cursor-pointer">
                           <TableCell>
                             <div className="font-bold">{stock.ticker}</div>
-                            <div className="text-sm text-muted-foreground">{stock.name}</div>
+                            <div className="text-xs text-muted-foreground truncate max-w-[120px] sm:max-w-xs">{stock.name}</div>
                           </TableCell>
                           <TableCell className="text-right font-medium">₹{stock.price.toFixed(2)}</TableCell>
                           <TableCell className="text-right">
@@ -287,7 +287,7 @@ export function WatchlistDashboard() {
                                 stock.change >= 0 ? "text-positive" : "text-destructive"
                               )}>
                               {stock.change >= 0 ? <ArrowUp className="h-4 w-4 mr-1"/> : <ArrowDown className="h-4 w-4 mr-1"/>}
-                              {stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)
+                              {stock.changePercent.toFixed(2)}%
                             </div>
                           </TableCell>
                         </TableRow>

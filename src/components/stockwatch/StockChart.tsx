@@ -46,7 +46,7 @@ export function StockChart({ data, isPositive }: StockChartProps) {
             />
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
             <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <YAxis domain={['dataMin', 'dataMax']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value}`} />
+            <YAxis domain={['dataMin', 'dataMax']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${Number(value).toFixed(0)}`} />
             <Area type="monotone" dataKey="price" stroke={strokeColor} fillOpacity={1} fill="url(#colorPrice)" strokeWidth={2} />
         </AreaChart>
     </ResponsiveContainer>

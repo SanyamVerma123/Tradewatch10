@@ -13,12 +13,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, SlidersHorizontal, ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { portfolio as initialPortfolioData } from "@/lib/portfolio";
+import { StockActionSheet } from "./StockActionSheet";
 
 export function PortfolioClient() {
   const [activeTab, setActiveTab] = useState("Holdings");
   const [searchTerm, setSearchTerm] = useState("");
   const [portfolio, setPortfolio] = useState<Portfolio>(initialPortfolioData);
   const [isLoading, setIsLoading] = useState(true);
+  const [stocksMap, setStocksMap] = useState<Record<string, Stock>>({});
+
+  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
+  const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
 
   const updatePortfolioData = useCallback(async (currentPortfolio: Portfolio) => {
     const tickers = currentPortfolio.holdings.map(h => h.ticker);
@@ -27,7 +32,18 @@ export function PortfolioClient() {
       return;
     }
 
+    // Don't show main loader on silent refresh
+    const isSilentRefresh = Object.keys(stocksMap).length > 0;
+    if (!isSilentRefresh) {
+        setIsLoading(true);
+    }
+
     const stockData = await getStockData(tickers);
+    
+    const newStocksMap: Record<string, Stock> = {};
+    stockData.forEach(s => newStocksMap[s.ticker] = s);
+    setStocksMap(newStocksMap);
+
 
     let totalInvestedValue = 0;
     let totalCurrentValue = 0;
@@ -58,7 +74,7 @@ export function PortfolioClient() {
     });
 
     const totalPnl = totalCurrentValue - totalInvestedValue;
-    const totalPnlPercent = (totalPnl / totalInvestedValue) * 100;
+    const totalPnlPercent = (totalPnl / totalInvestedValue) * 100 || 0;
 
     const newPortfolio: Portfolio = {
       holdings: updatedHoldings,
@@ -71,7 +87,7 @@ export function PortfolioClient() {
     setPortfolio(newPortfolio);
     localStorage.setItem('portfolioData', JSON.stringify(newPortfolio));
     setIsLoading(false);
-  }, []);
+  }, [stocksMap]);
 
   useEffect(() => {
     let storedPortfolio = initialPortfolioData;
@@ -83,7 +99,6 @@ export function PortfolioClient() {
     }
     
     setPortfolio(storedPortfolio);
-    setIsLoading(true);
     updatePortfolioData(storedPortfolio);
 
     const interval = setInterval(() => {
@@ -92,6 +107,14 @@ export function PortfolioClient() {
 
     return () => clearInterval(interval);
   }, [updatePortfolioData]);
+
+  const handleHoldingClick = (holding: Holding) => {
+    const stockData = stocksMap[holding.ticker];
+    if (stockData) {
+      setSelectedStock(stockData);
+      setIsActionSheetOpen(true);
+    }
+  };
 
   const filteredHoldings = portfolio.holdings.filter(
     (holding) =>
@@ -157,7 +180,7 @@ export function PortfolioClient() {
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
             ) : filteredHoldings.map((holding) => (
-              <Card key={holding.id}>
+              <Card key={holding.id} onClick={() => handleHoldingClick(holding)} className="cursor-pointer">
                 <CardContent className="p-3">
                   <div className="text-xs text-muted-foreground">
                     <span>{holding.quantity} Qty.</span>
@@ -197,6 +220,11 @@ export function PortfolioClient() {
           </div>
         </TabsContent>
       </Tabs>
+      <StockActionSheet 
+        stock={selectedStock} 
+        isOpen={isActionSheetOpen} 
+        onOpenChange={setIsActionSheetOpen} 
+      />
     </div>
   );
 }
