@@ -35,3 +35,25 @@ export interface Order {
   orderType: string;
   ltp: number;
 }
+
+export interface Holding {
+  id: string;
+  ticker: string;
+  quantity: number;
+  avgPrice: number;
+  investedValue: number;
+  currentValue?: number;
+  pnl: number;
+  pnlPercent: number;
+  ltp: number;
+  dayChange: number;
+  dayChangePercent: number;
+}
+
+export interface Portfolio {
+    investedValue: number;
+    currentValue: number;
+    totalPnl: number;
+    totalPnlPercent: number;
+    holdings: Holding[];
+}
