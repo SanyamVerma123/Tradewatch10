@@ -4,7 +4,7 @@ export interface Stock {
   price: number;
   change: number;
   changePercent: number;
-  marketCap: string;
+  marketCap: string | number;
 }
 
 export interface Watchlist {

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import type { Stock, Watchlist, NewsArticle } from "@/lib/types";
 import type { SuggestPriceAlertsOutput } from "@/ai/flows/suggest-price-alerts";
 
-import { getPriceAlertSuggestions } from "@/app/actions";
+import { getPriceAlertSuggestions, getStockData } from "@/app/actions";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,14 @@ import Image from "next/image";
 import { ArrowUp, ArrowDown, Search, Sparkles, Settings, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface WatchlistDashboardProps {
-  initialStocks: Stock[];
   initialWatchlists: Watchlist[];
   initialNews: NewsArticle[];
 }
 
 export function WatchlistDashboard({
-  initialStocks,
   initialWatchlists,
   initialNews,
 }: WatchlistDashboardProps) {
@@ -33,27 +32,47 @@ export function WatchlistDashboard({
   const [suggestions, setSuggestions] = useState<SuggestPriceAlertsOutput>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const { toast } = useToast();
+  const [stocks, setStocks] = useState<Stock[]>([]);
+  const [isLoadingStocks, setIsLoadingStocks] = useState(true);
 
   const activeWatchlist = useMemo(() => {
     return initialWatchlists.find((w) => w.id === activeTab);
   }, [activeTab, initialWatchlists]);
 
+  useEffect(() => {
+    const fetchStockData = async () => {
+      if (!activeWatchlist) return;
+
+      setIsLoadingStocks(true);
+      try {
+        const data = await getStockData(activeWatchlist.stocks);
+        setStocks(data);
+      } catch (error) {
+        console.error("Failed to fetch stock data", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Could not fetch watchlist data.",
+        });
+        setStocks([]);
+      } finally {
+        setIsLoadingStocks(false);
+      }
+    };
+
+    fetchStockData();
+  }, [activeTab, activeWatchlist, toast]);
+
   const filteredStocks = useMemo(() => {
-    const stocksInWatchlist =
-      activeWatchlist?.stocks.map((ticker) =>
-        initialStocks.find((s) => s.ticker === ticker)
-      ).filter(Boolean) as Stock[] || [];
-
     if (!searchTerm) {
-      return stocksInWatchlist;
+      return stocks;
     }
-
-    return stocksInWatchlist.filter(
+    return stocks.filter(
       (stock) =>
         stock.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
         stock.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [activeWatchlist, initialStocks, searchTerm]);
+  }, [stocks, searchTerm]);
 
   const handleSuggestAlerts = async () => {
     if (!activeWatchlist) return;
@@ -87,6 +106,23 @@ export function WatchlistDashboard({
         setIsLoadingSuggestions(false);
     }
   };
+
+  const renderStockSkeleton = () => (
+    [...Array(3)].map((_, i) => (
+      <TableRow key={`skeleton-${i}`}>
+        <TableCell>
+          <Skeleton className="h-5 w-20 mb-1" />
+          <Skeleton className="h-4 w-24" />
+        </TableCell>
+        <TableCell className="text-right">
+          <Skeleton className="h-5 w-16 ml-auto" />
+        </TableCell>
+        <TableCell className="text-right">
+          <Skeleton className="h-5 w-24 ml-auto" />
+        </TableCell>
+      </TableRow>
+    ))
+  );
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -131,7 +167,7 @@ export function WatchlistDashboard({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredStocks.map((stock) => (
+                    {isLoadingStocks ? renderStockSkeleton() : filteredStocks.map((stock) => (
                       <TableRow key={stock.ticker}>
                         <TableCell>
                           <div className="font-bold">{stock.ticker}</div>
@@ -158,7 +194,7 @@ export function WatchlistDashboard({
       </Tabs>
 
       <div className="mt-6">
-        <Button onClick={handleSuggestAlerts} disabled={isLoadingSuggestions} className="w-full">
+        <Button onClick={handleSuggestAlerts} disabled={isLoadingSuggestions || isLoadingStocks} className="w-full">
           {isLoadingSuggestions ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
