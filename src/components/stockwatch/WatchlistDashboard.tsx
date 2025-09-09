@@ -364,14 +364,18 @@ export function WatchlistDashboard() {
                             <div className="font-bold text-sm">{stock.ticker}</div>
                             <div className="text-xs text-muted-foreground truncate">{stock.name}</div>
                           </TableCell>
-                          <TableCell className="text-right font-medium">₹{stock.price.toFixed(2)}</TableCell>
+                           <TableCell className={cn("text-right font-medium", stock.change >= 0 ? "text-positive" : "text-destructive")}>
+                            ₹{stock.price.toFixed(2)}
+                          </TableCell>
                           <TableCell className="text-right">
-                            <div className={cn(
-                                "flex items-center justify-end font-semibold",
-                                stock.change >= 0 ? "text-positive" : "text-destructive"
-                              )}>
-                              {stock.change >= 0 ? <ArrowUp className="h-4 w-4 mr-1"/> : <ArrowDown className="h-4 w-4 mr-1"/>}
-                              {stock.changePercent.toFixed(2)}%
+                             <div
+                              className={cn(
+                                "flex items-center justify-center rounded-md px-2 py-1 text-white text-xs font-semibold w-20 float-right",
+                                stock.change >= 0 ? "bg-positive" : "bg-destructive"
+                              )}
+                            >
+                              {stock.change >= 0 ? <ArrowUp className="h-3 w-3 mr-1" /> : <ArrowDown className="h-3 w-3 mr-1" />}
+                              {Math.abs(stock.changePercent).toFixed(2)}%
                             </div>
                           </TableCell>
                         </TableRow>
