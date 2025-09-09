@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import type { Portfolio, Holding } from "@/lib/types";
+import { useState, useEffect, useCallback } from "react";
+import type { Portfolio, Holding, Stock } from "@/lib/types";
+import { getStockData } from "@/app/actions";
 import {
   Card,
   CardContent,
@@ -9,7 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, SlidersHorizontal, ChevronDown } from "lucide-react";
+import { Search, SlidersHorizontal, ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { portfolio as initialPortfolioData } from "@/lib/portfolio";
 
@@ -17,15 +18,80 @@ export function PortfolioClient() {
   const [activeTab, setActiveTab] = useState("Holdings");
   const [searchTerm, setSearchTerm] = useState("");
   const [portfolio, setPortfolio] = useState<Portfolio>(initialPortfolioData);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const updatePortfolioData = useCallback(async (currentPortfolio: Portfolio) => {
+    const tickers = currentPortfolio.holdings.map(h => h.ticker);
+    if (tickers.length === 0) {
+      setIsLoading(false);
+      return;
+    }
+
+    const stockData = await getStockData(tickers);
+
+    let totalInvestedValue = 0;
+    let totalCurrentValue = 0;
+
+    const updatedHoldings = currentPortfolio.holdings.map(holding => {
+      const liveData = stockData.find(s => s.ticker === holding.ticker);
+      const ltp = liveData?.price || holding.ltp;
+      const dayChange = liveData?.change || 0;
+      const dayChangePercent = liveData?.changePercent || 0;
+      
+      const investedValue = holding.avgPrice * holding.quantity;
+      const currentValue = ltp * holding.quantity;
+      const pnl = currentValue - investedValue;
+      
+      totalInvestedValue += investedValue;
+      totalCurrentValue += currentValue;
+
+      return {
+        ...holding,
+        ltp,
+        dayChange,
+        dayChangePercent,
+        pnl,
+        pnlPercent: (pnl / investedValue) * 100,
+        investedValue,
+        currentValue
+      };
+    });
+
+    const totalPnl = totalCurrentValue - totalInvestedValue;
+    const totalPnlPercent = (totalPnl / totalInvestedValue) * 100;
+
+    const newPortfolio: Portfolio = {
+      holdings: updatedHoldings,
+      investedValue: totalInvestedValue,
+      currentValue: totalCurrentValue,
+      totalPnl,
+      totalPnlPercent,
+    };
+
+    setPortfolio(newPortfolio);
+    localStorage.setItem('portfolioData', JSON.stringify(newPortfolio));
+    setIsLoading(false);
+  }, []);
 
   useEffect(() => {
-    const storedPortfolio = localStorage.getItem('portfolioData');
-    if (storedPortfolio) {
-      setPortfolio(JSON.parse(storedPortfolio));
-    } else {
-      localStorage.setItem('portfolioData', JSON.stringify(initialPortfolioData));
+    let storedPortfolio = initialPortfolioData;
+    try {
+        const item = localStorage.getItem('portfolioData');
+        storedPortfolio = item ? JSON.parse(item) : initialPortfolioData;
+    } catch (e) {
+        console.error("Could not parse portfolio data from local storage", e)
     }
-  }, []);
+    
+    setPortfolio(storedPortfolio);
+    setIsLoading(true);
+    updatePortfolioData(storedPortfolio);
+
+    const interval = setInterval(() => {
+        updatePortfolioData(storedPortfolio);
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [updatePortfolioData]);
 
   const filteredHoldings = portfolio.holdings.filter(
     (holding) =>
@@ -53,11 +119,11 @@ export function PortfolioClient() {
                     <div className="grid grid-cols-2 gap-4 text-center">
                         <div>
                             <div className="text-sm text-muted-foreground">Invested</div>
-                            <div className="text-lg font-semibold">{portfolio.investedValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                            <div className="text-lg font-semibold">₹{portfolio.investedValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
                         </div>
                         <div>
                             <div className="text-sm text-muted-foreground">Current</div>
-                            <div className="text-lg font-semibold">{portfolio.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                            <div className="text-lg font-semibold">₹{portfolio.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
                         </div>
                     </div>
                     <div className="mt-4 text-center">
@@ -86,7 +152,11 @@ export function PortfolioClient() {
             </div>
 
             <div className="space-y-2">
-            {filteredHoldings.map((holding) => (
+            {isLoading ? (
+                <div className="flex justify-center items-center p-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            ) : filteredHoldings.map((holding) => (
               <Card key={holding.id}>
                 <CardContent className="p-3">
                   <div className="text-xs text-muted-foreground">
@@ -96,9 +166,9 @@ export function PortfolioClient() {
                   </div>
                   <div className="flex justify-between items-center mt-1">
                       <p className="font-bold">{holding.ticker}</p>
-                      <div className={cn("text-right font-semibold", holding.dayChange >= 0 ? "text-positive" : "text-destructive")}>
-                          <p>{holding.pnl.toFixed(2)}</p>
-                          <p className="text-xs">{holding.dayChangePercent.toFixed(2)}%</p>
+                      <div className={cn("text-right font-semibold", holding.pnl >= 0 ? "text-positive" : "text-destructive")}>
+                          <p>{holding.pnl >= 0 ? '+' : ''}{holding.pnl.toFixed(2)}</p>
+                          <p className="text-xs">({holding.pnlPercent.toFixed(2)}%)</p>
                       </div>
                   </div>
                   <div className="flex justify-between items-end mt-1 text-xs text-muted-foreground">

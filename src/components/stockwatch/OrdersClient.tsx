@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Order } from "@/lib/types";
 import {
   Card,
@@ -9,6 +9,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, SlidersHorizontal } from "lucide-react";
+import { getStockData } from "@/app/actions";
 
 interface OrdersClientProps {
   initialOrders: Order[];
@@ -17,15 +18,40 @@ interface OrdersClientProps {
 export function OrdersClient({ initialOrders }: OrdersClientProps) {
   const [activeTab, setActiveTab] = useState("Pending");
   const [searchTerm, setSearchTerm] = useState("");
+  const [orders, setOrders] = useState<Order[]>(initialOrders);
 
-  const filteredOrders = initialOrders.filter(
+  useEffect(() => {
+    const fetchOrdersData = async () => {
+        const tickers = [...new Set(initialOrders.map(o => o.ticker))];
+        if (tickers.length === 0) return;
+
+        const stockData = await getStockData(tickers);
+        
+        const updatedOrders = initialOrders.map(order => {
+            const relevantStock = stockData.find(s => s.ticker === order.ticker);
+            return {
+                ...order,
+                ltp: relevantStock?.price || order.ltp,
+            };
+        });
+        setOrders(updatedOrders);
+    };
+
+    fetchOrdersData();
+    const interval = setInterval(fetchOrdersData, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+}, [initialOrders]);
+
+
+  const filteredOrders = orders.filter(
     (order) =>
       order.status === activeTab &&
       (order.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
        order.exchange.toLowerCase().includes(searchTerm.toLowerCase()))
   );
   
-  const executedOrders = initialOrders.filter(o => o.status === 'Executed');
+  const executedOrders = orders.filter(o => o.status === 'Executed');
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -72,8 +98,8 @@ export function OrdersClient({ initialOrders }: OrdersClientProps) {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
                     </div>
                     <div className="text-right">
-                        <p className="font-semibold">{order.limitPrice.toFixed(2)}</p>
-                        <p className="text-xs text-muted-foreground">LTP {order.ltp.toFixed(2)}</p>
+                        <p className="font-semibold">₹{order.limitPrice.toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">LTP ₹{order.ltp.toFixed(2)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -101,8 +127,8 @@ export function OrdersClient({ initialOrders }: OrdersClientProps) {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
                     </div>
                      <div className="text-right">
-                        <p className="font-semibold">{order.limitPrice.toFixed(2)}</p>
-                        <p className="text-xs text-muted-foreground">LTP {order.ltp.toFixed(2)}</p>
+                        <p className="font-semibold">₹{order.limitPrice.toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">LTP ₹{order.ltp.toFixed(2)}</p>
                     </div>
                   </div>
                 </CardContent>

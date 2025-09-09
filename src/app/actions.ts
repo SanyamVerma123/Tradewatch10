@@ -17,6 +17,9 @@ export async function getPriceAlertSuggestions(watchlist: { ticker: string; curr
 }
 
 export async function getStockData(tickers: string[]) {
+    if (!tickers || tickers.length === 0) {
+        return [];
+    }
     try {
         const results = await yahooFinance.quote(tickers);
         return results.map(stock => ({
@@ -29,6 +32,24 @@ export async function getStockData(tickers: string[]) {
         }));
     } catch (error) {
         console.error('Error fetching stock data from Yahoo Finance:', error);
+        return [];
+    }
+}
+
+export async function searchStocks(query: string) {
+    if (!query) {
+        return [];
+    }
+    try {
+        // We append .NS to search specifically on the Indian NSE market
+        const searchResult = await yahooFinance.search(`${query}`, { newsCount: 0 });
+        return searchResult.quotes.filter(q => q.symbol && (q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO'))).map(stock => ({
+            ticker: stock.symbol,
+            name: stock.longname || stock.shortname || stock.symbol,
+            exchange: stock.exchangecountry,
+        }));
+    } catch (error) {
+        console.error('Error searching stocks:', error);
         return [];
     }
 }
