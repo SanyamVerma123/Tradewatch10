@@ -360,6 +360,7 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
         )}
       </div>
 
+      {!isLoading && (
       <footer className="fixed bottom-0 left-0 right-0 z-10 bg-background border-t p-4 w-full">
         <div className="max-w-4xl mx-auto">
             <div className="flex justify-between items-center text-xs mb-2">
@@ -376,6 +377,7 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
              <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={isLoading} />
         </div>
       </footer>
+      )}
     </div>
   );
 }

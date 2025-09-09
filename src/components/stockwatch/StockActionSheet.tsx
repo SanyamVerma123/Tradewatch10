@@ -45,9 +45,11 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
             </div>
           ))}
         </div>
-        <Button variant="link" className="p-0 h-auto mt-2 text-primary">
-            See more <ChevronRight className="h-4 w-4 ml-1" />
-        </Button>
+        <a href={`https://www.screener.in/company/${stock.ticker.replace('.NS', '')}/`} target="_blank" rel="noopener noreferrer">
+          <Button variant="link" className="p-0 h-auto mt-2 text-primary">
+              See more <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </a>
     </div>
   );
 };
@@ -83,7 +85,7 @@ export function StockActionSheet({ stock, isOpen, onOpenChange }: StockActionShe
         <SheetHeader className="text-left">
           <SheetTitle className="text-lg">{stock.name}</SheetTitle>
           <SheetDescription className="flex items-center gap-4">
-            <span>{stock.ticker}</span>
+            <span className="truncate max-w-[120px] sm:max-w-xs">{stock.ticker}</span>
             <span className={cn("font-semibold", stock.change >= 0 ? "text-positive" : "text-destructive")}>
               {stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)
             </span>
