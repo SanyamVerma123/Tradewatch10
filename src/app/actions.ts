@@ -2,6 +2,7 @@
 
 import { suggestPriceAlerts, SuggestPriceAlertsInput } from "@/ai/flows/suggest-price-alerts";
 import yahooFinance from 'yahoo-finance2';
+import type { HistoricalHistoryResult } from 'yahoo-finance2/dist/esm/src/modules/historical';
 
 export async function getPriceAlertSuggestions(watchlist: { ticker: string; currentPrice: number }[]) {
   try {
@@ -28,12 +29,37 @@ export async function getStockData(tickers: string[]) {
             price: stock.regularMarketPrice ?? 0,
             change: stock.regularMarketChange ?? 0,
             changePercent: stock.regularMarketChangePercent ?? 0,
-            marketCap: stock.marketCap ?? 'N/A'
+            marketCap: stock.marketCap ?? 'N/A',
+            open: stock.regularMarketOpen ?? 0,
+            dayHigh: stock.regularMarketDayHigh ?? 0,
+            dayLow: stock.regularMarketDayLow ?? 0,
+            previousClose: stock.regularMarketPreviousClose ?? 0,
+            volume: stock.regularMarketVolume ?? 0,
+            avgVolume: stock.averageDailyVolume3Month ?? 0,
         }));
     } catch (error) {
         console.error('Error fetching stock data from Yahoo Finance:', error);
         return [];
     }
+}
+
+export async function getHistoricalData(ticker: string): Promise<HistoricalHistoryResult | null> {
+  if (!ticker) return null;
+  try {
+    const today = new Date();
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(today.getMonth() - 3);
+
+    const result = await yahooFinance.historical(ticker, {
+      period1: threeMonthsAgo.toISOString().split('T')[0],
+      period2: today.toISOString().split('T')[0],
+      interval: '1d',
+    });
+    return result;
+  } catch (error) {
+    console.error(`Error fetching historical data for ${ticker}:`, error);
+    return null;
+  }
 }
 
 export async function searchStocks(query: string) {

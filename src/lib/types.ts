@@ -5,6 +5,12 @@ export interface Stock {
   change: number;
   changePercent: number;
   marketCap: string | number;
+  open: number;
+  dayHigh: number;
+  dayLow: number;
+  previousClose: number;
+  volume: number;
+  avgVolume: number;
 }
 
 export interface Watchlist {

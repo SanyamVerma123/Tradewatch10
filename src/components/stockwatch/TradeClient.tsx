@@ -2,17 +2,21 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { Stock } from "@/lib/types";
-import { getStockData } from "@/app/actions";
+import { getStockData, getHistoricalData } from "@/app/actions";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, MoreVertical, Info, RefreshCcw } from "lucide-react";
+import { ArrowLeft, MoreVertical, Info, RefreshCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StockChart } from "@/components/stockwatch/StockChart";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import type { HistoricalHistoryResult } from "yahoo-finance2/dist/esm/src/modules/historical";
+
 
 interface TradeClientProps {
   ticker: string;
@@ -21,10 +25,41 @@ interface TradeClientProps {
 
 type OrderType = "BUY" | "SELL";
 
+const Fundamentals = ({ stock }: { stock: Stock }) => {
+  const data = [
+    { label: "Open", value: stock.open?.toFixed(2) },
+    { label: "High", value: stock.dayHigh?.toFixed(2) },
+    { label: "Low", value: stock.dayLow?.toFixed(2) },
+    { label: "Prev. Close", value: stock.previousClose?.toFixed(2) },
+    { label: "Volume", value: stock.volume?.toLocaleString('en-IN') },
+    { label: "Avg. Volume", value: stock.avgVolume?.toLocaleString('en-IN') },
+  ];
+
+  return (
+    <Card className="mt-4">
+      <CardHeader>
+        <CardTitle className="text-lg">Market Depth</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          {data.map(item => (
+            <div key={item.label} className="flex justify-between border-b pb-1">
+              <span className="text-muted-foreground">{item.label}</span>
+              <span className="font-medium">₹{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+
 export function TradeClient({ ticker, initialStock }: TradeClientProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [stock, setStock] = useState<Stock | null>(initialStock);
+  const [historicalData, setHistoricalData] = useState<HistoricalHistoryResult | null>(null);
   const [orderType, setOrderType] = useState<OrderType>("BUY");
   const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("");
@@ -41,7 +76,9 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
       const data = await getStockData([ticker]);
       if (data && data.length > 0) {
         setStock(data[0]);
-        setPrice(data[0].price.toFixed(2));
+        if (!price) { // Set price only on first load
+            setPrice(data[0].price.toFixed(2));
+        }
       } else {
         toast({
             variant: "destructive",
@@ -59,13 +96,20 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
     } finally {
         setIsLoading(false);
     }
-  }, [ticker, toast]);
+  }, [ticker, toast, price]);
+
+  const fetchHistorical = useCallback(async () => {
+    const data = await getHistoricalData(ticker);
+    setHistoricalData(data);
+  }, [ticker]);
+
 
   useEffect(() => {
     fetchStock();
+    fetchHistorical();
     const interval = setInterval(fetchStock, 5000); // Refresh every 5s on this page
     return () => clearInterval(interval);
-  }, [fetchStock]);
+  }, [fetchStock, fetchHistorical]);
 
   const approxMargin = (parseInt(quantity) || 0) * (parseFloat(price) || 0);
 
@@ -77,9 +121,15 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
     router.push('/orders');
   }
 
+  const PageLoader = () => (
+    <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  )
+
   return (
-    <div className="container mx-auto max-w-4xl px-0 py-6">
-      <header className="mb-4 flex items-center justify-between px-4">
+    <div className="pb-28">
+      <header className="mb-4 flex items-center justify-between px-4 pt-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
             <ArrowLeft />
@@ -91,20 +141,24 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
         </Button>
       </header>
 
-      {isLoading ? <p className="text-center">Loading...</p> : (
+      {isLoading ? <PageLoader /> : (
           <>
-            <div className="mb-4 flex justify-start items-center gap-4 px-4">
-                <p className="text-sm">
-                    <span className="text-muted-foreground">NSE: </span>
-                    <span className={cn(stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>₹{stock?.price.toFixed(2)}</span>
-                </p>
-                {/* In a real app we'd get BSE data too */}
-                <p className="text-sm text-muted-foreground">
-                    <span>BSE: </span>
-                    <span>₹{(stock?.price || 0).toFixed(2)}</span>
+            <div className="px-4">
+                <p className="text-2xl font-bold mb-1">₹{stock?.price.toFixed(2)}</p>
+                <p className={cn("font-semibold", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
+                   {stock?.change && stock.change >= 0 ? '+' : ''}{stock?.change.toFixed(2)} ({stock?.changePercent.toFixed(2)}%)
                 </p>
             </div>
-             <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full">
+            
+            <div className="h-64 my-4">
+                <StockChart data={historicalData} isPositive={stock?.change ? stock.change >= 0 : true}/>
+            </div>
+            
+            <div className="px-4">
+              <Fundamentals stock={stock!} />
+            </div>
+
+             <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full mt-4">
                 <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="BUY" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
                     <TabsTrigger value="SELL" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
@@ -153,25 +207,25 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
                     <div className="space-y-2">
                         <Label>Type</Label>
                          <RadioGroup value={orderMethod} onValueChange={setOrderMethod} className="flex gap-2">
-                             <Button asChild variant="outline" className={cn(orderMethod === "Market" && "border-primary text-primary")}>
+                             <Button asChild variant="outline" className={cn("flex-1", orderMethod === "Market" && "border-primary text-primary")}>
                                 <Label className="px-4 py-2">
                                     <RadioGroupItem value="Market" id="market" className="sr-only"/>
                                     Market
                                 </Label>
                              </Button>
-                              <Button asChild variant="outline" className={cn(orderMethod === "Limit" && "border-primary text-primary")}>
+                              <Button asChild variant="outline" className={cn("flex-1",orderMethod === "Limit" && "border-primary text-primary")}>
                                 <Label className="px-4 py-2">
                                      <RadioGroupItem value="Limit" id="limit" className="sr-only"/>
                                      Limit
                                 </Label>
                             </Button>
-                            <Button asChild variant="outline" className={cn(orderMethod === "SL" && "border-primary text-primary")}>
+                            <Button asChild variant="outline" className={cn("flex-1", orderMethod === "SL" && "border-primary text-primary")}>
                                 <Label className="px-4 py-2">
                                      <RadioGroupItem value="SL" id="sl" className="sr-only"/>
                                      SL
                                 </Label>
                             </Button>
-                             <Button asChild variant="outline" className={cn(orderMethod === "SL-M" && "border-primary text-primary")}>
+                             <Button asChild variant="outline" className={cn("flex-1", orderMethod === "SL-M" && "border-primary text-primary")}>
                                 <Label className="px-4 py-2">
                                      <RadioGroupItem value="SL-M" id="sl-m" className="sr-only"/>
                                      SL-M
@@ -234,6 +288,7 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
         <Button 
             className={cn("w-full h-12 text-lg", orderType === "BUY" ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700")}
             onClick={handleSwipe}
+            disabled={isLoading}
         >
           SWIPE TO {orderType}
         </Button>
