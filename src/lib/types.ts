@@ -1,3 +1,4 @@
+
 export interface Stock {
   ticker: string;
   name: string;
@@ -35,6 +36,7 @@ export interface Order {
   quantity: number;
   filledQuantity: number;
   limitPrice: number;
+  triggerPrice?: number;
   status: 'Pending' | 'Executed' | 'Cancelled';
   timestamp: string;
   exchange: string;
@@ -70,3 +72,5 @@ export interface User {
     email: string;
     password?: string;
 }
+
+    

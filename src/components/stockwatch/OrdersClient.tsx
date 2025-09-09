@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,28 +7,49 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { getStockData } from "@/app/actions";
+import { useToast } from "@/hooks/use-toast";
 
-interface OrdersClientProps {
-  initialOrders: Order[];
-}
-
-export function OrdersClient({ initialOrders }: OrdersClientProps) {
+export function OrdersClient() {
   const [activeTab, setActiveTab] = useState("Pending");
   const [searchTerm, setSearchTerm] = useState("");
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [editQuantity, setEditQuantity] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+    setOrders(storedOrders);
+  }, []);
 
   useEffect(() => {
     const fetchOrdersData = async () => {
-        const tickers = [...new Set(initialOrders.map(o => o.ticker))];
-        if (tickers.length === 0) return;
+        const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+        const tickers = [...new Set(storedOrders.map((o: Order) => o.ticker))];
+        if (tickers.length === 0) {
+            setOrders(storedOrders);
+            return;
+        }
 
         const stockData = await getStockData(tickers);
         
-        const updatedOrders = initialOrders.map(order => {
+        const updatedOrders = storedOrders.map((order: Order) => {
             const relevantStock = stockData.find(s => s.ticker === order.ticker);
             return {
                 ...order,
@@ -41,14 +63,46 @@ export function OrdersClient({ initialOrders }: OrdersClientProps) {
     const interval = setInterval(fetchOrdersData, 30000); // Refresh every 30 seconds
 
     return () => clearInterval(interval);
-}, [initialOrders]);
+  }, []);
 
+  const handleEditClick = (order: Order) => {
+    if (order.status === 'Pending') {
+      setSelectedOrder(order);
+      setEditQuantity(order.quantity.toString());
+      setEditPrice(order.limitPrice.toString());
+      setIsEditModalOpen(true);
+    }
+  };
+
+  const handleSaveChanges = () => {
+    if (!selectedOrder) return;
+
+    const updatedOrders = orders.map(order => {
+      if (order.id === selectedOrder.id) {
+        return {
+          ...order,
+          quantity: parseInt(editQuantity, 10),
+          limitPrice: parseFloat(editPrice),
+        };
+      }
+      return order;
+    });
+
+    setOrders(updatedOrders);
+    localStorage.setItem('orders', JSON.stringify(updatedOrders));
+    setIsEditModalOpen(false);
+    setSelectedOrder(null);
+    toast({
+      title: "Order Updated",
+      description: "Your changes have been saved.",
+    });
+  };
 
   const filteredOrders = orders.filter(
     (order) =>
       order.status === activeTab &&
       (order.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
-       order.exchange.toLowerCase().includes(searchTerm.toLowerCase()))
+       (order.exchange && order.exchange.toLowerCase().includes(searchTerm.toLowerCase())))
   );
   
   const executedOrders = orders.filter(o => o.status === 'Executed');
@@ -80,7 +134,7 @@ export function OrdersClient({ initialOrders }: OrdersClientProps) {
         <TabsContent value="Pending">
           <div className="space-y-4">
             {filteredOrders.map((order) => (
-              <Card key={order.id}>
+              <Card key={order.id} onClick={() => handleEditClick(order)} className={order.status === 'Pending' ? 'cursor-pointer' : ''}>
                 <CardContent className="p-4">
                   <div className="flex justify-between items-start">
                     <div>
@@ -142,6 +196,48 @@ export function OrdersClient({ initialOrders }: OrdersClientProps) {
           </div>
         </TabsContent>
       </Tabs>
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Order: {selectedOrder?.ticker}</DialogTitle>
+            <DialogDescription>
+              You can modify the price and quantity for your pending order.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-quantity" className="text-right">
+                Quantity
+              </Label>
+              <Input
+                id="edit-quantity"
+                value={editQuantity}
+                onChange={(e) => setEditQuantity(e.target.value)}
+                className="col-span-3"
+                type="number"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-price" className="text-right">
+                Price
+              </Label>
+              <Input
+                id="edit-price"
+                value={editPrice}
+                onChange={(e) => setEditPrice(e.target.value)}
+                className="col-span-3"
+                type="number"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveChanges}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
+    
