@@ -34,6 +34,17 @@ import { watchlists as initialWatchlistsData, news as initialNewsData } from "@/
 import { StockActionSheet } from "./StockActionSheet";
 
 
+const getStockStatusMessage = (changePercent: number): string => {
+    if (changePercent > 1.5) return "Strong upward momentum today.";
+    if (changePercent > 0.5) return "Showing positive signs.";
+    if (changePercent > 0) return "Trading slightly higher.";
+    if (changePercent < -1.5) return "Facing significant selling pressure.";
+    if (changePercent < -0.5) return "Currently on a downward trend.";
+    if (changePercent < 0) return "Seeing a slight dip in price.";
+    return "Market appears stable for this stock.";
+};
+
+
 export function WatchlistDashboard() {
   const router = useRouter();
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
@@ -231,15 +242,17 @@ export function WatchlistDashboard() {
   const renderStockSkeleton = () => (
     [...Array(3)].map((_, i) => (
       <TableRow key={`skeleton-${i}`}>
-        <TableCell>
-          <Skeleton className="h-5 w-20 mb-1" />
-          <Skeleton className="h-4 w-24" />
-        </TableCell>
-        <TableCell className="text-right">
-          <Skeleton className="h-5 w-16 ml-auto" />
-        </TableCell>
-        <TableCell className="text-right">
-          <Skeleton className="h-5 w-24 ml-auto" />
+        <TableCell colSpan={2}>
+           <div className="flex justify-between items-center">
+             <div>
+                <Skeleton className="h-5 w-20 mb-1" />
+                <Skeleton className="h-4 w-24" />
+             </div>
+             <div className="text-right">
+                <Skeleton className="h-5 w-16 ml-auto" />
+                <Skeleton className="h-4 w-24 mt-1 ml-auto" />
+            </div>
+           </div>
         </TableCell>
       </TableRow>
     ))
@@ -350,34 +363,22 @@ export function WatchlistDashboard() {
               <Card>
                 <CardContent className="p-0">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[45%]">Company</TableHead>
-                        <TableHead className="text-right">Price</TableHead>
-                        <TableHead className="text-right">Change</TableHead>
-                      </TableRow>
-                    </TableHeader>
                     <TableBody>
                       {isLoadingStocks && filteredStocks.length === 0 ? renderStockSkeleton() : filteredStocks.map((stock) => (
                         <TableRow key={stock.ticker} onClick={() => handleStockClick(stock)} className="cursor-pointer">
-                          <TableCell>
-                            <div className="font-bold text-sm">{stock.ticker}</div>
-                            <div className="text-xs text-muted-foreground truncate">{stock.name}</div>
-                          </TableCell>
-                           <TableCell className={cn("text-right font-medium", stock.change >= 0 ? "text-positive" : "text-destructive")}>
-                            ₹{stock.price.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                             <div
-                              className={cn(
-                                "flex items-center justify-center rounded-md px-2 py-1 text-white text-xs font-semibold w-20 float-right",
-                                stock.change >= 0 ? "bg-positive" : "bg-destructive"
-                              )}
-                            >
-                              {stock.change >= 0 ? <ArrowUp className="h-3 w-3 mr-1" /> : <ArrowDown className="h-3 w-3 mr-1" />}
-                              {Math.abs(stock.changePercent).toFixed(2)}%
-                            </div>
-                          </TableCell>
+                           <TableCell colSpan={2} className="p-3">
+                               <div className="flex items-center justify-between">
+                                 <div className="flex-1 pr-4">
+                                     <p className="font-bold text-sm">{stock.ticker}</p>
+                                     <p className="text-xs text-muted-foreground truncate w-40 sm:w-auto">{stock.name}</p>
+                                     <p className="text-xs text-primary/80 mt-1 italic">{getStockStatusMessage(stock.changePercent)}</p>
+                                 </div>
+                                 <div className={cn("text-right font-medium", stock.change >= 0 ? "text-green-600" : "text-red-600")}>
+                                     <p className="text-base">₹{stock.price.toFixed(2)}</p>
+                                     <p className="text-xs">{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)</p>
+                                 </div>
+                               </div>
+                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
