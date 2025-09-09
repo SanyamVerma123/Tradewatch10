@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { watchlists as initialWatchlistsData, news as initialNewsData } from "@/lib/data";
+import { StockActionSheet } from "./StockActionSheet";
 
 
 export function WatchlistDashboard() {
@@ -34,6 +35,9 @@ export function WatchlistDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{ticker: string, name: string}[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
+  const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   
   useEffect(() => {
     const loadedWatchlists = JSON.parse(localStorage.getItem('watchlists') || JSON.stringify(initialWatchlistsData));
@@ -68,10 +72,12 @@ export function WatchlistDashboard() {
   }, [activeWatchlist, toast]);
 
   useEffect(() => {
-    fetchStockData();
-    const interval = setInterval(fetchStockData, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, [fetchStockData]);
+    if (activeWatchlist) {
+      fetchStockData();
+      const interval = setInterval(fetchStockData, 30000); // Refresh every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [activeWatchlist, fetchStockData]);
 
   const filteredStocks = useMemo(() => {
     if (!searchTerm) {
@@ -151,8 +157,21 @@ export function WatchlistDashboard() {
 
     setWatchlists(updatedWatchlists);
     localStorage.setItem('watchlists', JSON.stringify(updatedWatchlists));
-    fetchStockData();
+    // Immediately fetch data for the new combined list
+    const newActiveWl = updatedWatchlists.find(wl => wl.id === activeWatchlist.id);
+    if (newActiveWl) {
+        setIsLoadingStocks(true);
+        getStockData(newActiveWl.stocks).then(data => {
+            setStocks(data);
+            setIsLoadingStocks(false);
+        });
+    }
   };
+
+  const handleStockClick = (stock: Stock) => {
+    setSelectedStock(stock);
+    setIsActionSheetOpen(true);
+  }
 
   const renderStockSkeleton = () => (
     [...Array(3)].map((_, i) => (
@@ -256,7 +275,7 @@ export function WatchlistDashboard() {
                     </TableHeader>
                     <TableBody>
                       {isLoadingStocks ? renderStockSkeleton() : filteredStocks.map((stock) => (
-                        <TableRow key={stock.ticker}>
+                        <TableRow key={stock.ticker} onClick={() => handleStockClick(stock)} className="cursor-pointer">
                           <TableCell>
                             <div className="font-bold">{stock.ticker}</div>
                             <div className="text-sm text-muted-foreground">{stock.name}</div>
@@ -355,6 +374,11 @@ export function WatchlistDashboard() {
           </section>
         </>
       )}
+       <StockActionSheet 
+        stock={selectedStock} 
+        isOpen={isActionSheetOpen} 
+        onOpenChange={setIsActionSheetOpen} 
+      />
     </div>
   );
 }
