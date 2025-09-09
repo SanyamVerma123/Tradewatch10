@@ -18,19 +18,18 @@ export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   useEffect(() => {
-    // Check for login status on client side
     const loggedIn = localStorage.getItem('isLoggedIn') === 'true';
     setIsLoggedIn(loggedIn);
 
-    // If not logged in and not on the auth page, redirect
-    if (!loggedIn && pathname !== '/') {
+    if (!loggedIn && pathname !== '/' && !isRedirecting) {
+      setIsRedirecting(true); // Set flag to prevent multiple redirects
       router.replace('/');
     }
-  }, [pathname, router]);
+  }, [pathname, router, isRedirecting]);
 
-  // Don't render nav if not logged in or on the auth page
   if (!isLoggedIn || pathname === '/') {
     return null;
   }
