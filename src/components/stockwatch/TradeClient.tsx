@@ -80,7 +80,7 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
         <Button
             ref={containerRef}
             className={cn(
-                "w-full h-12 text-lg relative overflow-hidden p-1 cursor-ew-resize rounded-full",
+                "w-full h-12 text-lg relative overflow-hidden p-1 cursor-ew-resize rounded-md",
                 orderType === "BUY" ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"
             )}
             onMouseDown={handleInteractionStart}
@@ -94,7 +94,7 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
         >
             <div
                 ref={swipeRef}
-                className="absolute top-1/2 -translate-y-1/2 h-10 w-12 bg-white/30 rounded-full flex items-center justify-center pointer-events-none"
+                className="absolute top-1/2 -translate-y-1/2 h-10 w-12 bg-white/30 rounded-md flex items-center justify-center pointer-events-none"
                 style={{ left: `${position}px`, transition: swiping ? 'none' : 'left 0.3s ease-out' }}
             >
                 <ChevronsRight className="h-6 w-6 text-white" />
@@ -211,9 +211,8 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
   )
 
   return (
-    <div className="relative min-h-screen">
-      <div className="pb-28">
-        <header className="mb-4 flex items-center justify-between px-4 pt-6">
+    <div className="flex flex-col h-screen">
+        <header className="flex items-center justify-between px-4 pt-6">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => router.back()}>
               <ArrowLeft />
@@ -229,139 +228,138 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
         </header>
 
         {isLoading ? <PageLoader /> : (
-            <>
-              <div className="px-4 mb-4">
+            <div className="px-4 my-4">
                   <p className="text-2xl font-bold">₹{stock?.price.toFixed(2)}</p>
                   <p className={cn("font-semibold", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
                     {stock?.change && stock.change >= 0 ? '+' : ''}{stock?.change.toFixed(2)} ({stock?.changePercent.toFixed(2)}%)
                   </p>
-              </div>
-              
-              <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full mt-4">
-                  <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="BUY" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
-                      <TabsTrigger value="SELL" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
-                  </TabsList>
-                  <div className="p-4 space-y-6">
-                      <Tabs defaultValue="Regular" className="w-full">
-                          <TabsList>
-                              <TabsTrigger value="Regular">Regular</TabsTrigger>
-                              <TabsTrigger value="Cover">Cover</TabsTrigger>
-                              <TabsTrigger value="AMO">AMO</TabsTrigger>
-                              <TabsTrigger value="Iceberg">Iceberg</TabsTrigger>
-                          </TabsList>
-                      </Tabs>
+            </div>
+        )}
+        
+        <main className="flex-1 overflow-y-auto pb-4">
+          <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="BUY" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
+                  <TabsTrigger value="SELL" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
+              </TabsList>
+              <div className="p-4 space-y-6">
+                  <Tabs defaultValue="Regular" className="w-full">
+                      <TabsList>
+                          <TabsTrigger value="Regular">Regular</TabsTrigger>
+                          <TabsTrigger value="Cover">Cover</TabsTrigger>
+                          <TabsTrigger value="AMO">AMO</TabsTrigger>
+                          <TabsTrigger value="Iceberg">Iceberg</TabsTrigger>
+                      </TabsList>
+                  </Tabs>
 
-                      <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                              <Label htmlFor="quantity">Quantity</Label>
-                              <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                              <p className="text-xs text-muted-foreground">Lot size 1</p>
-                          </div>
-                          <div className="space-y-1">
-                              <Label htmlFor="price">Price</Label>
-                              <Input id="price" type="number" value={price} onChange={e => setPrice(e.target.value)} disabled={orderMethod === "Market" || orderMethod === "SL-M"} />
-                              <p className="text-xs text-muted-foreground">Tick size 0.05</p>
-                          </div>
+                  <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                          <Label htmlFor="quantity">Quantity</Label>
+                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
+                          <p className="text-xs text-muted-foreground">Lot size 1</p>
                       </div>
-                      {isSLOrder && (
-                          <div className="space-y-1 animate-in fade-in-50">
-                              <Label htmlFor="trigger-price">Trigger Price</Label>
-                              <Input id="trigger-price" type="number" value={triggerPrice} onChange={e => setTriggerPrice(e.target.value)} placeholder="Enter trigger price" />
-                          </div>
-                      )}
-
-
-                      <div className="space-y-2">
-                          <Label>Product</Label>
-                          <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4">
-                              <Button asChild variant="outline" className={cn("flex-1", product === "MIS" && "border-primary text-primary")}>
-                                  <Label className="flex-col items-center justify-center h-full gap-0 p-2 cursor-pointer">
-                                      <RadioGroupItem value="MIS" id="mis" className="sr-only"/>
-                                      Intraday <span className="text-xs text-muted-foreground">MIS</span>
-                                  </Label>
-                              </Button>
-                              <Button asChild variant="outline" className={cn("flex-1", product === "CNC" && "border-primary text-primary")}>
-                                  <Label className="flex-col items-center justify-center h-full gap-0 p-2 cursor-pointer">
-                                      <RadioGroupItem value="CNC" id="cnc" className="sr-only"/>
-                                      Longterm <span className="text-xs text-muted-foreground">CNC</span>
-                                  </Label>
-                              </Button>
-                          </RadioGroup>
-                      </div>
-
-                      <div className="space-y-2">
-                          <Label>Type</Label>
-                          <RadioGroup value={orderMethod} onValueChange={setOrderMethod} className="flex gap-2 flex-wrap">
-                              <Button asChild variant="outline" className={cn("flex-1", orderMethod === "Market" && "border-primary text-primary")}>
-                                  <Label className="px-4 py-2 cursor-pointer">
-                                      <RadioGroupItem value="Market" id="market" className="sr-only"/>
-                                      Market
-                                  </Label>
-                              </Button>
-                                <Button asChild variant="outline" className={cn("flex-1",orderMethod === "Limit" && "border-primary text-primary")}>
-                                  <Label className="px-4 py-2 cursor-pointer">
-                                      <RadioGroupItem value="Limit" id="limit" className="sr-only"/>
-                                      Limit
-                                  </Label>
-                              </Button>
-                              <Button asChild variant="outline" className={cn("flex-1", orderMethod === "SL" && "border-primary text-primary")}>
-                                  <Label className="px-4 py-2 cursor-pointer">
-                                      <RadioGroupItem value="SL" id="sl" className="sr-only"/>
-                                      SL
-                                  </Label>
-                              </Button>
-                              <Button asChild variant="outline" className={cn("flex-1", orderMethod === "SL-M" && "border-primary text-primary")}>
-                                  <Label className="px-4 py-2 cursor-pointer">
-                                      <RadioGroupItem value="SL-M" id="sl-m" className="sr-only"/>
-                                      SL-M
-                                  </Label>
-                              </Button>
-                          </RadioGroup>
-                      </div>
-
-                      <div className="space-y-4 rounded-lg border p-4">
-                          <div className="flex items-center justify-between">
-                              <Label htmlFor="set-stoploss" className="flex items-center gap-2 cursor-pointer">
-                                  <span>Set stoploss</span>
-                                  <Info className="h-3 w-3 text-muted-foreground" />
-                              </Label>
-                              <Switch id="set-stoploss" checked={isStoplossEnabled} onCheckedChange={setIsStoplossEnabled} />
-                          </div>
-                          {isStoplossEnabled && (
-                              <div className="grid grid-cols-2 gap-4 items-center animate-in fade-in-50">
-                                  <Label htmlFor="stoploss-percent">Stoploss %</Label>
-                                  <div className="relative">
-                                      <Input id="stoploss-percent" type="number" value={stoploss} onChange={e => setStoploss(e.target.value)} placeholder="-5.0" />
-                                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-                                  </div>
-                              </div>
-                          )}
-                          <div className="flex items-center justify-between">
-                              <Label htmlFor="set-target" className="flex items-center gap-2 cursor-pointer">
-                                  <span>Set target</span>
-                                  <Info className="h-3 w-3 text-muted-foreground" />
-                              </Label>
-                              <Switch id="set-target" checked={isTargetEnabled} onCheckedChange={setIsTargetEnabled} />
-                          </div>
-                          {isTargetEnabled && (
-                              <div className="grid grid-cols-2 gap-4 items-center animate-in fade-in-50">
-                                  <Label htmlFor="target-percent">Target %</Label>
-                                  <div className="relative">
-                                      <Input id="target-percent" type="number" value={target} onChange={e => setTarget(e.target.value)} placeholder="5.0" />
-                                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
-                                  </div>
-                              </div>
-                          )}
+                      <div className="space-y-1">
+                          <Label htmlFor="price">Price</Label>
+                          <Input id="price" type="number" value={price} onChange={e => setPrice(e.target.value)} disabled={orderMethod === "Market" || orderMethod === "SL-M"} />
+                          <p className="text-xs text-muted-foreground">Tick size 0.05</p>
                       </div>
                   </div>
-              </Tabs>
-            </>
-        )}
-      </div>
+                  {isSLOrder && (
+                      <div className="space-y-1 animate-in fade-in-50">
+                          <Label htmlFor="trigger-price">Trigger Price</Label>
+                          <Input id="trigger-price" type="number" value={triggerPrice} onChange={e => setTriggerPrice(e.target.value)} placeholder="Enter trigger price" />
+                      </div>
+                  )}
+
+
+                  <div className="space-y-2">
+                      <Label>Product</Label>
+                      <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4">
+                          <Button asChild variant="outline" className={cn("flex-1", product === "MIS" && "border-primary text-primary")}>
+                              <Label className="flex-col items-center justify-center h-full gap-0 p-2 cursor-pointer">
+                                  <RadioGroupItem value="MIS" id="mis" className="sr-only"/>
+                                  Intraday <span className="text-xs text-muted-foreground">MIS</span>
+                              </Label>
+                          </Button>
+                          <Button asChild variant="outline" className={cn("flex-1", product === "CNC" && "border-primary text-primary")}>
+                              <Label className="flex-col items-center justify-center h-full gap-0 p-2 cursor-pointer">
+                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only"/>
+                                  Longterm <span className="text-xs text-muted-foreground">CNC</span>
+                              </Label>
+                          </Button>
+                      </RadioGroup>
+                  </div>
+
+                  <div className="space-y-2">
+                      <Label>Type</Label>
+                      <RadioGroup value={orderMethod} onValueChange={setOrderMethod} className="flex gap-2 flex-wrap">
+                          <Button asChild variant="outline" className={cn("flex-1", orderMethod === "Market" && "border-primary text-primary")}>
+                              <Label className="px-4 py-2 cursor-pointer">
+                                  <RadioGroupItem value="Market" id="market" className="sr-only"/>
+                                  Market
+                              </Label>
+                          </Button>
+                            <Button asChild variant="outline" className={cn("flex-1",orderMethod === "Limit" && "border-primary text-primary")}>
+                              <Label className="px-4 py-2 cursor-pointer">
+                                  <RadioGroupItem value="Limit" id="limit" className="sr-only"/>
+                                  Limit
+                              </Label>
+                          </Button>
+                          <Button asChild variant="outline" className={cn("flex-1", orderMethod === "SL" && "border-primary text-primary")}>
+                              <Label className="px-4 py-2 cursor-pointer">
+                                  <RadioGroupItem value="SL" id="sl" className="sr-only"/>
+                                  SL
+                              </Label>
+                          </Button>
+                          <Button asChild variant="outline" className={cn("flex-1", orderMethod === "SL-M" && "border-primary text-primary")}>
+                              <Label className="px-4 py-2 cursor-pointer">
+                                  <RadioGroupItem value="SL-M" id="sl-m" className="sr-only"/>
+                                  SL-M
+                              </Label>
+                          </Button>
+                      </RadioGroup>
+                  </div>
+
+                  <div className="space-y-4 rounded-lg border p-4">
+                      <div className="flex items-center justify-between">
+                          <Label htmlFor="set-stoploss" className="flex items-center gap-2 cursor-pointer">
+                              <span>Set stoploss</span>
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                          </Label>
+                          <Switch id="set-stoploss" checked={isStoplossEnabled} onCheckedChange={setIsStoplossEnabled} />
+                      </div>
+                      {isStoplossEnabled && (
+                          <div className="grid grid-cols-2 gap-4 items-center animate-in fade-in-50">
+                              <Label htmlFor="stoploss-percent">Stoploss %</Label>
+                              <div className="relative">
+                                  <Input id="stoploss-percent" type="number" value={stoploss} onChange={e => setStoploss(e.target.value)} placeholder="-5.0" />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                              </div>
+                          </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                          <Label htmlFor="set-target" className="flex items-center gap-2 cursor-pointer">
+                              <span>Set target</span>
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                          </Label>
+                          <Switch id="set-target" checked={isTargetEnabled} onCheckedChange={setIsTargetEnabled} />
+                      </div>
+                      {isTargetEnabled && (
+                          <div className="grid grid-cols-2 gap-4 items-center animate-in fade-in-50">
+                              <Label htmlFor="target-percent">Target %</Label>
+                              <div className="relative">
+                                  <Input id="target-percent" type="number" value={target} onChange={e => setTarget(e.target.value)} placeholder="5.0" />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </Tabs>
+      </main>
 
       {!isLoading && (
-      <footer className="fixed bottom-0 left-0 right-0 z-10 bg-background border-t p-4 w-full">
+      <footer className="bg-background border-t p-4 w-full mt-auto">
         <div className="max-w-4xl mx-auto">
             <div className="flex justify-between items-center text-xs mb-2">
                 <div className="flex items-center gap-1">
@@ -381,5 +379,3 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
     </div>
   );
 }
-
-    
