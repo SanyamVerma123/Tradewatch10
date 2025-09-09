@@ -1,0 +1,43 @@
+import type { Order } from './types';
+
+export const orders: Order[] = [
+  {
+    id: 'order-1',
+    type: 'BUY',
+    ticker: 'IDEA',
+    quantity: 1000,
+    filledQuantity: 0,
+    limitPrice: 6.55,
+    status: 'Pending',
+    timestamp: '5 mins ago',
+    exchange: 'NSE',
+    orderType: 'CNC LIMIT',
+    ltp: 6.55,
+  },
+  {
+    id: 'order-2',
+    type: 'BUY',
+    ticker: 'RELIANCE',
+    quantity: 20,
+    filledQuantity: 0,
+    limitPrice: 1464.40,
+    status: 'Pending',
+    timestamp: '22 mins ago',
+    exchange: 'NSE',
+    orderType: 'CNC LIMIT',
+    ltp: 1464.4,
+  },
+    {
+    id: 'order-3',
+    type: 'SELL',
+    ticker: 'AAPL',
+    quantity: 10,
+    filledQuantity: 10,
+    limitPrice: 175.00,
+    status: 'Executed',
+    timestamp: '1 day ago',
+    exchange: 'NASDAQ',
+    orderType: 'CNC LIMIT',
+    ltp: 175.00,
+  },
+];

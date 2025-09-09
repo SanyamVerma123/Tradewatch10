@@ -21,3 +21,17 @@ export interface NewsArticle {
   time: string;
   image: string;
 }
+
+export interface Order {
+  id: string;
+  type: 'BUY' | 'SELL';
+  ticker: string;
+  quantity: number;
+  filledQuantity: number;
+  limitPrice: number;
+  status: 'Pending' | 'Executed' | 'Cancelled';
+  timestamp: string;
+  exchange: string;
+  orderType: string;
+  ltp: number;
+}
