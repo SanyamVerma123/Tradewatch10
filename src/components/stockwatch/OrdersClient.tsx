@@ -3,34 +3,23 @@
 
 import { useState, useEffect } from "react";
 import type { Order } from "@/lib/types";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { getStockData } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 
 export function OrdersClient() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("Pending");
   const [searchTerm, setSearchTerm] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [editQuantity, setEditQuantity] = useState("");
-  const [editPrice, setEditPrice] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -67,35 +56,9 @@ export function OrdersClient() {
 
   const handleEditClick = (order: Order) => {
     if (order.status === 'Pending') {
-      setSelectedOrder(order);
-      setEditQuantity(order.quantity.toString());
-      setEditPrice(order.limitPrice.toString());
-      setIsEditModalOpen(true);
+      const orderQueryParam = encodeURIComponent(JSON.stringify(order));
+      router.push(`/trade/${encodeURIComponent(order.ticker)}?order=${orderQueryParam}`);
     }
-  };
-
-  const handleSaveChanges = () => {
-    if (!selectedOrder) return;
-
-    const updatedOrders = orders.map(order => {
-      if (order.id === selectedOrder.id) {
-        return {
-          ...order,
-          quantity: parseInt(editQuantity, 10),
-          limitPrice: parseFloat(editPrice),
-        };
-      }
-      return order;
-    });
-
-    setOrders(updatedOrders);
-    localStorage.setItem('orders', JSON.stringify(updatedOrders));
-    setIsEditModalOpen(false);
-    setSelectedOrder(null);
-    toast({
-      title: "Order Updated",
-      description: "Your changes have been saved.",
-    });
   };
 
   const filteredOrders = orders.filter(
@@ -196,48 +159,6 @@ export function OrdersClient() {
           </div>
         </TabsContent>
       </Tabs>
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Order: {selectedOrder?.ticker}</DialogTitle>
-            <DialogDescription>
-              You can modify the price and quantity for your pending order.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-quantity" className="text-right">
-                Quantity
-              </Label>
-              <Input
-                id="edit-quantity"
-                value={editQuantity}
-                onChange={(e) => setEditQuantity(e.target.value)}
-                className="col-span-3"
-                type="number"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-price" className="text-right">
-                Price
-              </Label>
-              <Input
-                id="edit-price"
-                value={editPrice}
-                onChange={(e) => setEditPrice(e.target.value)}
-                className="col-span-3"
-                type="number"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveChanges}>Save Changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
-
-    

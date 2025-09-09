@@ -14,11 +14,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { orders as initialOrders } from "@/lib/orders";
 
 interface TradeClientProps {
   ticker: string;
   initialStock: Stock;
+  orderToEdit?: Order;
 }
 
 type OrderType = "BUY" | "SELL";
@@ -84,12 +84,12 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
                 orderType === "BUY" ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"
             )}
             onMouseDown={handleInteractionStart}
-            onTouchStart={(e) => handleInteractionStart(e)}
+            onTouchStart={(e) => e.type === 'touchstart' && handleInteractionStart(e)}
             onMouseMove={(e) => swiping && handleInteractionMove(e.clientX)}
-            onTouchMove={(e) => swiping && handleInteractionMove(e.touches[0].clientX)}
+            onTouchMove={(e) => swiping && e.type === 'touchmove' && handleInteractionMove(e.touches[0].clientX)}
             onMouseUp={handleInteractionEnd}
             onTouchEnd={handleInteractionEnd}
-            onMouseLeave={handleInteractionEnd} // Reset if mouse leaves the button
+            onMouseLeave={handleInteractionEnd}
             disabled={disabled}
         >
             <div
@@ -105,16 +105,21 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
 };
 
 
-export function TradeClient({ ticker, initialStock }: TradeClientProps) {
+export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [stock, setStock] = useState<Stock | null>(initialStock);
-  const [orderType, setOrderType] = useState<OrderType>("BUY");
-  const [quantity, setQuantity] = useState("1");
-  const [price, setPrice] = useState("");
-  const [triggerPrice, setTriggerPrice] = useState("");
-  const [product, setProduct] = useState("CNC"); // CNC or MIS
-  const [orderMethod, setOrderMethod] = useState("Limit"); // Market, Limit, SL, SL-M
+  const [availableFunds, setAvailableFunds] = useState(0);
+
+  // Order State
+  const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
+  const [quantity, setQuantity] = useState(orderToEdit?.quantity.toString() || "1");
+  const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
+  const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
+  const [product, setProduct] = useState(orderToEdit?.orderType.split(' ')[0] || "CNC");
+  const [orderMethod, setOrderMethod] = useState(orderToEdit?.orderType.split(' ')[1] || "Limit");
+  
+  // Advanced options
   const [stoploss, setStoploss] = useState("");
   const [target, setTarget] = useState("");
   const [isStoplossEnabled, setIsStoplossEnabled] = useState(false);
@@ -132,39 +137,45 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
             setPrice(newStock.price.toFixed(2));
         }
       } else {
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Could not fetch stock data."
-        })
+        toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
       }
     } catch (error) {
       console.error(error);
-      toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Could not fetch stock data."
-        })
+      toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
     } finally {
         if (!isSilent) setIsLoading(false);
     }
   }, [ticker, toast, price, orderMethod]);
 
+  useEffect(() => {
+    const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
+    setAvailableFunds(fundsData.balance || 0);
+  }, []);
 
   useEffect(() => {
     fetchStock();
-    const interval = setInterval(() => fetchStock(true), 5000); // Silent refresh every 5s
+    const interval = setInterval(() => fetchStock(true), 5000);
     return () => clearInterval(interval);
   }, [fetchStock]);
 
+  const isEditing = !!orderToEdit;
   const approxMargin = (parseInt(quantity) || 0) * (parseFloat(price) || stock?.price || 0);
 
   const handlePlaceOrder = () => {
-    // Prevent placing order if disabled
     if(isLoading) return;
 
+    if (orderType === 'BUY' && approxMargin > availableFunds) {
+      toast({ variant: "destructive", title: "Insufficient Funds", description: `You need ₹${approxMargin.toFixed(2)} but have ₹${availableFunds.toFixed(2)}.` });
+      return;
+    }
+    
+    // Simulate Tax
+    const brokerage = Math.min(20, approxMargin * 0.0005);
+    const stt = orderType === 'BUY' ? 0 : product === 'MIS' ? approxMargin * 0.00025 : approxMargin * 0.001;
+    const totalCharges = brokerage + stt + (approxMargin * 0.000345); // Other minor charges
+
     const newOrder: Order = {
-        id: `order-${Date.now()}`,
+        id: orderToEdit?.id || `order-${Date.now()}`,
         type: orderType,
         ticker,
         quantity: parseInt(quantity) || 0,
@@ -173,12 +184,11 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
         triggerPrice: parseFloat(triggerPrice) || undefined,
         status: 'Pending',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        exchange: 'NSE', // Assuming NSE
+        exchange: 'NSE',
         orderType: `${product} ${orderMethod}`,
         ltp: stock?.price || 0,
     }
 
-    // Basic validation
     if (newOrder.quantity <= 0) {
         toast({ variant: "destructive", title: "Invalid Quantity", description: "Quantity must be greater than zero." });
         return;
@@ -193,16 +203,32 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
     }
 
     const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
-    localStorage.setItem('orders', JSON.stringify([newOrder, ...storedOrders]));
+    let updatedOrders;
+    if(isEditing) {
+        updatedOrders = storedOrders.map((o: Order) => o.id === newOrder.id ? newOrder : o);
+    } else {
+        updatedOrders = [newOrder, ...storedOrders];
+    }
+    localStorage.setItem('orders', JSON.stringify(updatedOrders));
 
     toast({
-        title: `Order Placed (${orderType})`,
+        title: `Order ${isEditing ? 'Modified' : 'Placed'} (${orderType})`,
         description: `${quantity} shares of ${ticker} at ${orderMethod === 'Market' ? 'Market Price' : `₹${price}`}.`,
     });
+    
+    // Simulate order execution after a delay and show charges
+    setTimeout(() => {
+        toast({
+            title: `Order Executed!`,
+            description: `Est. charges: ₹${totalCharges.toFixed(2)} (Brokerage: ₹${brokerage.toFixed(2)}, STT: ₹${stt.toFixed(2)})`
+        })
+    }, 5000);
+
     router.push('/orders');
   }
 
   const isSLOrder = orderMethod === "SL" || orderMethod === "SL-M";
+  const headerText = isEditing ? (orderType === 'BUY' ? 'Modify Buy Order' : 'Modify Sell Order') : (orderType === 'BUY' ? 'Buy' : 'Sell');
 
   const PageLoader = () => (
     <div className="flex justify-center items-center h-64">
@@ -239,8 +265,8 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
         <main className="flex-1 overflow-y-auto pb-4">
           <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="BUY" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
-                  <TabsTrigger value="SELL" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
+                  <TabsTrigger value="BUY" disabled={isEditing && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
+                  <TabsTrigger value="SELL" disabled={isEditing && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
               </TabsList>
               <div className="p-4 space-y-6">
                   <Tabs defaultValue="Regular" className="w-full">
@@ -255,7 +281,7 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
                   <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
-                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
+                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} max={orderType === 'SELL' ? orderToEdit?.quantity : undefined} />
                           <p className="text-xs text-muted-foreground">Lot size 1</p>
                       </div>
                       <div className="space-y-1">
@@ -356,26 +382,26 @@ export function TradeClient({ ticker, initialStock }: TradeClientProps) {
                   </div>
               </div>
           </Tabs>
-      </main>
+        </main>
 
-      {!isLoading && (
-      <footer className="bg-background border-t p-4 w-full mt-auto">
-        <div className="max-w-4xl mx-auto">
-            <div className="flex justify-between items-center text-xs mb-2">
-                <div className="flex items-center gap-1">
-                    <span className="text-muted-foreground">Approx. margin</span>
-                    <span className="font-semibold">₹{approxMargin.toFixed(2)}</span>
-                    <RefreshCcw className="h-3 w-3 text-primary" />
-                </div>
-                <div className="flex items-center gap-1">
-                    <span className="text-muted-foreground">Avail.</span>
-                    <span className="font-semibold">₹500.00</span>
-                </div>
-            </div>
-             <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={isLoading} />
-        </div>
-      </footer>
-      )}
+        {!isLoading && (
+        <footer className="bg-background border-t p-4 w-full mt-auto">
+          <div className="max-w-4xl mx-auto">
+              <div className="flex justify-between items-center text-xs mb-2">
+                  <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">Approx. margin</span>
+                      <span className="font-semibold">₹{approxMargin.toFixed(2)}</span>
+                      <RefreshCcw className="h-3 w-3 text-primary" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">Avail.</span>
+                      <span className="font-semibold">₹{availableFunds.toFixed(2)}</span>
+                  </div>
+              </div>
+               <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={isLoading} />
+          </div>
+        </footer>
+        )}
     </div>
   );
 }

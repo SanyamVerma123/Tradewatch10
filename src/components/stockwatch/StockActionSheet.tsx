@@ -10,8 +10,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ExternalLink, ChevronRight, MoreHorizontal } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { ExternalLink, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback } from "react";
 import { StockChart } from "@/components/stockwatch/StockChart";
@@ -22,6 +21,7 @@ interface StockActionSheetProps {
   stock: Stock | null;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  onTrade?: (type: 'buy' | 'sell', ticker: string) => void;
 }
 
 const Fundamentals = ({ stock }: { stock: Stock }) => {
@@ -55,8 +55,7 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
 };
 
 
-export function StockActionSheet({ stock, isOpen, onOpenChange }: StockActionSheetProps) {
-    const router = useRouter();
+export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade }: StockActionSheetProps) {
     const [historicalData, setHistoricalData] = useState<HistoricalHistoryResult | null>(null);
 
     const fetchHistorical = useCallback(async () => {
@@ -75,8 +74,9 @@ export function StockActionSheet({ stock, isOpen, onOpenChange }: StockActionShe
     if (!stock) return null;
 
     const handleTradeClick = (type: 'buy' | 'sell') => {
-        router.push(`/trade/${encodeURIComponent(stock.ticker)}`);
-        onOpenChange(false);
+        if (onTrade) {
+          onTrade(type, stock.ticker);
+        }
     }
 
   return (

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Stock, Watchlist, NewsArticle } from "@/lib/types";
 import type { SuggestPriceAlertsOutput } from "@/ai/flows/suggest-price-alerts";
 
@@ -22,13 +23,14 @@ import { StockActionSheet } from "./StockActionSheet";
 
 
 export function WatchlistDashboard() {
+  const router = useRouter();
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [activeTab, setActiveTab] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [suggestions, setSuggestions] = useState<SuggestPriceAlertsOutput>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const { toast } = useToast();
-  const [stocks, setStocks] = useState<Stock[]>([]);
+  const [stocks, setStocks] = useState<Record<string, Stock>>({});
   const [isLoadingStocks, setIsLoadingStocks] = useState(true);
 
   const [isSearchMode, setIsSearchMode] = useState(false);
@@ -57,7 +59,15 @@ export function WatchlistDashboard() {
     if (!isSilent) setIsLoadingStocks(true);
     try {
       const data = await getStockData(activeWatchlist.stocks);
-      setStocks(data);
+      
+      setStocks(prevStocks => {
+        const newStocks = { ...prevStocks };
+        data.forEach(stock => {
+            newStocks[stock.ticker] = stock;
+        });
+        return newStocks;
+      });
+
     } catch (error) {
       console.error("Failed to fetch stock data", error);
       toast({
@@ -65,7 +75,6 @@ export function WatchlistDashboard() {
         title: "Error",
         description: "Could not fetch watchlist data.",
       });
-      setStocks([]);
     } finally {
       if (!isSilent) setIsLoadingStocks(false);
     }
@@ -74,21 +83,27 @@ export function WatchlistDashboard() {
   useEffect(() => {
     if (activeWatchlist) {
       fetchStockData();
-      const interval = setInterval(() => fetchStockData(true), 30000); // Silent refresh
+      const interval = setInterval(() => fetchStockData(true), 5000); // Refresh every 5s for live price feel
       return () => clearInterval(interval);
     }
   }, [activeWatchlist, fetchStockData]);
 
   const filteredStocks = useMemo(() => {
+    if (!activeWatchlist) return [];
+    
+    const currentStocks = activeWatchlist.stocks
+        .map(ticker => stocks[ticker])
+        .filter(Boolean); // Filter out any undefined stocks
+
     if (!searchTerm) {
-      return stocks;
+      return currentStocks;
     }
-    return stocks.filter(
+    return currentStocks.filter(
       (stock) =>
         stock.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
         stock.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [stocks, searchTerm]);
+  }, [stocks, searchTerm, activeWatchlist]);
 
   const handleSuggestAlerts = async () => {
     if (!activeWatchlist) return;
@@ -157,12 +172,13 @@ export function WatchlistDashboard() {
 
     setWatchlists(updatedWatchlists);
     localStorage.setItem('watchlists', JSON.stringify(updatedWatchlists));
-    // Immediately fetch data for the new combined list
     const newActiveWl = updatedWatchlists.find(wl => wl.id === activeWatchlist.id);
     if (newActiveWl) {
         setIsLoadingStocks(true);
         getStockData(newActiveWl.stocks).then(data => {
-            setStocks(data);
+            const newStockData: Record<string, Stock> = {};
+            data.forEach(s => newStockData[s.ticker] = s);
+            setStocks(prev => ({...prev, ...newStockData}));
             setIsLoadingStocks(false);
         });
     }
@@ -171,6 +187,11 @@ export function WatchlistDashboard() {
   const handleStockClick = (stock: Stock) => {
     setSelectedStock(stock);
     setIsActionSheetOpen(true);
+  }
+
+  const handleTradeAction = (type: 'buy' | 'sell', ticker: string) => {
+    router.push(`/trade/${encodeURIComponent(ticker)}`);
+    setIsActionSheetOpen(false);
   }
 
   const renderStockSkeleton = () => (
@@ -274,7 +295,7 @@ export function WatchlistDashboard() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {isLoadingStocks ? renderStockSkeleton() : filteredStocks.map((stock) => (
+                      {isLoadingStocks && Object.keys(stocks).length === 0 ? renderStockSkeleton() : filteredStocks.map((stock) => (
                         <TableRow key={stock.ticker} onClick={() => handleStockClick(stock)} className="cursor-pointer">
                           <TableCell>
                             <div className="font-bold">{stock.ticker}</div>
@@ -304,7 +325,7 @@ export function WatchlistDashboard() {
       {!isSearchMode && (
         <>
           <div className="mt-6">
-            <Button onClick={handleSuggestAlerts} disabled={isLoadingSuggestions || isLoadingStocks} className="w-full">
+            <Button onClick={handleSuggestAlerts} disabled={isLoadingSuggestions || (isLoadingStocks && Object.keys(stocks).length === 0)} className="w-full">
               {isLoadingSuggestions ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -377,7 +398,8 @@ export function WatchlistDashboard() {
        <StockActionSheet 
         stock={selectedStock} 
         isOpen={isActionSheetOpen} 
-        onOpenChange={setIsActionSheetOpen} 
+        onOpenChange={setIsActionSheetOpen}
+        onTrade={handleTradeAction} 
       />
     </div>
   );

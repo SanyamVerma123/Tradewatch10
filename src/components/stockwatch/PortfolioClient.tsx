@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import type { Portfolio, Holding, Stock } from "@/lib/types";
 import { getStockData } from "@/app/actions";
 import {
@@ -16,6 +17,7 @@ import { portfolio as initialPortfolioData } from "@/lib/portfolio";
 import { StockActionSheet } from "./StockActionSheet";
 
 export function PortfolioClient() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("Holdings");
   const [searchTerm, setSearchTerm] = useState("");
   const [portfolio, setPortfolio] = useState<Portfolio>(initialPortfolioData);
@@ -24,7 +26,7 @@ export function PortfolioClient() {
 
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
-
+  
   const updatePortfolioData = useCallback(async (currentPortfolio: Portfolio) => {
     const tickers = currentPortfolio.holdings.map(h => h.ticker);
     if (tickers.length === 0) {
@@ -32,7 +34,6 @@ export function PortfolioClient() {
       return;
     }
 
-    // Don't show main loader on silent refresh
     const isSilentRefresh = Object.keys(stocksMap).length > 0;
     if (!isSilentRefresh) {
         setIsLoading(true);
@@ -103,7 +104,7 @@ export function PortfolioClient() {
 
     const interval = setInterval(() => {
         updatePortfolioData(storedPortfolio);
-    }, 30000); // Refresh every 30 seconds
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [updatePortfolioData]);
@@ -115,6 +116,23 @@ export function PortfolioClient() {
       setIsActionSheetOpen(true);
     }
   };
+
+  const onActionSheetTrade = (type: 'buy' | 'sell', ticker: string) => {
+     if(type === 'sell'){
+        const holding = portfolio.holdings.find(h => h.ticker === ticker);
+        const sellOrder = {
+          type: 'SELL',
+          ticker: ticker,
+          quantity: holding?.quantity || 1, // Default to selling all
+          orderType: 'CNC'
+        }
+        const orderQueryParam = encodeURIComponent(JSON.stringify(sellOrder));
+        router.push(`/trade/${encodeURIComponent(ticker)}?order=${orderQueryParam}`);
+     } else {
+        router.push(`/trade/${encodeURIComponent(ticker)}`);
+     }
+     setIsActionSheetOpen(false);
+  }
 
   const filteredHoldings = portfolio.holdings.filter(
     (holding) =>
@@ -224,6 +242,7 @@ export function PortfolioClient() {
         stock={selectedStock} 
         isOpen={isActionSheetOpen} 
         onOpenChange={setIsActionSheetOpen} 
+        onTrade={onActionSheetTrade}
       />
     </div>
   );
