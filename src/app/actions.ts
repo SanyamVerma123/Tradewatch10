@@ -4,6 +4,12 @@ import { suggestPriceAlerts, SuggestPriceAlertsInput } from "@/ai/flows/suggest-
 import yahooFinance from 'yahoo-finance2';
 import type { HistoricalHistoryResult } from 'yahoo-finance2/dist/esm/src/modules/historical';
 
+// Fix for yahoo-finance2 GUCE error
+import { setGlobalConfig } from 'yahoo-finance2/dist/esm/src/config';
+import dev from 'yahoo-finance2/dist/esm/src/dev';
+setGlobalConfig({ dev });
+
+
 export async function getPriceAlertSuggestions(watchlist: { ticker: string; currentPrice: number }[]) {
   try {
     const input: SuggestPriceAlertsInput = { watchlist };
