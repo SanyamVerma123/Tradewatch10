@@ -107,7 +107,7 @@ export function OrdersClient() {
         description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}. Est. charges: ₹${totalCharges.toFixed(2)}`,
     });
 
-  }, [toast]);
+  }, [toast, router]);
 
 
   useEffect(() => {
@@ -170,6 +170,7 @@ export function OrdersClient() {
         // Update LTP for all orders after potential executions
         const latestOrders = JSON.parse(localStorage.getItem('orders') || '[]');
         const updatedOrdersWithLtp = latestOrders.map((o: Order) => ({...o, ltp: stockPriceMap.get(o.ticker) || o.ltp}));
+        // Only update state if the data has actually changed to prevent infinite loops
         if(JSON.stringify(orders) !== JSON.stringify(updatedOrdersWithLtp)){
             setOrders(updatedOrdersWithLtp);
         }
@@ -289,5 +290,3 @@ export function OrdersClient() {
     </div>
   );
 }
-
-    
