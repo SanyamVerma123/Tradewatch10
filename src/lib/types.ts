@@ -57,3 +57,9 @@ export interface Portfolio {
     totalPnlPercent: number;
     holdings: Holding[];
 }
+
+export interface User {
+    id: string;
+    name: string;
+    email: string;
+}

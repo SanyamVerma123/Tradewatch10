@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, ShoppingBag, PieChart, AppWindow, User } from "lucide-react";
+import { LayoutGrid, ShoppingBag, PieChart, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Watchlist", icon: LayoutGrid },
   { href: "/orders", label: "Orders", icon: ShoppingBag },
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
-  { href: "#", label: "Apps", icon: AppWindow },
-  { href: "#", label: "Profile", icon: User },
+  { href: "/profile", label: "OP0000", icon: User },
 ];
 
 export default function BottomNav() {
