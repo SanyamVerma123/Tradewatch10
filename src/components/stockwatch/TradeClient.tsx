@@ -362,11 +362,11 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         </header>
 
         {isLoading ? <PageLoader /> : (
-            <div className="px-4 my-4">
-                  <p className="text-2xl font-bold">₹{stock?.price.toFixed(2)}</p>
-                  <p className={cn("font-semibold", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
-                    {stock?.change && stock.change >= 0 ? '+' : ''}{stock?.change.toFixed(2)} ({stock?.changePercent.toFixed(2)}%)
-                  </p>
+             <div className="px-4 my-4 flex items-baseline gap-x-2">
+                <p className="text-2xl font-bold">₹{stock?.price.toFixed(2)}</p>
+                <p className={cn("font-semibold text-base", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
+                  {stock?.change && stock.change >= 0 ? '+' : ''}{stock?.change.toFixed(2)} ({stock?.changePercent.toFixed(2)}%)
+                </p>
             </div>
         )}
         
@@ -481,8 +481,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                       </div>
                       {isTargetEnabled && (
                           <div className="grid grid-cols-2 gap-4 items-center animate-in fade-in-50">
-                              <Label htmlFor="target-percent">Target %</Label>
-                              <div className="relative">
+                              <Label htmlFor="target-percent">Target %</Label>                              <div className="relative">
                                   <Input id="target-percent" type="number" value={target} onChange={e => setTarget(e.target.value)} placeholder="5.0" />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
                               </div>
