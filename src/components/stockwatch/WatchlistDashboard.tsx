@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import type { Stock, Watchlist, NewsArticle } from "@/lib/types";
 import type { SuggestPriceAlertsOutput } from "@/ai/flows/suggest-price-alerts";
 
@@ -91,10 +92,12 @@ export function WatchlistDashboard({
     <div className="container mx-auto max-w-4xl px-4 py-6">
       <header className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Watchlists</h1>
-        <Button variant="ghost" size="icon">
-          <Settings className="h-5 w-5" />
-          <span className="sr-only">Settings</span>
-        </Button>
+        <Link href="/settings">
+          <Button variant="ghost" size="icon">
+            <Settings className="h-5 w-5" />
+            <span className="sr-only">Settings</span>
+          </Button>
+        </Link>
       </header>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

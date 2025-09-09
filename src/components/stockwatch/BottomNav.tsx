@@ -6,14 +6,18 @@ import { LayoutGrid, ShoppingBag, PieChart, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/", label: "Watchlist", icon: LayoutGrid },
+  { href: "/watchlist", label: "Watchlist", icon: LayoutGrid },
   { href: "/orders", label: "Orders", icon: ShoppingBag },
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
-  { href: "/profile", label: "OP0000", icon: User },
+  { href: "/profile", label: "Account", icon: User },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
+  
+  if (pathname === '/') {
+    return null;
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/80 bg-background/80 backdrop-blur-lg">

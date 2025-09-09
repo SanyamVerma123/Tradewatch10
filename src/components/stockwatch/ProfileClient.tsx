@@ -7,18 +7,20 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ChevronDown, ChevronRight, Settings, Info, User as UserIcon, HelpCircle, Gift } from "lucide-react";
+import Link from "next/link";
+import { Button } from "../ui/button";
 
 interface ProfileClientProps {
   user: User;
 }
 
 const menuItems = [
-    { label: "Funds", icon: () => <span>₹</span> },
-    { label: "Profile", icon: UserIcon },
-    { label: "Settings", icon: Settings },
-    { label: "Support", icon: Info },
-    { label: "Invite Friends", icon: Gift },
-    { label: "User Manual", icon: HelpCircle },
+    { label: "Funds", icon: () => <span>₹</span>, href: "/funds" },
+    { label: "Profile", icon: UserIcon, href: "/profile" },
+    { label: "Settings", icon: Settings, href: "/settings" },
+    { label: "Support", icon: Info, href: "/support" },
+    { label: "Invite Friends", icon: Gift, href: "/invite" },
+    { label: "User Manual", icon: HelpCircle, href: "/manual" },
 ];
 
 
@@ -49,15 +51,17 @@ export function ProfileClient({ user }: ProfileClientProps) {
       
       <div className="space-y-2">
         {menuItems.map((item) => (
-            <Card key={item.label}>
-                <CardContent className="p-4 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <item.icon className="h-5 w-5 text-muted-foreground" />
-                        <p>{item.label}</p>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </CardContent>
-            </Card>
+            <Link href={item.href} key={item.label}>
+                <Card>
+                    <CardContent className="p-4 flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                            <item.icon className="h-5 w-5 text-muted-foreground" />
+                            <p>{item.label}</p>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                    </CardContent>
+                </Card>
+            </Link>
         ))}
       </div>
 
