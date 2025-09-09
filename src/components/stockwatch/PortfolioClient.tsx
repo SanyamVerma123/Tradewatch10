@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -27,9 +28,19 @@ export function PortfolioClient() {
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   
-  const updatePortfolioData = useCallback(async (currentPortfolio: Portfolio) => {
+  const updatePortfolioData = useCallback(async () => {
+    let currentPortfolio: Portfolio;
+    try {
+        const item = localStorage.getItem('portfolioData');
+        currentPortfolio = item ? JSON.parse(item) : initialPortfolioData;
+    } catch (e) {
+        console.error("Could not parse portfolio data from local storage", e);
+        currentPortfolio = initialPortfolioData;
+    }
+
     const tickers = currentPortfolio.holdings.map(h => h.ticker);
     if (tickers.length === 0) {
+      setPortfolio(currentPortfolio);
       setIsLoading(false);
       return;
     }
@@ -44,7 +55,6 @@ export function PortfolioClient() {
     const newStocksMap: Record<string, Stock> = {};
     stockData.forEach(s => newStocksMap[s.ticker] = s);
     setStocksMap(newStocksMap);
-
 
     let totalInvestedValue = 0;
     let totalCurrentValue = 0;
@@ -68,14 +78,14 @@ export function PortfolioClient() {
         dayChange,
         dayChangePercent,
         pnl,
-        pnlPercent: (pnl / investedValue) * 100,
+        pnlPercent: (pnl / investedValue) * 100 || 0,
         investedValue,
         currentValue
       };
     });
 
     const totalPnl = totalCurrentValue - totalInvestedValue;
-    const totalPnlPercent = (totalPnl / totalInvestedValue) * 100 || 0;
+    const totalPnlPercent = (totalInvestedValue > 0) ? (totalPnl / totalInvestedValue) * 100 : 0;
 
     const newPortfolio: Portfolio = {
       holdings: updatedHoldings,
@@ -86,27 +96,34 @@ export function PortfolioClient() {
     };
 
     setPortfolio(newPortfolio);
-    localStorage.setItem('portfolioData', JSON.stringify(newPortfolio));
+    if(JSON.stringify(newPortfolio) !== JSON.stringify(currentPortfolio)) {
+        localStorage.setItem('portfolioData', JSON.stringify(newPortfolio));
+    }
+    
     setIsLoading(false);
   }, [stocksMap]);
 
   useEffect(() => {
-    let storedPortfolio = initialPortfolioData;
-    try {
-        const item = localStorage.getItem('portfolioData');
-        storedPortfolio = item ? JSON.parse(item) : initialPortfolioData;
-    } catch (e) {
-        console.error("Could not parse portfolio data from local storage", e)
-    }
-    
-    setPortfolio(storedPortfolio);
-    updatePortfolioData(storedPortfolio);
+    // Initial load
+    updatePortfolioData();
 
+    // Set up interval for silent refreshes
     const interval = setInterval(() => {
-        updatePortfolioData(storedPortfolio);
-    }, 30000);
+        updatePortfolioData();
+    }, 5000); // Refresh every 5 seconds
 
-    return () => clearInterval(interval);
+    // Listen for storage changes to react instantly
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'portfolioData' || event.key === 'orders') {
+        updatePortfolioData();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, [updatePortfolioData]);
 
   const handleHoldingClick = (holding: Holding) => {
@@ -124,7 +141,7 @@ export function PortfolioClient() {
           type: 'SELL',
           ticker: ticker,
           quantity: holding?.quantity || 1, // Default to selling all
-          orderType: 'CNC'
+          orderType: 'CNC' // Assume CNC for portfolio holdings
         }
         const orderQueryParam = encodeURIComponent(JSON.stringify(sellOrder));
         router.push(`/trade/${encodeURIComponent(ticker)}?order=${orderQueryParam}`);
@@ -193,9 +210,13 @@ export function PortfolioClient() {
             </div>
 
             <div className="space-y-2">
-            {isLoading ? (
+            {isLoading && portfolio.holdings.length === 0 ? (
                 <div className="flex justify-center items-center p-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            ) : filteredHoldings.length === 0 ? (
+                 <div className="text-center py-10">
+                    <p className="text-muted-foreground">You have no holdings.</p>
                 </div>
             ) : filteredHoldings.map((holding) => (
               <Card key={holding.id} onClick={() => handleHoldingClick(holding)} className="cursor-pointer">
@@ -224,12 +245,6 @@ export function PortfolioClient() {
               </Card>
             ))}
           </div>
-
-          <div className="mt-6 text-center">
-              <Button variant="link" className="text-primary">
-                  View Complete Portfolio
-              </Button>
-          </div>
           
         </TabsContent>
         <TabsContent value="Positions">
@@ -247,3 +262,5 @@ export function PortfolioClient() {
     </div>
   );
 }
+
+    

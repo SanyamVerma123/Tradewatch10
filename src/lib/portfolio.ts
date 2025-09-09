@@ -1,3 +1,4 @@
+
 import type { Holding, Portfolio } from './types';
 
 // This data now serves as a default/initial state.
@@ -30,16 +31,26 @@ export const holdings: Holding[] = [
   },
 ];
 
-const investedValue = holdings.reduce((acc, h) => acc + h.investedValue, 0);
-// Current value, PNL, etc., will be calculated dynamically in PortfolioClient
-const currentValue = investedValue; // Placeholder
-const totalPnl = 0; // Placeholder
-const totalPnlPercent = 0; // Placeholder
-
-export const portfolio: Portfolio = {
-  investedValue,
-  currentValue,
-  totalPnl,
-  totalPnlPercent,
-  holdings,
+// This function will now be used to initialize the portfolio state
+// but the actual state will be managed in PortfolioClient and localStorage.
+export const getInitialPortfolio = (): Portfolio => {
+    const investedValue = holdings.reduce((acc, h) => acc + (h.avgPrice * h.quantity), 0);
+    
+    // In a real scenario, current value and PNL would be calculated based on live prices.
+    // For the initial state, we can base it on the static LTP in the holdings data.
+    const currentValue = holdings.reduce((acc, h) => acc + (h.ltp * h.quantity), 0);
+    const totalPnl = currentValue - investedValue;
+    const totalPnlPercent = investedValue > 0 ? (totalPnl / investedValue) * 100 : 0;
+    
+    return {
+      investedValue,
+      currentValue,
+      totalPnl,
+      totalPnlPercent,
+      holdings,
+    };
 };
+
+export const portfolio: Portfolio = getInitialPortfolio();
+
+    

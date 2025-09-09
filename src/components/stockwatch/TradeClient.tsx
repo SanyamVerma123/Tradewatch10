@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Order, Stock } from "@/lib/types";
+import type { Order, Stock, Portfolio, Holding } from "@/lib/types";
 import { getStockData } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, MoreVertical, Info, RefreshCcw, Loader2, ChevronsRight } from "lucide-react";
@@ -29,14 +29,15 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
     const [position, setPosition] = useState(0);
     const swipeRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLButtonElement>(null);
+    const hasSwiped = useRef(false);
 
     const handleInteractionStart = (e: React.MouseEvent | React.TouchEvent) => {
-        if(disabled) return;
+        if(disabled || hasSwiped.current) return;
         setSwiping(true);
     };
 
     const handleInteractionMove = (clientX: number) => {
-        if (!swiping || !containerRef.current || !swipeRef.current) return;
+        if (!swiping || !containerRef.current || !swipeRef.current || hasSwiped.current) return;
         const containerRect = containerRef.current.getBoundingClientRect();
         const maxPosition = containerRect.width - swipeRef.current.offsetWidth - 8; // 4px padding on each side
         let newPosition = clientX - containerRect.left - (swipeRef.current.offsetWidth / 2);
@@ -47,6 +48,7 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
         setPosition(newPosition);
 
         if (newPosition >= maxPosition - 5) { // Threshold for completion
+            hasSwiped.current = true;
             onSwipe();
             resetSwipe();
         }
@@ -76,6 +78,12 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
         setPosition(4);
         setSwiping(false);
     }
+    
+     useEffect(() => {
+        // Reset hasSwiped when the order details change, allowing for another swipe
+        hasSwiped.current = false;
+    }, [orderType, disabled]);
+
 
     return (
         <Button
@@ -111,14 +119,15 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const { toast } = useToast();
   const [stock, setStock] = useState<Stock | null>(initialStock);
   const [availableFunds, setAvailableFunds] = useState(0);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
 
   // Order State
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
   const [quantity, setQuantity] = useState(orderToEdit?.quantity.toString() || "1");
   const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
-  const [product, setProduct] = useState(orderToEdit?.orderType.split(' ')[0] || "CNC");
-  const [orderMethod, setOrderMethod] = useState(orderToEdit?.orderType.split(' ')[1] || "Limit");
+  const [product, setProduct] = useState((orderToEdit?.orderType.split(' ')[0] || "CNC").toUpperCase());
+  const [orderMethod, setOrderMethod] = useState((orderToEdit?.orderType.split(' ')[1] || "Limit").toUpperCase());
   
   // Advanced options
   const [stoploss, setStoploss] = useState("");
@@ -134,7 +143,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       if (data && data.length > 0) {
         const newStock = data[0];
         setStock(newStock);
-        if (price === "" || orderMethod === "Market") { 
+        if (price === "" || orderMethod === "MARKET") { 
             setPrice(newStock.price.toFixed(2));
         }
       } else {
@@ -151,6 +160,9 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   useEffect(() => {
     const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
     setAvailableFunds(fundsData.balance || 0);
+
+    const portfolioData = JSON.parse(localStorage.getItem('portfolioData') || '{}');
+    setHoldings(portfolioData.holdings || []);
   }, []);
 
   useEffect(() => {
@@ -161,9 +173,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
   const isEditing = !!orderToEdit;
 
-  const tradeValue = (parseInt(quantity) || 0) * (parseFloat(price) || stock?.price || 0);
+  const currentPrice = orderMethod === 'MARKET' || orderMethod === 'SL-M' ? stock?.price || 0 : parseFloat(price) || 0
+  const tradeValue = (parseInt(quantity) || 0) * currentPrice;
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
 
+  const currentHolding = holdings.find(h => h.ticker === ticker);
+  const maxSellQuantity = currentHolding?.quantity || 0;
 
   const handlePlaceOrder = () => {
     if(isLoading) return;
@@ -173,10 +188,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       return;
     }
     
-    // Simulate Tax
-    const brokerage = Math.min(20, approxMargin * 0.0005);
-    const stt = orderType === 'BUY' ? 0 : product === 'MIS' ? approxMargin * 0.00025 : approxMargin * 0.001;
-    const totalCharges = brokerage + stt + (approxMargin * 0.000345); // Other minor charges
+    if (orderType === 'SELL' && (parseInt(quantity) || 0) > maxSellQuantity) {
+       toast({ variant: "destructive", title: "Insufficient Holdings", description: `You can sell a maximum of ${maxSellQuantity} shares.` });
+       return;
+    }
 
     const newOrder: Order = {
         id: orderToEdit?.id || `order-${Date.now()}`,
@@ -184,7 +199,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         ticker,
         quantity: parseInt(quantity) || 0,
         filledQuantity: 0,
-        limitPrice: orderMethod === 'Market' || orderMethod === 'SL-M' ? stock?.price || 0 : parseFloat(price) || 0,
+        limitPrice: currentPrice,
         triggerPrice: parseFloat(triggerPrice) || undefined,
         status: 'Pending',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -197,7 +212,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         toast({ variant: "destructive", title: "Invalid Quantity", description: "Quantity must be greater than zero." });
         return;
     }
-    if ((orderMethod === 'Limit' || orderMethod === 'SL') && newOrder.limitPrice <= 0) {
+    if ((orderMethod === 'LIMIT' || orderMethod === 'SL') && newOrder.limitPrice <= 0) {
         toast({ variant: "destructive", title: "Invalid Price", description: "Price must be greater than zero for Limit/SL orders." });
         return;
     }
@@ -217,22 +232,80 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     toast({
         title: `Order ${isEditing ? 'Modified' : 'Placed'} (${orderType})`,
-        description: `${quantity} shares of ${ticker} at ${orderMethod === 'Market' ? 'Market Price' : `₹${price}`}.`,
+        description: `${quantity} shares of ${ticker} at ${orderMethod === 'MARKET' ? 'Market Price' : `₹${price}`}.`,
     });
     
     // Simulate order execution after a delay and show charges
     setTimeout(() => {
+        const executedOrder = { ...newOrder, status: 'Executed' as const, filledQuantity: newOrder.quantity, ltp: stock?.price || newOrder.limitPrice };
+        const finalOrders = JSON.parse(localStorage.getItem('orders') || '[]').map((o: Order) => o.id === executedOrder.id ? executedOrder : o);
+        localStorage.setItem('orders', JSON.stringify(finalOrders));
+        
+        // Simulate Tax & Fund deduction/addition
+        const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
+        const brokerage = Math.min(20, finalTradeValue * 0.0005);
+        const stt = orderType === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
+        const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
+        
+        const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
+        const newBalance = orderType === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
+        localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
+        setAvailableFunds(newBalance);
+
+        // Update portfolio
+        const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || '{}');
+        let newHoldings = [...(portfolioData.holdings || [])];
+        const holdingIndex = newHoldings.findIndex(h => h.ticker === ticker);
+
+        if (orderType === 'BUY') {
+            if (holdingIndex > -1) {
+                const existingHolding = newHoldings[holdingIndex];
+                const totalQuantity = existingHolding.quantity + executedOrder.quantity;
+                const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
+                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
+            } else {
+                newHoldings.push({
+                    id: `holding-${Date.now()}`,
+                    ticker: ticker,
+                    quantity: executedOrder.quantity,
+                    avgPrice: executedOrder.ltp,
+                    ltp: executedOrder.ltp,
+                    pnl: 0,
+                    pnlPercent: 0,
+                    dayChange: stock?.change || 0,
+                    dayChangePercent: stock?.changePercent || 0,
+                    investedValue: executedOrder.ltp * executedOrder.quantity,
+                });
+            }
+        } else { // SELL
+            if (holdingIndex > -1) {
+                const existingHolding = newHoldings[holdingIndex];
+                existingHolding.quantity -= executedOrder.quantity;
+                if (existingHolding.quantity <= 0) {
+                    newHoldings.splice(holdingIndex, 1);
+                }
+            }
+        }
+
+        const newPortfolioData = { ...portfolioData, holdings: newHoldings };
+        localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
+        
         toast({
             title: `Order Executed!`,
-            description: `Est. charges: ₹${totalCharges.toFixed(2)} (Brokerage: ₹${brokerage.toFixed(2)}, STT: ₹${stt.toFixed(2)})`
-        })
-    }, 5000);
+            description: `${orderType} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
+        });
 
-    router.push('/orders');
+        if (!isEditing) {
+             router.push('/orders');
+        }
+
+    }, 3000);
+    if(isEditing){
+        router.push('/orders');
+    }
   }
 
   const isSLOrder = orderMethod === "SL" || orderMethod === "SL-M";
-  const headerText = isEditing ? (orderType === 'BUY' ? 'Modify Buy Order' : 'Modify Sell Order') : (orderType === 'BUY' ? 'Buy' : 'Sell');
 
   const PageLoader = () => (
     <div className="flex justify-center items-center h-64">
@@ -249,7 +322,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
             </Button>
             <div className="flex flex-col">
               <h1 className="text-xl font-bold">{ticker}</h1>
-              <p className="text-xs text-muted-foreground">{stock?.name}</p>
+              <p className="text-xs text-muted-foreground truncate max-w-xs">{stock?.name}</p>
             </div>
           </div>
           <Button variant="ghost" size="icon">
@@ -285,12 +358,13 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                   <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
-                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} max={orderType === 'SELL' ? orderToEdit?.quantity : undefined} />
-                          <p className="text-xs text-muted-foreground">Lot size 1</p>
+                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} max={orderType === 'SELL' ? maxSellQuantity : undefined} />
+                          {orderType === 'SELL' && <p className="text-xs text-muted-foreground">Holding: {maxSellQuantity}</p>}
+                          {orderType === 'BUY' && <p className="text-xs text-muted-foreground">Lot size 1</p>}
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>
-                          <Input id="price" type="number" value={price} onChange={e => setPrice(e.target.value)} disabled={orderMethod === "Market" || orderMethod === "SL-M"} />
+                          <Input id="price" type="number" value={price} onChange={e => setPrice(e.target.value)} disabled={orderMethod === "MARKET" || orderMethod === "SL-M"} />
                           <p className="text-xs text-muted-foreground">Tick size 0.05</p>
                       </div>
                   </div>
@@ -323,15 +397,15 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                   <div className="space-y-2">
                       <Label>Type</Label>
                       <RadioGroup value={orderMethod} onValueChange={setOrderMethod} className="flex gap-2 flex-wrap">
-                          <Button asChild variant="outline" className={cn("flex-1", orderMethod === "Market" && "border-primary text-primary")}>
+                          <Button asChild variant="outline" className={cn("flex-1", orderMethod === "MARKET" && "border-primary text-primary")}>
                               <Label className="px-4 py-2 cursor-pointer">
-                                  <RadioGroupItem value="Market" id="market" className="sr-only"/>
+                                  <RadioGroupItem value="MARKET" id="market" className="sr-only"/>
                                   Market
                               </Label>
                           </Button>
-                            <Button asChild variant="outline" className={cn("flex-1",orderMethod === "Limit" && "border-primary text-primary")}>
+                            <Button asChild variant="outline" className={cn("flex-1",orderMethod === "LIMIT" && "border-primary text-primary")}>
                               <Label className="px-4 py-2 cursor-pointer">
-                                  <RadioGroupItem value="Limit" id="limit" className="sr-only"/>
+                                  <RadioGroupItem value="LIMIT" id="limit" className="sr-only"/>
                                   Limit
                               </Label>
                           </Button>
@@ -389,7 +463,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         </main>
 
         {!isLoading && (
-        <footer className="bg-background border-t p-4 w-full mt-auto">
+        <footer className="bg-background border-t p-4 w-full mt-auto sticky bottom-0">
           <div className="max-w-4xl mx-auto">
               <div className="flex justify-between items-center text-xs mb-2">
                   <div className="flex items-center gap-2">
@@ -410,3 +484,5 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
+
+    
