@@ -107,12 +107,19 @@ export function OrdersClient() {
         description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}. Est. charges: ₹${totalCharges.toFixed(2)}`,
     });
 
-  }, [toast, router]);
+  }, [toast]);
 
 
   useEffect(() => {
     const fetchOrdersDataAndCheckPending = async () => {
-        const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+        const storedOrdersText = localStorage.getItem('orders') || '[]';
+        const storedOrders = JSON.parse(storedOrdersText);
+        
+        // Prevent re-render if data is the same
+        if (JSON.stringify(orders) === storedOrdersText) {
+            return;
+        }
+
         const pendingOrders = storedOrders.filter((o:Order) => o.status === 'Pending');
 
         if (pendingOrders.length === 0) {
@@ -122,7 +129,10 @@ export function OrdersClient() {
                 const stockData = await getStockData(allTickers);
                 const ltpMap = new Map(stockData.map(s => [s.ticker, s.price]));
                 const ordersWithFreshLtp = storedOrders.map((o: Order) => ({...o, ltp: ltpMap.get(o.ticker) || o.ltp}));
-                setOrders(ordersWithFreshLtp);
+                 // Only update if there's a meaningful change
+                if(JSON.stringify(orders) !== JSON.stringify(ordersWithFreshLtp)) {
+                    setOrders(ordersWithFreshLtp);
+                }
             } else {
                  setOrders(storedOrders);
             }
