@@ -20,14 +20,17 @@ export default function BottomNav() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    const user = localStorage.getItem('user');
-    const loggedIn = !!user;
+    // Check for login status on client side
+    const loggedIn = localStorage.getItem('isLoggedIn') === 'true';
     setIsLoggedIn(loggedIn);
+
+    // If not logged in and not on the auth page, redirect
     if (!loggedIn && pathname !== '/') {
       router.replace('/');
     }
   }, [pathname, router]);
 
+  // Don't render nav if not logged in or on the auth page
   if (!isLoggedIn || pathname === '/') {
     return null;
   }
@@ -36,7 +39,7 @@ export default function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/80 bg-background/80 backdrop-blur-lg">
       <div className="mx-auto flex h-16 max-w-md items-center justify-around">
         {navItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = pathname.startsWith(item.href);
           return (
             <Link
               key={item.label}

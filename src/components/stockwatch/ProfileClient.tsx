@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 
 const menuItems = [
     { label: "Funds", icon: () => <span className="font-bold text-lg">₹</span>, href: "/funds" },
-    { label: "Profile", icon: UserIcon, href: "/profile" },
+    { label: "Profile Details", icon: UserIcon, href: "/profile-details" },
     { label: "Settings", icon: Settings, href: "/settings" },
     { label: "Support", icon: Info, href: "/support" },
     { label: "Invite Friends", icon: Gift, href: "/invite" },
@@ -25,16 +25,25 @@ export function ProfileClient() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
+    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    if (!isLoggedIn) {
+      router.replace('/');
+      return;
+    }
+
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
     } else {
+      // This case should ideally not be reached if isLoggedIn is true
       router.replace('/');
     }
   }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('funds');
     router.push('/');
   };
 
@@ -68,7 +77,7 @@ export function ProfileClient() {
       <div className="space-y-2">
         {menuItems.map((item) => (
             <Link href={item.href} key={item.label}>
-                <Card>
+                <Card className="hover:bg-muted/50 transition-colors">
                     <CardContent className="p-4 flex justify-between items-center">
                         <div className="flex items-center gap-4">
                             <item.icon className="h-5 w-5 text-muted-foreground" />
@@ -81,11 +90,11 @@ export function ProfileClient() {
         ))}
       </div>
 
-       <Card className="mt-4" onClick={handleLogout}>
+       <Card className="mt-4 hover:bg-destructive/10 transition-colors" onClick={handleLogout}>
           <CardContent className="p-4 flex justify-between items-center cursor-pointer">
               <div className="flex items-center gap-4">
                   <LogOut className="h-5 w-5 text-destructive" />
-                  <p className="text-destructive">Logout</p>
+                  <p className="font-semibold text-destructive">Logout</p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </CardContent>

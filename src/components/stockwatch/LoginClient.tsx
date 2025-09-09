@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Building } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 
@@ -25,7 +25,7 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
-  const [userId, setUserId] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const handleLogin = (e: React.FormEvent) => {
@@ -34,7 +34,8 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
             const user = JSON.parse(storedUser);
-            if (user.id === userId && user.password === password) {
+            if (user.email === email && user.password === password) {
+                localStorage.setItem('isLoggedIn', 'true');
                 toast({
                     title: "Login Successful",
                     description: `Welcome back, ${user.name}!`,
@@ -44,7 +45,7 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
                  toast({
                     variant: "destructive",
                     title: "Invalid Credentials",
-                    description: "Please check your User ID and password.",
+                    description: "Please check your email and password.",
                 });
             }
         } else {
@@ -63,13 +64,25 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
     }
   };
 
+  const handleForgotPassword = () => {
+    if (email) {
+      toast({
+        title: "Password Reset",
+        description: `If an account exists for ${email}, a password reset link has been sent.`,
+      });
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Email Required",
+        description: "Please enter your email address to reset your password.",
+      });
+    }
+  };
+
   return (
-      <Card className="w-full max-w-sm border-0 shadow-none sm:border sm:shadow-sm">
+      <Card className="w-full border-0 shadow-none sm:border sm:shadow-lg">
         <CardHeader className="text-center">
-            <div className="mx-auto mb-4">
-                <Building className="h-10 w-10 text-primary"/>
-            </div>
-          <CardTitle className="text-2xl font-bold">Welcome to StockWatch</CardTitle>
+          <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
           <CardDescription>
             Enter your credentials to access your account.
           </CardDescription>
@@ -77,8 +90,8 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
         <form onSubmit={handleLogin}>
           <CardContent className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="userId">User ID</Label>
-              <Input id="userId" type="text" placeholder="e.g. OP0000" required value={userId} onChange={(e) => setUserId(e.target.value)} />
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" placeholder="john@example.com" required value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>
@@ -104,7 +117,7 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
                 </Button>
               </div>
                <div className="flex items-center">
-                  <Button variant="link" type="button" className="p-0 h-auto text-xs">Forgot password?</Button>
+                  <Button variant="link" type="button" onClick={handleForgotPassword} className="p-0 h-auto text-xs text-muted-foreground">Forgot password?</Button>
                </div>
             </div>
           </CardContent>
@@ -114,7 +127,7 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
             </Button>
              <p className="text-sm text-center text-muted-foreground">
                 Don't have an account?{' '}
-                <Button variant="link" type="button" onClick={onToggleView} className="p-0 h-auto">Sign up</Button>
+                <Button variant="link" type="button" onClick={onToggleView} className="p-0 h-auto font-semibold">Sign up</Button>
             </p>
           </CardFooter>
         </form>

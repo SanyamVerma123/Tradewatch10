@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { Portfolio } from "@/lib/types";
+import { useState, useEffect } from "react";
+import type { Portfolio, Holding } from "@/lib/types";
 import {
   Card,
   CardContent,
@@ -11,16 +11,23 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { portfolio as initialPortfolioData } from "@/lib/portfolio";
 
-interface PortfolioClientProps {
-  initialPortfolio: Portfolio;
-}
-
-export function PortfolioClient({ initialPortfolio }: PortfolioClientProps) {
+export function PortfolioClient() {
   const [activeTab, setActiveTab] = useState("Holdings");
   const [searchTerm, setSearchTerm] = useState("");
+  const [portfolio, setPortfolio] = useState<Portfolio>(initialPortfolioData);
 
-  const filteredHoldings = initialPortfolio.holdings.filter(
+  useEffect(() => {
+    const storedPortfolio = localStorage.getItem('portfolioData');
+    if (storedPortfolio) {
+      setPortfolio(JSON.parse(storedPortfolio));
+    } else {
+      localStorage.setItem('portfolioData', JSON.stringify(initialPortfolioData));
+    }
+  }, []);
+
+  const filteredHoldings = portfolio.holdings.filter(
     (holding) =>
       holding.ticker.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -46,17 +53,17 @@ export function PortfolioClient({ initialPortfolio }: PortfolioClientProps) {
                     <div className="grid grid-cols-2 gap-4 text-center">
                         <div>
                             <div className="text-sm text-muted-foreground">Invested</div>
-                            <div className="text-lg font-semibold">{initialPortfolio.investedValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                            <div className="text-lg font-semibold">{portfolio.investedValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
                         </div>
                         <div>
                             <div className="text-sm text-muted-foreground">Current</div>
-                            <div className="text-lg font-semibold">{initialPortfolio.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                            <div className="text-lg font-semibold">{portfolio.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
                         </div>
                     </div>
                     <div className="mt-4 text-center">
                         <div className="text-sm text-muted-foreground">P&L</div>
-                        <div className={cn("text-lg font-semibold", initialPortfolio.totalPnl >= 0 ? "text-positive" : "text-destructive")}>
-                            {initialPortfolio.totalPnl >= 0 ? '+' : ''}{initialPortfolio.totalPnl.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} ({initialPortfolio.totalPnlPercent.toFixed(2)}%)
+                        <div className={cn("text-lg font-semibold", portfolio.totalPnl >= 0 ? "text-positive" : "text-destructive")}>
+                            {portfolio.totalPnl >= 0 ? '+' : ''}{portfolio.totalPnl.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} ({portfolio.totalPnlPercent.toFixed(2)}%)
                         </div>
                     </div>
                 </CardContent>
