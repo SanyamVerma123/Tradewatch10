@@ -28,7 +28,7 @@ export function PortfolioClient() {
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   
-  const updatePortfolioData = useCallback(async () => {
+  const updatePortfolioData = useCallback(async (isSilent = false) => {
     let currentPortfolio: Portfolio;
     try {
         const item = localStorage.getItem('portfolioData');
@@ -44,9 +44,8 @@ export function PortfolioClient() {
       setIsLoading(false);
       return;
     }
-
-    const isSilentRefresh = Object.keys(stocksMap).length > 0;
-    if (!isSilentRefresh) {
+    
+    if (!isSilent) {
         setIsLoading(true);
     }
 
@@ -78,7 +77,7 @@ export function PortfolioClient() {
         dayChange,
         dayChangePercent,
         pnl,
-        pnlPercent: (pnl / investedValue) * 100 || 0,
+        pnlPercent: (investedValue > 0) ? (pnl / investedValue) * 100 : 0,
         investedValue,
         currentValue
       };
@@ -101,21 +100,15 @@ export function PortfolioClient() {
     }
     
     setIsLoading(false);
-  }, [stocksMap]);
+  }, []);
 
   useEffect(() => {
-    // Initial load
     updatePortfolioData();
-
-    // Set up interval for silent refreshes
-    const interval = setInterval(() => {
-        updatePortfolioData();
-    }, 5000); // Refresh every 5 seconds
-
-    // Listen for storage changes to react instantly
+    const interval = setInterval(() => updatePortfolioData(true), 5000); // Silent refresh
+    
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'portfolioData' || event.key === 'orders') {
-        updatePortfolioData();
+      if (event.key === 'portfolioData' || event.key === 'orders' || event.key === 'funds') {
+        updatePortfolioData(true);
       }
     };
     window.addEventListener('storage', handleStorageChange);
@@ -210,7 +203,7 @@ export function PortfolioClient() {
             </div>
 
             <div className="space-y-2">
-            {isLoading && portfolio.holdings.length === 0 ? (
+            {isLoading ? (
                 <div className="flex justify-center items-center p-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
@@ -262,5 +255,3 @@ export function PortfolioClient() {
     </div>
   );
 }
-
-    

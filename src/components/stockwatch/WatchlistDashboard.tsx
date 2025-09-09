@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -5,9 +6,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Stock, Watchlist, NewsArticle } from "@/lib/types";
 import type { SuggestPriceAlertsOutput } from "@/ai/flows/suggest-price-alerts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 import { getPriceAlertSuggestions, getStockData, searchStocks } from "@/app/actions";
-
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +44,7 @@ export function WatchlistDashboard() {
   const { toast } = useToast();
   const [stocks, setStocks] = useState<Record<string, Stock>>({});
   const [isLoadingStocks, setIsLoadingStocks] = useState(true);
+  const [newWatchlistName, setNewWatchlistName] = useState("");
 
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -184,6 +197,27 @@ export function WatchlistDashboard() {
     }
   };
 
+  const handleCreateWatchlist = () => {
+    if (!newWatchlistName.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Watchlist name cannot be empty.",
+      });
+      return;
+    }
+    const newWatchlist: Watchlist = {
+      id: `watchlist-${Date.now()}`,
+      name: newWatchlistName,
+      stocks: [],
+    };
+    const updatedWatchlists = [...watchlists, newWatchlist];
+    setWatchlists(updatedWatchlists);
+    localStorage.setItem('watchlists', JSON.stringify(updatedWatchlists));
+    setActiveTab(newWatchlist.id);
+    setNewWatchlistName("");
+  };
+
   const handleStockClick = (stock: Stock) => {
     setSelectedStock(stock);
     setIsActionSheetOpen(true);
@@ -258,17 +292,46 @@ export function WatchlistDashboard() {
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           {watchlists.length > 0 && (
-            <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${watchlists.length}, 1fr)` }}>
-              {watchlists.map((wl) => (
-                <TabsTrigger key={wl.id} value={wl.id}>
-                  {wl.name}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+             <ScrollArea className="w-full whitespace-nowrap rounded-md">
+                <div className="flex items-center space-x-1 p-1 bg-muted rounded-md">
+                    <TabsList className="p-0 bg-transparent">
+                    {watchlists.map((wl) => (
+                        <TabsTrigger key={wl.id} value={wl.id}>
+                        {wl.name}
+                        </TabsTrigger>
+                    ))}
+                    </TabsList>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                                <PlusCircle className="h-5 w-5" />
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                            <AlertDialogTitle>Create New Watchlist</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Enter a name for your new watchlist.
+                            </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <Input 
+                                placeholder="e.g., Tech Stocks"
+                                value={newWatchlistName}
+                                onChange={(e) => setNewWatchlistName(e.target.value)}
+                            />
+                            <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleCreateWatchlist}>Create</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </div>
+                <ScrollBar orientation="horizontal" />
+            </ScrollArea>
           )}
 
           {watchlists.map((wl) => (
-            <TabsContent key={wl.id} value={wl.id}>
+            <TabsContent key={wl.id} value={wl.id} className="mt-4">
               <div className="relative my-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
@@ -289,17 +352,17 @@ export function WatchlistDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Company</TableHead>
+                        <TableHead className="w-[45%]">Company</TableHead>
                         <TableHead className="text-right">Price</TableHead>
                         <TableHead className="text-right">Change</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {isLoadingStocks && Object.keys(stocks).length === 0 ? renderStockSkeleton() : filteredStocks.map((stock) => (
+                      {isLoadingStocks && filteredStocks.length === 0 ? renderStockSkeleton() : filteredStocks.map((stock) => (
                         <TableRow key={stock.ticker} onClick={() => handleStockClick(stock)} className="cursor-pointer">
                           <TableCell>
-                            <div className="font-bold">{stock.ticker}</div>
-                            <div className="text-xs text-muted-foreground truncate max-w-[120px] sm:max-w-xs">{stock.name}</div>
+                            <div className="font-bold text-sm">{stock.ticker}</div>
+                            <div className="text-xs text-muted-foreground truncate">{stock.name}</div>
                           </TableCell>
                           <TableCell className="text-right font-medium">₹{stock.price.toFixed(2)}</TableCell>
                           <TableCell className="text-right">

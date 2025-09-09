@@ -113,6 +113,27 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
     );
 };
 
+// Heuristic to check if market is open (9:15 AM to 3:30 PM India time)
+function isMarketOpen() {
+    const now = new Date();
+    const istOffset = 330; // 5.5 hours in minutes
+    const utcOffset = now.getTimezoneOffset();
+    const istTime = new Date(now.getTime() + (istOffset + utcOffset) * 60000);
+    
+    const day = istTime.getDay();
+    const hour = istTime.getHours();
+    const minute = istTime.getMinutes();
+
+    if (day > 0 && day < 6) { // Monday to Friday
+        if (hour > 9 || (hour === 9 && minute >= 15)) {
+            if (hour < 15 || (hour === 15 && minute <= 30)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 
 export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientProps) {
   const router = useRouter();
@@ -127,7 +148,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
   const [product, setProduct] = useState((orderToEdit?.orderType.split(' ')[0] || "CNC").toUpperCase());
-  const [orderMethod, setOrderMethod] = useState((orderToEdit?.orderType.split(' ')[1] || "Limit").toUpperCase());
+  const [orderMethod, setOrderMethod] = useState((orderToEdit?.orderType.split(' ')[1] || "LIMIT").toUpperCase());
   
   // Advanced options
   const [stoploss, setStoploss] = useState("");
@@ -181,7 +202,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const maxSellQuantity = currentHolding?.quantity || 0;
 
   const handlePlaceOrder = () => {
-    if(isLoading) return;
+    if(isLoading || !stock) return;
 
     if (orderType === 'BUY' && approxMargin > availableFunds) {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `You need ₹${approxMargin.toFixed(2)} but have ₹${availableFunds.toFixed(2)}.` });
@@ -192,6 +213,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
        toast({ variant: "destructive", title: "Insufficient Holdings", description: `You can sell a maximum of ${maxSellQuantity} shares.` });
        return;
     }
+
+    const marketIsOpen = isMarketOpen();
 
     const newOrder: Order = {
         id: orderToEdit?.id || `order-${Date.now()}`,
@@ -206,6 +229,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         exchange: 'NSE',
         orderType: `${product} ${orderMethod}`,
         ltp: stock?.price || 0,
+        isAMO: !marketIsOpen,
     }
 
     if (newOrder.quantity <= 0) {
@@ -235,72 +259,70 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         description: `${quantity} shares of ${ticker} at ${orderMethod === 'MARKET' ? 'Market Price' : `₹${price}`}.`,
     });
     
-    // Simulate order execution after a delay and show charges
-    setTimeout(() => {
-        const executedOrder = { ...newOrder, status: 'Executed' as const, filledQuantity: newOrder.quantity, ltp: stock?.price || newOrder.limitPrice };
-        const finalOrders = JSON.parse(localStorage.getItem('orders') || '[]').map((o: Order) => o.id === executedOrder.id ? executedOrder : o);
-        localStorage.setItem('orders', JSON.stringify(finalOrders));
-        
-        // Simulate Tax & Fund deduction/addition
-        const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
-        const brokerage = Math.min(20, finalTradeValue * 0.0005);
-        const stt = orderType === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
-        const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
-        
-        const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
-        const newBalance = orderType === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
-        localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
-        setAvailableFunds(newBalance);
+    // For market orders during open market, simulate immediate execution
+    if (orderMethod === 'MARKET' && marketIsOpen) {
+        setTimeout(() => {
+            const executedOrder = { ...newOrder, status: 'Executed' as const, filledQuantity: newOrder.quantity, ltp: stock.price };
+            const finalOrders = JSON.parse(localStorage.getItem('orders') || '[]').map((o: Order) => o.id === executedOrder.id ? executedOrder : o);
+            localStorage.setItem('orders', JSON.stringify(finalOrders));
+            
+            // Simulate Tax & Fund deduction/addition
+            const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
+            const brokerage = Math.min(20, finalTradeValue * 0.0005);
+            const stt = orderType === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
+            const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
+            
+            const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
+            const newBalance = orderType === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
+            localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
+            setAvailableFunds(newBalance);
 
-        // Update portfolio
-        const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || '{}');
-        let newHoldings = [...(portfolioData.holdings || [])];
-        const holdingIndex = newHoldings.findIndex(h => h.ticker === ticker);
+            // Update portfolio
+            const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
+            let newHoldings = [...(portfolioData.holdings || [])];
+            const holdingIndex = newHoldings.findIndex(h => h.ticker === ticker);
 
-        if (orderType === 'BUY') {
-            if (holdingIndex > -1) {
-                const existingHolding = newHoldings[holdingIndex];
-                const totalQuantity = existingHolding.quantity + executedOrder.quantity;
-                const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
-                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
-            } else {
-                newHoldings.push({
-                    id: `holding-${Date.now()}`,
-                    ticker: ticker,
-                    quantity: executedOrder.quantity,
-                    avgPrice: executedOrder.ltp,
-                    ltp: executedOrder.ltp,
-                    pnl: 0,
-                    pnlPercent: 0,
-                    dayChange: stock?.change || 0,
-                    dayChangePercent: stock?.changePercent || 0,
-                    investedValue: executedOrder.ltp * executedOrder.quantity,
-                });
-            }
-        } else { // SELL
-            if (holdingIndex > -1) {
-                const existingHolding = newHoldings[holdingIndex];
-                existingHolding.quantity -= executedOrder.quantity;
-                if (existingHolding.quantity <= 0) {
-                    newHoldings.splice(holdingIndex, 1);
+            if (orderType === 'BUY') {
+                if (holdingIndex > -1) {
+                    const existingHolding = newHoldings[holdingIndex];
+                    const totalQuantity = existingHolding.quantity + executedOrder.quantity;
+                    const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
+                    newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
+                } else {
+                    newHoldings.push({
+                        id: `holding-${Date.now()}`,
+                        ticker: ticker,
+                        quantity: executedOrder.quantity,
+                        avgPrice: executedOrder.ltp,
+                        ltp: executedOrder.ltp,
+                        pnl: 0,
+                        pnlPercent: 0,
+                        dayChange: stock?.change || 0,
+                        dayChangePercent: stock?.changePercent || 0,
+                        investedValue: executedOrder.ltp * executedOrder.quantity,
+                    });
+                }
+            } else { // SELL
+                if (holdingIndex > -1) {
+                    const existingHolding = newHoldings[holdingIndex];
+                    existingHolding.quantity -= executedOrder.quantity;
+                    if (existingHolding.quantity <= 0) {
+                        newHoldings.splice(holdingIndex, 1);
+                    }
                 }
             }
-        }
+            const newPortfolioData = { ...portfolioData, holdings: newHoldings };
+            localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
+            
+            toast({
+                title: `Order Executed!`,
+                description: `${orderType} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
+            });
+            if (!isEditing) router.push('/orders');
+        }, 1500); // simulate network delay
+    }
 
-        const newPortfolioData = { ...portfolioData, holdings: newHoldings };
-        localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
-        
-        toast({
-            title: `Order Executed!`,
-            description: `${orderType} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
-        });
-
-        if (!isEditing) {
-             router.push('/orders');
-        }
-
-    }, 3000);
-    if(isEditing){
+    if(isEditing || !marketIsOpen || orderMethod !== 'MARKET'){
         router.push('/orders');
     }
   }
@@ -484,5 +506,3 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
-
-    

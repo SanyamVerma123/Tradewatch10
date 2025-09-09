@@ -42,6 +42,7 @@ export interface Order {
   exchange: string;
   orderType: string;
   ltp: number;
+  isAMO?: boolean;
 }
 
 export interface Holding {
@@ -72,5 +73,3 @@ export interface User {
     email: string;
     password?: string;
 }
-
-    
