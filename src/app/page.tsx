@@ -1,5 +1,5 @@
-import { LoginClient } from "@/components/stockwatch/LoginClient";
+import { AuthClient } from "@/components/stockwatch/AuthClient";
 
-export default function LoginPage() {
-  return <LoginClient />;
+export default function AuthPage() {
+  return <AuthClient />;
 }

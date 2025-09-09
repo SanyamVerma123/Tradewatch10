@@ -1,21 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { User } from "@/lib/types";
 import {
   Card,
   CardContent,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ChevronDown, ChevronRight, Settings, Info, User as UserIcon, HelpCircle, Gift } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings, Info, User as UserIcon, HelpCircle, Gift, LogOut } from "lucide-react";
 import Link from "next/link";
-import { Button } from "../ui/button";
-
-interface ProfileClientProps {
-  user: User;
-}
+import { useRouter } from "next/navigation";
 
 const menuItems = [
-    { label: "Funds", icon: () => <span>₹</span>, href: "/funds" },
+    { label: "Funds", icon: () => <span className="font-bold text-lg">₹</span>, href: "/funds" },
     { label: "Profile", icon: UserIcon, href: "/profile" },
     { label: "Settings", icon: Settings, href: "/settings" },
     { label: "Support", icon: Info, href: "/support" },
@@ -23,8 +20,27 @@ const menuItems = [
     { label: "User Manual", icon: HelpCircle, href: "/manual" },
 ];
 
+export function ProfileClient() {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
 
-export function ProfileClient({ user }: ProfileClientProps) {
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    } else {
+      router.replace('/');
+    }
+  }, [router]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    router.push('/');
+  };
+
+  if (!user) {
+    return null; // Or a loading spinner
+  }
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 bg-background">
@@ -43,7 +59,7 @@ export function ProfileClient({ user }: ProfileClientProps) {
             </div>
             <Avatar>
                 <AvatarFallback className="bg-primary/20 text-primary font-bold">
-                    {user.name.split(' ').map(n => n[0]).join('')}
+                    {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                 </AvatarFallback>
             </Avatar>
         </CardContent>
@@ -64,6 +80,16 @@ export function ProfileClient({ user }: ProfileClientProps) {
             </Link>
         ))}
       </div>
+
+       <Card className="mt-4" onClick={handleLogout}>
+          <CardContent className="p-4 flex justify-between items-center cursor-pointer">
+              <div className="flex items-center gap-4">
+                  <LogOut className="h-5 w-5 text-destructive" />
+                  <p className="text-destructive">Logout</p>
+              </div>
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </CardContent>
+      </Card>
 
     </div>
   );

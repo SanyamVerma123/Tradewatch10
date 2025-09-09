@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGrid, ShoppingBag, PieChart, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const navItems = [
   { href: "/watchlist", label: "Watchlist", icon: LayoutGrid },
@@ -14,8 +16,19 @@ const navItems = [
 
 export default function BottomNav() {
   const pathname = usePathname();
-  
-  if (pathname === '/') {
+  const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const user = localStorage.getItem('user');
+    const loggedIn = !!user;
+    setIsLoggedIn(loggedIn);
+    if (!loggedIn && pathname !== '/') {
+      router.replace('/');
+    }
+  }, [pathname, router]);
+
+  if (!isLoggedIn || pathname === '/') {
     return null;
   }
 
