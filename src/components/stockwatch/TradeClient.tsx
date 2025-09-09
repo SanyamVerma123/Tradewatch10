@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
 
 interface TradeClientProps {
   ticker: string;
@@ -159,7 +160,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   }, [fetchStock]);
 
   const isEditing = !!orderToEdit;
-  const approxMargin = (parseInt(quantity) || 0) * (parseFloat(price) || stock?.price || 0);
+
+  const tradeValue = (parseInt(quantity) || 0) * (parseFloat(price) || stock?.price || 0);
+  const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
+
 
   const handlePlaceOrder = () => {
     if(isLoading) return;
@@ -388,9 +392,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         <footer className="bg-background border-t p-4 w-full mt-auto">
           <div className="max-w-4xl mx-auto">
               <div className="flex justify-between items-center text-xs mb-2">
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                       <span className="text-muted-foreground">Approx. margin</span>
                       <span className="font-semibold">₹{approxMargin.toFixed(2)}</span>
+                       {product === 'MIS' && <Badge variant="outline">5x leverage</Badge>}
                       <RefreshCcw className="h-3 w-3 text-primary" />
                   </div>
                   <div className="flex items-center gap-1">
