@@ -5,7 +5,6 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Stock, Watchlist, NewsArticle, Order } from "@/lib/types";
-import type { SuggestPriceAlertsOutput } from "@/ai/flows/suggest-price-alerts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,10 +16,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+} from "@/components/ui/dialog";
 
-import { getPriceAlertSuggestions, getStockData, searchStocks } from "@/app/actions";
+import { getStockData, searchStocks } from "@/app/actions";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,6 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { watchlists as initialWatchlistsData, news as allNewsData } from "@/lib/data";
 import { StockActionSheet } from "./StockActionSheet";
+import { AIAnalysisDialog } from "./AIAnalysisDialog";
 
 
 const getStockStatusMessage = (changePercent: number): string => {
@@ -50,8 +53,6 @@ export function WatchlistDashboard() {
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [activeTab, setActiveTab] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [suggestions, setSuggestions] = useState<SuggestPriceAlertsOutput>([]);
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const { toast } = useToast();
   const [stocks, setStocks] = useState<Record<string, Stock>>({});
   const [isLoadingStocks, setIsLoadingStocks] = useState(true);
@@ -61,6 +62,7 @@ export function WatchlistDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{ticker: string, name: string}[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isAnalysisDialogOpen, setIsAnalysisDialogOpen] = useState(false);
 
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
@@ -150,39 +152,6 @@ export function WatchlistDashboard() {
         stock.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [stocks, searchTerm, activeWatchlist]);
-
-  const handleSuggestAlerts = async () => {
-    if (!activeWatchlist) return;
-
-    setIsLoadingSuggestions(true);
-    setSuggestions([]);
-    
-    const watchlistForAI = filteredStocks.map(stock => ({
-        ticker: stock.ticker,
-        currentPrice: stock.price,
-    }));
-
-    try {
-        const result = await getPriceAlertSuggestions(watchlistForAI);
-        if (result && result.length > 0) {
-            setSuggestions(result);
-        } else {
-            toast({
-                title: "AI Suggestions",
-                description: "No new suggestions were generated. The market seems stable.",
-            });
-        }
-    } catch (error) {
-        toast({
-            variant: "destructive",
-            title: "An error occurred",
-            description: "Failed to get AI suggestions.",
-        });
-        console.error(error);
-    } finally {
-        setIsLoadingSuggestions(false);
-    }
-  };
 
   const handleSearchQueryChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -452,7 +421,7 @@ export function WatchlistDashboard() {
                                      <p className="text-xs text-muted-foreground truncate w-40 sm:w-auto">{stock.name}</p>
                                      <p className="text-xs text-primary/80 mt-1 italic">{getStockStatusMessage(stock.changePercent)}</p>
                                  </div>
-                                 <div className={cn("text-right font-medium", stock.change >= 0 ? "text-green-600" : "text-red-600")}>
+                                 <div className={cn("text-right font-medium", stock.change >= 0 ? "text-positive" : "text-destructive")}>
                                      <p className="text-base">₹{stock.price.toFixed(2)}</p>
                                      <p className="text-xs">{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)</p>
                                  </div>
@@ -472,59 +441,19 @@ export function WatchlistDashboard() {
       {!isSearchMode && (
         <>
           <div className="mt-6">
-            <Button onClick={handleSuggestAlerts} disabled={isLoadingSuggestions || (isLoadingStocks && Object.keys(stocks).length === 0)} className="w-full">
-              {isLoadingSuggestions ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
-              )}
-              Get AI Price Alert Suggestions
-            </Button>
+            <Dialog open={isAnalysisDialogOpen} onOpenChange={setIsAnalysisDialogOpen}>
+                <DialogTrigger asChild>
+                    <Button className="w-full" disabled={isLoadingStocks && Object.keys(stocks).length === 0}>
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Get AI Stock Analysis
+                    </Button>
+                </DialogTrigger>
+                <AIAnalysisDialog
+                  stocks={filteredStocks}
+                  onClose={() => setIsAnalysisDialogOpen(false)}
+                />
+            </Dialog>
           </div>
-
-          {isLoadingSuggestions && (
-            <Card className="mt-4 animate-in fade-in-50">
-                <CardHeader>
-                    <CardTitle>Generating Suggestions...</CardTitle>
-                    <CardDescription>Our AI is analyzing the market data for your watchlist.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-4">
-                        {[...Array(2)].map((_, i) => (
-                          <div key={i} className="flex items-center space-x-4">
-                              <div className="h-12 w-12 rounded-full bg-muted animate-pulse"></div>
-                              <div className="space-y-2 flex-1">
-                                  <div className="h-4 bg-muted animate-pulse rounded"></div>
-                                  <div className="h-4 bg-muted animate-pulse rounded" style={{width: `${Math.random() * 40 + 50}%`}}></div>
-                              </div>
-                          </div>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
-          )}
-
-          {suggestions.length > 0 && (
-            <Card className="mt-4 animate-in fade-in-50">
-              <CardHeader>
-                <CardTitle className="flex items-center"><Sparkles className="mr-2 h-5 w-5 text-primary" /> AI Price Alert Suggestions</CardTitle>
-                <CardDescription>Based on recent trends and market data.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                {suggestions.map((suggestion) => (
-                  <div key={suggestion.ticker} className="p-3 bg-muted/50 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-lg">{suggestion.ticker}</span>
-                      <span className="font-semibold text-primary text-lg">₹{suggestion.suggestedAlertPrice.toFixed(2)}</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">{suggestion.reason}</p>
-                  </div>
-                ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           <section className="mt-8">
             <h2 className="text-xl font-bold mb-4">Related News</h2>

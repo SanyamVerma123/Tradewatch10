@@ -2,6 +2,7 @@
 "use server";
 
 import { suggestPriceAlerts, SuggestPriceAlertsInput } from "@/ai/flows/suggest-price-alerts";
+import { getStockAnalysis, GetStockAnalysisInput } from "@/ai/flows/stock-analysis";
 import yahooFinance from 'yahoo-finance2';
 import type { HistoricalHistoryResult } from 'yahoo-finance2/dist/esm/src/modules/historical';
 
@@ -17,6 +18,17 @@ export async function getPriceAlertSuggestions(watchlist: { ticker: string; curr
     return [];
   }
 }
+
+export async function getStockAnalysisAction(input: GetStockAnalysisInput) {
+    try {
+        const analysis = await getStockAnalysis(input);
+        return analysis;
+    } catch (error) {
+        console.error("Error getting stock analysis:", error);
+        return null;
+    }
+}
+
 
 export async function getStockData(tickers: string[]) {
     if (!tickers || tickers.length === 0) {
