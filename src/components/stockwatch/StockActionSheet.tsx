@@ -13,13 +13,12 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ExternalLink, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { StockChart } from "@/components/stockwatch/StockChart";
 import { getHistoricalData } from "@/app/actions";
 import type { HistoricalHistoryResult } from "yahoo-finance2/dist/esm/src/modules/historical";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 
 interface StockActionSheetProps {
@@ -71,82 +70,6 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
               See more <ChevronRight className="h-4 w-4 ml-1" />
           </Button>
         </a>
-    </div>
-  );
-};
-
-const MarketDepth = ({ stock }: { stock: Stock }) => {
-  const [marketData, setMarketData] = useState<{ bids: any[], asks: any[] }>({ bids: [], asks: [] });
-
-  useEffect(() => {
-    const generateMarketData = () => {
-      const newBids = [];
-      const newAsks = [];
-      const basePrice = stock.price;
-      const spread = stock.price * 0.001;
-
-      for (let i = 0; i < 5; i++) {
-        newBids.push({
-          price: (basePrice - spread * (i + 1) - Math.random() * 0.05).toFixed(2),
-          orders: Math.floor(Math.random() * 10) + 1,
-          quantity: Math.floor(Math.random() * 500) + 50,
-        });
-        newAsks.push({
-          price: (basePrice + spread * (i + 1) + Math.random() * 0.05).toFixed(2),
-          orders: Math.floor(Math.random() * 10) + 1,
-          quantity: Math.floor(Math.random() * 500) + 50,
-        });
-      }
-      setMarketData({ bids: newBids, asks: newAsks });
-    };
-
-    generateMarketData();
-    const interval = setInterval(generateMarketData, 2000); // Simulate real-time updates
-
-    return () => clearInterval(interval);
-  }, [stock.price]);
-
-  const totalBidQuantity = useMemo(() => marketData.bids.reduce((sum, d) => sum + d.quantity, 0), [marketData.bids]);
-  const totalAskQuantity = useMemo(() => marketData.asks.reduce((sum, d) => sum + d.quantity, 0), [marketData.asks]);
-
-
-  return (
-    <div className="mt-4">
-        <h3 className="text-lg font-semibold mb-2">Market Depth</h3>
-        <div className="overflow-hidden rounded-lg border">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead className="text-center text-blue-500">Bids</TableHead>
-                        <TableHead className="text-center">Price</TableHead>
-                        <TableHead className="text-center text-red-500">Asks</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {Array.from({ length: 5 }).map((_, i) => (
-                        <TableRow key={i}>
-                            <TableCell className="text-center">
-                                <div className="text-blue-400">{marketData.bids[i]?.quantity}</div>
-                                <div className="text-xs text-muted-foreground">{marketData.bids[i]?.orders} orders</div>
-                            </TableCell>
-                            <TableCell className="text-center font-semibold">
-                                <div className="text-blue-500">{marketData.bids[i]?.price}</div>
-                                <div className="text-red-500 mt-1">{marketData.asks[i]?.price}</div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                                <div className="text-red-400">{marketData.asks[i]?.quantity}</div>
-                                <div className="text-xs text-muted-foreground">{marketData.asks[i]?.orders} orders</div>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                    <TableRow className="bg-muted/50">
-                        <TableCell className="text-center font-bold">{totalBidQuantity.toLocaleString('en-IN')}</TableCell>
-                        <TableCell className="text-center text-xs text-muted-foreground font-semibold">Total</TableCell>
-                        <TableCell className="text-center font-bold">{totalAskQuantity.toLocaleString('en-IN')}</TableCell>
-                    </TableRow>
-                </TableBody>
-            </Table>
-        </div>
     </div>
   );
 };
@@ -228,12 +151,6 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
             </a>
         </div>
         
-        <Separator />
-
-        <div className="py-4">
-          <MarketDepth stock={stock} />
-        </div>
-
         <Separator />
 
         <div className="py-4">
