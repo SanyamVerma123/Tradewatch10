@@ -170,14 +170,15 @@ export function PortfolioClient() {
             p.quantity += order.quantity;
             p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
         } else { // SELL
-            if (currentNetQuantity > 0) {
+            if (currentNetQuantity > 0) { // If it was a long position, just reduce quantity
                  p.quantity -= order.quantity;
-             } else {
+             } else { // If it was already a short position, or becoming a short one
                  const newTotalValue = (p.avgPrice * currentAbsQuantity) + tradeValue;
-                 p.quantity -= order.quantity;
+                 p.quantity -= order.quantity; // Makes quantity more negative
                  p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
              }
         }
+        // If position flips from long to short or vice-versa, the avg price for the new leg is the price of the flipping trade
         if (Math.sign(p.quantity) !== Math.sign(currentNetQuantity) && currentNetQuantity !== 0) {
             p.avgPrice = order.ltp;
         }
@@ -469,3 +470,4 @@ export function PortfolioClient() {
     
 
     
+
