@@ -79,6 +79,12 @@ export function WatchlistDashboard() {
 
   const fetchStockData = useCallback(async (isSilent = false) => {
     if (!activeWatchlist) return;
+    if (activeWatchlist.stocks.length === 0) {
+        setIsLoadingStocks(false);
+        setStocks({});
+        return;
+    };
+
 
     if (!isSilent) setIsLoadingStocks(true);
     try {
@@ -206,6 +212,9 @@ export function WatchlistDashboard() {
             setIsLoadingStocks(false);
         });
     }
+    setSearchQuery("");
+    setSearchResults([]);
+    setIsSearchMode(false);
   };
 
   const handleCreateWatchlist = () => {
@@ -235,7 +244,7 @@ export function WatchlistDashboard() {
   }
 
   const handleTradeAction = (type: 'buy' | 'sell', ticker: string) => {
-    router.push(`/trade/${encodeURIComponent(ticker)}`);
+    router.push(`/trade/${encodeURIComponent(ticker)}?type=${type}`);
     setIsActionSheetOpen(false);
   }
 
@@ -467,8 +476,10 @@ export function WatchlistDashboard() {
         stock={selectedStock} 
         isOpen={isActionSheetOpen} 
         onOpenChange={setIsActionSheetOpen}
-        onTrade={handleTradeAction} 
+        onTrade={handleTradeAction}
+        tradeButtonVariant="long-short"
       />
     </div>
   );
 }
+

@@ -22,6 +22,7 @@ interface StockActionSheetProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onTrade?: (type: 'buy' | 'sell', ticker: string) => void;
+  tradeButtonVariant?: 'long-short' | 'buy-sell';
 }
 
 const Fundamentals = ({ stock }: { stock: Stock }) => {
@@ -55,11 +56,12 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
 };
 
 
-export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade }: StockActionSheetProps) {
+export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short' }: StockActionSheetProps) {
     const [historicalData, setHistoricalData] = useState<HistoricalHistoryResult | null>(null);
 
     const fetchHistorical = useCallback(async () => {
         if (stock) {
+            setHistoricalData(null); // Reset on new stock
             const data = await getHistoricalData(stock.ticker);
             setHistoricalData(data);
         }
@@ -78,6 +80,10 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade }: Stock
           onTrade(type, stock.ticker);
         }
     }
+    
+    const buyText = tradeButtonVariant === 'long-short' ? 'Long' : 'Buy';
+    const sellText = tradeButtonVariant === 'long-short' ? 'Short' : 'Sell';
+
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -92,7 +98,6 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade }: Stock
           </SheetDescription>
         </SheetHeader>
         
-        {/* Chart */}
         <div className="h-64 my-4">
           <StockChart data={historicalData} isPositive={stock.change >= 0} />
         </div>
@@ -104,18 +109,16 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade }: Stock
         
         <Separator />
 
-        {/* Fundamentals */}
         <div className="py-4">
           <Fundamentals stock={stock} />
         </div>
         
         <Separator />
         
-        {/* Actions */}
         <div className="py-4 sticky bottom-0 bg-background">
             <div className="grid grid-cols-2 gap-4">
-                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => handleTradeClick('buy')}>Buy</Button>
-                <Button size="lg" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => handleTradeClick('sell')}>Sell</Button>
+                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => handleTradeClick('buy')}>{buyText}</Button>
+                <Button size="lg" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => handleTradeClick('sell')}>{sellText}</Button>
             </div>
         </div>
 

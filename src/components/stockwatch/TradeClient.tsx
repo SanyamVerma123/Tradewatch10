@@ -152,7 +152,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [stock, setStock] = useState<Stock | null>(initialStock);
   const [availableFunds, setAvailableFunds] = useState(0);
   const [holdings, setHoldings] = useState<Holding[]>([]);
-  const isSellFromPortfolio = !!orderToEdit?.isFromPortfolio;
+  const isFromPortfolio = orderToEdit?.isFromPortfolio;
 
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
   const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
@@ -196,7 +196,11 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     const portfolioData = JSON.parse(localStorage.getItem('portfolioData') || '{}');
     setHoldings(portfolioData.holdings || []);
-  }, []);
+
+    if(orderToEdit?.type) {
+        setOrderType(orderToEdit.type);
+    }
+  }, [orderToEdit]);
 
   useEffect(() => {
     fetchStock();
@@ -210,14 +214,15 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     }
   }, [stock, orderMethod, price]);
 
-  const isEditing = !!orderToEdit?.id;
+  const isEditing = !!orderToEdit?.id && !isFromPortfolio;
 
   const getExecutionPrice = () => {
     if (orderMethod.includes('MARKET')) {
         return stock?.price || 0;
     }
     if (orderMethod === 'SL') {
-        return parseFloat(price) || 0;
+        // When SL triggers, it should execute at market price in this simulation
+        return stock?.price || parseFloat(price) || 0;
     }
     return parseFloat(price) || 0;
   }
@@ -226,7 +231,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
 
   const currentHolding = holdings.find(h => h.ticker === ticker);
-  const maxSellQuantity = product === 'CNC' ? (currentHolding?.quantity || 0) : 10000; // Arbitrary high number for MIS
+  const maxSellQuantity = product === 'CNC' ? (currentHolding?.quantity || 0) : 10000;
 
   const executeOrder = (order: Order) => {
     if(!stock) return;
@@ -305,7 +310,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         description: `${order.type} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
     });
 
-    router.push('/portfolio');
+    router.push('/orders');
   }
 
 
@@ -326,7 +331,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     const limitPrice = orderMethod.includes('MARKET') ? stock.price : parseFloat(price) || 0;
 
     const newOrder: Order = {
-        id: orderToEdit?.id || `order-${Date.now()}`,
+        id: (isEditing && orderToEdit?.id) ? orderToEdit.id : `order-${Date.now()}`,
         type: orderType,
         ticker,
         quantity: parseInt(quantity) || 0,
@@ -361,7 +366,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     if (orderMethod.includes('MARKET') && marketIsOpen) {
         toast({title: "Executing Market Order..."});
         setTimeout(() => executeOrder(newOrder), 1500); // simulate network delay
-        return; // Important: stop further processing
+        return;
     }
 
     const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
@@ -418,11 +423,16 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         
         <main className="flex-1 overflow-y-auto pb-4">
           <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full">
-              {!isSellFromPortfolio && (
+              {!isFromPortfolio && (
                 <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="BUY" disabled={isEditing && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
                     <TabsTrigger value="SELL" disabled={isEditing && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
                 </TabsList>
+              )}
+              {isFromPortfolio && (
+                 <div className="px-4">
+                    <h2 className="text-center font-bold text-lg text-red-600">SELL FROM HOLDING</h2>
+                 </div>
               )}
               <div className="p-4 space-y-6">
                   <Tabs defaultValue="Regular" className="w-full">
