@@ -1,5 +1,17 @@
+
 "use client";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Card,
   CardContent,
@@ -10,11 +22,36 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 
 export function SettingsClient() {
   const router = useRouter();
+  const { toast } = useToast();
+
+  const handleClearData = () => {
+    try {
+        localStorage.removeItem('user');
+        localStorage.removeItem('isLoggedIn');
+        localStorage.removeItem('funds');
+        localStorage.removeItem('portfolioData');
+        localStorage.removeItem('orders');
+        localStorage.removeItem('watchlists');
+        toast({
+            title: "Data Cleared",
+            description: "All your data has been successfully cleared.",
+        });
+        router.push('/');
+    } catch(e) {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Could not clear app data.",
+        })
+    }
+  }
+
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
       <header className="mb-6 flex items-center gap-4">
@@ -70,6 +107,39 @@ export function SettingsClient() {
                 </Label>
                 <Switch id="dark-mode" />
           </div>
+        </CardContent>
+      </Card>
+      
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Data Management</CardTitle>
+          <CardDescription>
+            Clear all your local application data.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" className="w-full sm:w-auto">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Clear App Data
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete all your account data, including profile, portfolio, orders, and watchlists from this device.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearData}>
+                    Yes, clear data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
         </CardContent>
       </Card>
     </div>

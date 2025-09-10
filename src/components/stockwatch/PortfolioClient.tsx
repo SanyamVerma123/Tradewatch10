@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type { Portfolio, Holding, Stock, Order, Position } from "@/lib/types";
 import { getStockData } from "@/app/actions";
@@ -116,15 +116,12 @@ export function PortfolioClient() {
 
     const positionMap: { [ticker: string]: Position } = {};
     
-    const cncTradesToday = todayExecutedOrders.filter(o => o.product === 'CNC');
+    const cncTradesToday = todayExecutedOrders.filter(o => o.product === 'CNC' && !o.isSellFromHolding);
 
     for(const holding of currentHoldings) {
-        const sellsToday = cncTradesToday.filter(o => o.ticker === holding.ticker && o.type === 'SELL');
-        const buysToday = cncTradesToday.filter(o => o.ticker === holding.ticker && o.type === 'BUY');
-        const soldQty = sellsToday.reduce((sum, o) => sum + o.quantity, 0);
-        const boughtQty = buysToday.reduce((sum, o) => sum + o.quantity, 0);
-
-        if (soldQty > 0) {
+        const sellsToday = todayExecutedOrders.filter(o => o.ticker === holding.ticker && o.type === 'SELL' && o.isSellFromHolding);
+        if (sellsToday.length > 0) {
+            // Adjust day PNL for holdings sold today
             holdingsDayPnl -= sellsToday.reduce((sum, o) => sum + ((newStocksMap[o.ticker]?.previousClose || o.ltp) - o.ltp) * o.quantity, 0)
         }
     }
@@ -133,8 +130,6 @@ export function PortfolioClient() {
     const misTradesToday = todayExecutedOrders.filter(o => o.product === 'MIS');
 
     for (const order of [...misTradesToday, ...cncTradesToday]) {
-        if(order.isSellFromHolding) continue;
-
         const ltp = newStocksMap[order.ticker]?.price || order.ltp;
         let p = positionMap[order.ticker];
 
@@ -157,15 +152,17 @@ export function PortfolioClient() {
         }
         
         p.ltp = ltp;
+        const tradeValue = order.ltp * order.quantity;
 
         if (order.type === 'BUY') {
-            const newTotalValue = (p.avgPrice * p.quantity) + (order.ltp * order.quantity);
+            const newTotalValue = (p.avgPrice * p.quantity) + tradeValue;
             p.quantity += order.quantity;
             p.avgPrice = p.quantity !== 0 ? newTotalValue / p.quantity : 0;
         } else { // SELL
-            const newTotalValue = (p.avgPrice * p.quantity) - (order.ltp * order.quantity);
+            // For shorts, avgPrice is also the price sold at. P&L is calculated against this.
+            const newTotalValue = (p.avgPrice * Math.abs(p.quantity)) + tradeValue;
             p.quantity -= order.quantity;
-            p.avgPrice = p.quantity !== 0 ? newTotalValue / p.quantity : 0;
+            p.avgPrice = p.quantity !== 0 ? newTotalValue / Math.abs(p.quantity) : 0;
         }
     }
     
@@ -173,22 +170,25 @@ export function PortfolioClient() {
 
     updatedPositions.forEach(p => {
         p.type = p.quantity > 0 ? 'BUY' : 'SELL';
-        const netQty = Math.abs(p.quantity);
         
         const pnl = (p.ltp - p.avgPrice) * p.quantity;
         p.pnl = pnl;
         positionsDayPnl += pnl;
 
+        const netQty = Math.abs(p.quantity);
+        let investedValueForPos = p.avgPrice * netQty;
+        
         if(p.product === 'MIS') {
-            const tradesForPos = misTradesToday.filter(o => o.ticker === p.ticker);
-            const totalTradeValue = tradesForPos.reduce((sum, o) => sum + (o.ltp * o.quantity), 0);
-            misMarginUsed += totalTradeValue / 5; // Approx 5x leverage
+            const margin = investedValueForPos / 5; // Approx 5x leverage
+            misMarginUsed += margin;
+            p.investedValue = margin;
+        } else {
+             p.investedValue = investedValueForPos;
         }
         
         const liveData = newStocksMap[p.ticker];
         p.dayChange = liveData?.change || 0;
         p.dayChangePercent = liveData?.changePercent || 0;
-        p.investedValue = p.avgPrice * netQty;
         p.pnlPercent = p.investedValue > 0 ? (pnl / p.investedValue) * 100 : 0;
     });
 
@@ -281,6 +281,11 @@ export function PortfolioClient() {
       pos.ticker.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalPositionsInvested = useMemo(() => {
+    return filteredPositions.reduce((total, pos) => total + (pos.investedValue || 0), 0);
+  }, [filteredPositions]);
+
+
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
       <header className="mb-4 flex items-center justify-between">
@@ -370,7 +375,7 @@ export function PortfolioClient() {
                   </div>
                   <div className="flex justify-between items-end mt-1 text-xs text-muted-foreground">
                     <div>
-                        <span>Invested {holding.investedValue.toFixed(2)}</span>
+                        <span>Invested {(holding.investedValue || 0).toFixed(2)}</span>
                     </div>
                     <div className="text-right">
                         <span>LTP {holding.ltp.toFixed(2)} <span className={cn(holding.dayChange >= 0 ? "text-positive" : "text-destructive")}>({holding.dayChangePercent.toFixed(2)}%)</span></span>
@@ -382,6 +387,14 @@ export function PortfolioClient() {
           </div>
         </TabsContent>
         <TabsContent value="Positions">
+          {filteredPositions.length > 0 && (
+             <Card className="mb-4">
+                <CardContent className="p-3 flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Total Invested</span>
+                  <span className="font-semibold">₹{totalPositionsInvested.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</span>
+                </CardContent>
+             </Card>
+          )}
           <div className="space-y-2">
              {isLoading ? (
                 <div className="flex justify-center items-center p-10">
@@ -413,7 +426,7 @@ export function PortfolioClient() {
                   </div>
                   <div className="flex justify-between items-end mt-1 text-xs text-muted-foreground">
                     <div>
-                        <span></span>
+                         <span>Invested {(pos.investedValue || 0).toFixed(2)}</span>
                     </div>
                     <div className="text-right">
                         <span>LTP {pos.ltp.toFixed(2)} <span className={cn(pos.dayChange >= 0 ? "text-positive" : "text-destructive")}>({pos.dayChangePercent.toFixed(2)}%)</span></span>
@@ -430,7 +443,7 @@ export function PortfolioClient() {
         isOpen={isActionSheetOpen} 
         onOpenChange={setIsActionSheetOpen} 
         onTrade={onActionSheetTrade}
-        tradeButtonVariant="buy-sell"
+        tradeButtonVariant={activeTab === 'Holdings' ? 'buy-sell' : 'long-short'}
         isFromHolding={activeTab === 'Holdings'}
       />
     </div>
