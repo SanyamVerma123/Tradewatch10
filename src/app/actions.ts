@@ -98,12 +98,11 @@ export async function searchStocks(query: string) {
         return [];
     }
     try {
-        // We append .NS to search specifically on the Indian NSE market
-        const searchResult = await yahooFinance.search(`${query}`, { newsCount: 0 });
-        return searchResult.quotes.filter(q => q.symbol && (q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO'))).map(stock => ({
+        const searchResult = await yahooFinance.search(query, { newsCount: 0 });
+        return searchResult.quotes.filter(q => q.symbol && (q.exchange.includes('NMS') || q.exchange.includes('NYQ') || q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO'))).map(stock => ({
             ticker: stock.symbol,
             name: stock.longname || stock.shortname || stock.symbol,
-            exchange: stock.exchangecountry,
+            exchange: stock.exchange,
         }));
     } catch (error) {
         console.error('Error searching stocks:', error);
