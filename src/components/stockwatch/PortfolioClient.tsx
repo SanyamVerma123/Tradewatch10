@@ -112,16 +112,31 @@ export function PortfolioClient() {
 
     // 2. Calculate Today's Positions & P&L
     let positionsDayPnl = 0;
-    let cncPositionInvestedToday = 0;
     let misMarginUsed = 0;
 
     const positionMap: { [ticker: string]: Position } = {};
+    
+    const cncTradesToday = todayExecutedOrders.filter(o => o.product === 'CNC');
 
-    for (const order of todayExecutedOrders) {
+    for(const holding of currentHoldings) {
+        const sellsToday = cncTradesToday.filter(o => o.ticker === holding.ticker && o.type === 'SELL');
+        const buysToday = cncTradesToday.filter(o => o.ticker === holding.ticker && o.type === 'BUY');
+        const soldQty = sellsToday.reduce((sum, o) => sum + o.quantity, 0);
+        const boughtQty = buysToday.reduce((sum, o) => sum + o.quantity, 0);
+
+        if (soldQty > 0) {
+            holdingsDayPnl -= sellsToday.reduce((sum, o) => sum + ((newStocksMap[o.ticker]?.previousClose || o.ltp) - o.ltp) * o.quantity, 0)
+        }
+    }
+
+
+    const misTradesToday = todayExecutedOrders.filter(o => o.product === 'MIS');
+
+    for (const order of [...misTradesToday, ...cncTradesToday]) {
+        if(order.isSellFromHolding) continue;
+
         const ltp = newStocksMap[order.ticker]?.price || order.ltp;
         let p = positionMap[order.ticker];
-
-        const tradeValue = order.ltp * order.quantity;
 
         if (!p) {
             p = {
@@ -146,9 +161,11 @@ export function PortfolioClient() {
         if (order.type === 'BUY') {
             const newTotalValue = (p.avgPrice * p.quantity) + (order.ltp * order.quantity);
             p.quantity += order.quantity;
-            p.avgPrice = p.quantity > 0 ? newTotalValue / p.quantity : 0;
+            p.avgPrice = p.quantity !== 0 ? newTotalValue / p.quantity : 0;
         } else { // SELL
+            const newTotalValue = (p.avgPrice * p.quantity) - (order.ltp * order.quantity);
             p.quantity -= order.quantity;
+            p.avgPrice = p.quantity !== 0 ? newTotalValue / p.quantity : 0;
         }
     }
     
@@ -157,21 +174,17 @@ export function PortfolioClient() {
     updatedPositions.forEach(p => {
         p.type = p.quantity > 0 ? 'BUY' : 'SELL';
         const netQty = Math.abs(p.quantity);
-        const pnl = (p.ltp - p.avgPrice) * netQty * (p.type === 'BUY' ? 1 : -1);
+        
+        const pnl = (p.ltp - p.avgPrice) * p.quantity;
         p.pnl = pnl;
         positionsDayPnl += pnl;
 
         if(p.product === 'MIS') {
-            // Margin is based on the total value of trades, not net. Let's approximate.
-            const tradesForPos = todayExecutedOrders.filter(o => o.ticker === p.ticker);
+            const tradesForPos = misTradesToday.filter(o => o.ticker === p.ticker);
             const totalTradeValue = tradesForPos.reduce((sum, o) => sum + (o.ltp * o.quantity), 0);
-            misMarginUsed += totalTradeValue / 5;
-        } else if (p.product === 'CNC') {
-            const buyTrades = todayExecutedOrders.filter(o => o.ticker === p.ticker && o.type === 'BUY');
-            cncPositionInvestedToday += buyTrades.reduce((sum, o) => sum + (o.ltp * o.quantity), 0);
+            misMarginUsed += totalTradeValue / 5; // Approx 5x leverage
         }
-
-        // Update other fields for display
+        
         const liveData = newStocksMap[p.ticker];
         p.dayChange = liveData?.change || 0;
         p.dayChangePercent = liveData?.changePercent || 0;
@@ -182,7 +195,7 @@ export function PortfolioClient() {
     
     // 3. Combine for final portfolio view
     const dayPnl = holdingsDayPnl + positionsDayPnl;
-    const totalInvested = totalHoldingsInvested; // Only holdings are "invested"
+    const totalInvested = totalHoldingsInvested;
     const totalCurrentValue = totalHoldingsCurrentValue + positionsDayPnl;
     const totalPnl = totalCurrentValue - totalInvested;
     
@@ -192,19 +205,15 @@ export function PortfolioClient() {
       totalPnl: totalPnl,
       totalPnlPercent: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0,
       dayPnl: dayPnl,
-      dayPnlPercent: (totalInvested + cncPositionInvestedToday) > 0 ? (dayPnl / (totalInvested + cncPositionInvestedToday)) * 100 : 0,
-      holdings: updatedHoldings,
+      dayPnlPercent: (totalInvested + misMarginUsed) > 0 ? (dayPnl / (totalInvested + misMarginUsed)) * 100 : 0,
+      holdings: updatedHoldings.filter(h => h.quantity > 0),
       positions: updatedPositions,
     };
 
     setPortfolio(newPortfolio);
     
-    // Persist only holdings data
-    const newPortfolioDataToStore = { holdings: currentHoldings }; 
-    const storedPortfolioData = localStorage.getItem('portfolioData') || '{}';
-    if(JSON.stringify(newPortfolioDataToStore) !== storedPortfolioData) {
-        localStorage.setItem('portfolioData', JSON.stringify(newPortfolioDataToStore));
-    }
+    const newPortfolioDataToStore = { holdings: newPortfolio.holdings };
+    localStorage.setItem('portfolioData', JSON.stringify(newPortfolioDataToStore));
     
     setIsLoading(false);
   }, []);
@@ -212,10 +221,10 @@ export function PortfolioClient() {
 
   useEffect(() => {
     updatePortfolioData();
-    const interval = setInterval(() => updatePortfolioData(true), 5000); // Silent refresh
+    const interval = setInterval(() => updatePortfolioData(true), 5000);
     
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'portfolioData' || event.key === 'orders' || event.key === 'funds') {
+      if (event.key === 'portfolioData' || event.key === 'orders') {
         updatePortfolioData(true);
       }
     };
@@ -243,23 +252,22 @@ export function PortfolioClient() {
     }
   }
 
-  const onActionSheetTrade = (type: 'buy' | 'sell', ticker: string) => {
+  const onActionSheetTrade = (type: 'buy' | 'sell', ticker: string, isFromHolding: boolean) => {
      const holding = portfolio.holdings.find(h => h.ticker === ticker);
      const stock = stocksMap[ticker];
 
      const orderData: Partial<Order> = {
         type: type.toUpperCase() as 'BUY' | 'SELL',
         ticker: ticker,
-        quantity: type === 'sell' ? (holding?.quantity || 1) : 1,
-        product: 'CNC', // Default to CNC for portfolio actions
-        orderMethod: 'LIMIT',
+        quantity: (type === 'sell' && isFromHolding) ? (holding?.quantity || 1) : 1,
+        product: isFromHolding ? 'CNC' : 'MIS',
+        orderMethod: 'MARKET',
         ltp: stock?.price || 0,
         price: stock?.price?.toFixed(2) || '0',
-        isFromPortfolio: true
-     }
-
-     const orderQueryParam = encodeURIComponent(JSON.stringify(orderData));
-     router.push(`/trade/${encodeURIComponent(ticker)}?order=${orderQueryParam}`);
+        isSellFromHolding: isFromHolding && type === 'sell'
+     };
+     
+     router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);
      setIsActionSheetOpen(false);
   }
 
@@ -423,8 +431,11 @@ export function PortfolioClient() {
         onOpenChange={setIsActionSheetOpen} 
         onTrade={onActionSheetTrade}
         tradeButtonVariant="buy-sell"
+        isFromHolding={activeTab === 'Holdings'}
       />
     </div>
   );
 }
+    
+
     

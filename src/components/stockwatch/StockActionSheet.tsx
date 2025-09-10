@@ -21,8 +21,9 @@ interface StockActionSheetProps {
   stock: Stock | null;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onTrade?: (type: 'buy' | 'sell', ticker: string) => void;
+  onTrade?: (type: 'buy' | 'sell', ticker: string, isFromHolding: boolean) => void;
   tradeButtonVariant?: 'long-short' | 'buy-sell';
+  isFromHolding?: boolean;
 }
 
 const Fundamentals = ({ stock }: { stock: Stock }) => {
@@ -56,7 +57,7 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
 };
 
 
-export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short' }: StockActionSheetProps) {
+export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short', isFromHolding = false }: StockActionSheetProps) {
     const [historicalData, setHistoricalData] = useState<HistoricalHistoryResult | null>(null);
 
     const fetchHistorical = useCallback(async () => {
@@ -77,12 +78,12 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
 
     const handleTradeClick = (type: 'buy' | 'sell') => {
         if (onTrade) {
-          onTrade(type, stock.ticker);
+          onTrade(type, stock.ticker, isFromHolding);
         }
     }
     
-    const buyText = tradeButtonVariant === 'long-short' ? 'Long' : 'Buy';
-    const sellText = tradeButtonVariant === 'long-short' ? 'Short' : 'Sell';
+    const buyText = isFromHolding ? 'Buy' : (tradeButtonVariant === 'long-short' ? 'Long' : 'Buy');
+    const sellText = isFromHolding ? 'Sell' : (tradeButtonVariant === 'long-short' ? 'Short' : 'Sell');
 
 
   return (
@@ -126,3 +127,5 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
     </Sheet>
   );
 }
+
+    

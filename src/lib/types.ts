@@ -48,7 +48,7 @@ export interface Order {
   product?: string;
   orderMethod?: string;
   price?: string;
-  isFromPortfolio?: boolean;
+  isSellFromHolding?: boolean;
   executedAt?: string; // ISO date string
 }
 

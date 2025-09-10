@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Stock, Watchlist, NewsArticle } from "@/lib/types";
+import type { Stock, Watchlist, NewsArticle, Order } from "@/lib/types";
 import type { SuggestPriceAlertsOutput } from "@/ai/flows/suggest-price-alerts";
 import {
   AlertDialog,
@@ -244,7 +244,17 @@ export function WatchlistDashboard() {
   }
 
   const handleTradeAction = (type: 'buy' | 'sell', ticker: string) => {
-    router.push(`/trade/${encodeURIComponent(ticker)}?type=${type}`);
+    const stock = stocks[ticker];
+    const orderData: Partial<Order> = {
+        type: type === 'buy' ? 'BUY' : 'SELL',
+        ticker: ticker,
+        quantity: 1,
+        product: 'MIS',
+        orderMethod: 'MARKET',
+        ltp: stock?.price || 0,
+        price: stock?.price?.toFixed(2) || '0',
+    };
+    router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);
     setIsActionSheetOpen(false);
   }
 
@@ -483,3 +493,4 @@ export function WatchlistDashboard() {
   );
 }
 
+    

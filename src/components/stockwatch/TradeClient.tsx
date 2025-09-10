@@ -152,7 +152,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [stock, setStock] = useState<Stock | null>(initialStock);
   const [availableFunds, setAvailableFunds] = useState(0);
   const [holdings, setHoldings] = useState<Holding[]>([]);
-  const isFromPortfolio = orderToEdit?.isFromPortfolio;
+  const isSellFromHolding = orderToEdit?.isSellFromHolding;
 
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
   const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
@@ -197,8 +197,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     const portfolioData = JSON.parse(localStorage.getItem('portfolioData') || '{}');
     setHoldings(portfolioData.holdings || []);
 
-    if(orderToEdit?.type) {
-        setOrderType(orderToEdit.type);
+    if(orderToEdit) {
+        setOrderType(orderToEdit.type || "BUY");
+        setProduct(orderToEdit.product?.toUpperCase() || "CNC");
+        setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
+        setQuantity(orderToEdit.quantity?.toString() || "1");
+        setPrice(orderToEdit.price?.toString() || "");
     }
   }, [orderToEdit]);
 
@@ -214,7 +218,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     }
   }, [stock, orderMethod, price]);
 
-  const isEditing = !!orderToEdit?.id && !isFromPortfolio;
+  const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
 
   const getExecutionPrice = () => {
     if (orderMethod.includes('MARKET')) {
@@ -265,6 +269,9 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
     setAvailableFunds(newBalance);
     
+    // For CNC orders, update holdings in portfolioData
+    // We only update if it's NOT a sell from holding, because that's handled differently now.
+    // Selling from holding means we directly adjust the holding quantity.
     if (product === 'CNC') {
         const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
         let newHoldings = [...(portfolioData.holdings || [])];
@@ -290,7 +297,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                     investedValue: executedOrder.ltp * executedOrder.quantity,
                 });
             }
-        } else { // SELL
+        } else if (order.type === 'SELL' && isSellFromHolding) { 
             if (holdingIndex > -1) {
                 const existingHolding = newHoldings[holdingIndex];
                 const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
@@ -301,7 +308,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                 }
             }
         }
-        const newPortfolioData = { ...portfolioData, holdings: newHoldings };
+        const newPortfolioData = { holdings: newHoldings };
         localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
     }
     
@@ -347,6 +354,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         product: product,
         orderMethod: orderMethod,
         price: price,
+        isSellFromHolding: isSellFromHolding,
     }
 
     if (newOrder.quantity <= 0) {
@@ -423,13 +431,13 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         
         <main className="flex-1 overflow-y-auto pb-4">
           <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full">
-              {!isFromPortfolio && (
+              {!isSellFromHolding && (
                 <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="BUY" disabled={isEditing && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
                     <TabsTrigger value="SELL" disabled={isEditing && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
                 </TabsList>
               )}
-              {isFromPortfolio && (
+              {isSellFromHolding && (
                  <div className="px-4">
                     <h2 className="text-center font-bold text-lg text-red-600">SELL FROM HOLDING</h2>
                  </div>
@@ -572,5 +580,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
+
+    
 
     
