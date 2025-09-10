@@ -49,6 +49,7 @@ export interface Order {
   orderMethod?: string;
   price?: string;
   isFromPortfolio?: boolean;
+  executedAt?: string; // ISO date string
 }
 
 export interface Holding {
@@ -65,12 +66,20 @@ export interface Holding {
   dayChangePercent: number;
 }
 
+export interface Position extends Holding {
+    product: string;
+    type: 'BUY' | 'SELL';
+}
+
 export interface Portfolio {
     investedValue: number;
     currentValue: number;
     totalPnl: number;
     totalPnlPercent: number;
+    dayPnl: number;
+    dayPnlPercent: number;
     holdings: Holding[];
+    positions: Position[];
 }
 
 export interface User {

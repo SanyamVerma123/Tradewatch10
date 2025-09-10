@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import type { Portfolio, Holding, Stock, Order } from "@/lib/types";
+import type { Portfolio, Holding, Stock, Order, Position } from "@/lib/types";
 import { getStockData } from "@/app/actions";
 import {
   Card,
@@ -18,6 +18,13 @@ import { cn } from "@/lib/utils";
 import { portfolio as initialPortfolioData } from "@/lib/portfolio";
 import { StockActionSheet } from "./StockActionSheet";
 
+const isToday = (date: Date) => {
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+}
+
 export function PortfolioClient() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Holdings");
@@ -30,66 +37,67 @@ export function PortfolioClient() {
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   
   const updatePortfolioData = useCallback(async (isSilent = false) => {
-    let currentPortfolio: Portfolio;
+    if (!isSilent) setIsLoading(true);
+    
+    let currentHoldings: Holding[];
     let allOrders: Order[];
 
     try {
         const item = localStorage.getItem('portfolioData');
-        currentPortfolio = item ? JSON.parse(item) : initialPortfolioData;
+        currentHoldings = item ? JSON.parse(item).holdings : initialPortfolioData.holdings;
         const ordersItem = localStorage.getItem('orders');
         allOrders = ordersItem ? JSON.parse(ordersItem) : [];
     } catch (e) {
         console.error("Could not parse data from local storage", e);
-        currentPortfolio = initialPortfolioData;
+        currentHoldings = initialPortfolioData.holdings;
         allOrders = [];
     }
+    
+    const holdingTickers = currentHoldings.map(h => h.ticker);
+    const executedOrders = allOrders.filter(o => o.status === 'Executed');
+    const executedTickers = executedOrders.map(o => o.ticker);
+    
+    const allTickers = [...new Set([...holdingTickers, ...executedTickers])];
 
-    const tickers = currentPortfolio.holdings.map(h => h.ticker);
-    if (tickers.length === 0 && allOrders.filter(o => o.product === 'MIS' && o.status === 'Executed').length === 0) {
+    if (allTickers.length === 0) {
       setPortfolio({
-          ...currentPortfolio,
+          ...initialPortfolioData,
+          holdings: [],
+          positions: [],
           investedValue: 0,
           currentValue: 0,
           totalPnl: 0,
-          totalPnlPercent: 0,
+          dayPnl: 0,
       });
       setIsLoading(false);
       return;
     }
     
-    if (!isSilent) {
-        setIsLoading(true);
-    }
-    
-    const misTickers = allOrders.filter(o => o.product === 'MIS' && o.status === 'Executed').map(o => o.ticker);
-    const allTickers = [...new Set([...tickers, ...misTickers])];
     const stockData = await getStockData(allTickers);
-    
     const newStocksMap: Record<string, Stock> = {};
     stockData.forEach(s => newStocksMap[s.ticker] = s);
     setStocksMap(newStocksMap);
 
-    let totalCncInvestedValue = 0;
-    let totalCncCurrentValue = 0;
+    // 1. Calculate Holdings P&L (from previous days)
+    let totalHoldingsInvested = 0;
+    let totalHoldingsCurrentValue = 0;
 
-    const updatedHoldings = currentPortfolio.holdings.map(holding => {
+    const updatedHoldings = currentHoldings.map(holding => {
       const liveData = stockData.find(s => s.ticker === holding.ticker);
       const ltp = liveData?.price || holding.ltp;
-      const dayChange = liveData?.change || 0;
-      const dayChangePercent = liveData?.changePercent || 0;
       
       const investedValue = holding.avgPrice * holding.quantity;
       const currentValue = ltp * holding.quantity;
       const pnl = currentValue - investedValue;
       
-      totalCncInvestedValue += investedValue;
-      totalCncCurrentValue += currentValue;
+      totalHoldingsInvested += investedValue;
+      totalHoldingsCurrentValue += currentValue;
 
       return {
         ...holding,
         ltp,
-        dayChange,
-        dayChangePercent,
+        dayChange: liveData?.change || 0,
+        dayChangePercent: liveData?.changePercent || 0,
         pnl,
         pnlPercent: (investedValue > 0) ? (pnl / investedValue) * 100 : 0,
         investedValue,
@@ -97,47 +105,92 @@ export function PortfolioClient() {
       };
     });
 
-    let totalMisInvestedValue = 0; // This will be margin value
-    let totalMisPnl = 0;
+    // 2. Calculate Today's Positions & P&L
+    let dayPnl = 0;
+    let misMarginUsed = 0;
+    const todayExecutedOrders = executedOrders.filter(o => o.executedAt && isToday(new Date(o.executedAt)));
+
+    const positionMap: { [key: string]: Position } = {};
+
+    for (const order of todayExecutedOrders) {
+        const ltp = newStocksMap[order.ticker]?.price || order.ltp;
+        const p = positionMap[order.ticker];
+
+        const tradeValue = order.ltp * order.quantity;
+
+        if (order.product === 'MIS') {
+            misMarginUsed += tradeValue / 5; // 5x leverage
+        }
+
+        if (!p) { // New position
+            const invested = order.type === 'BUY' ? tradeValue : 0; // Sell MIS not based on holding
+            positionMap[order.ticker] = {
+                id: order.id,
+                ticker: order.ticker,
+                product: order.product || 'MIS',
+                type: order.type,
+                quantity: order.quantity,
+                avgPrice: order.ltp,
+                ltp: ltp,
+                pnl: (ltp - order.ltp) * order.quantity * (order.type === 'BUY' ? 1 : -1),
+                investedValue: invested,
+                dayChange: newStocksMap[order.ticker]?.change || 0,
+                dayChangePercent: newStocksMap[order.ticker]?.changePercent || 0,
+                pnlPercent: invested > 0 ? (((ltp - order.ltp) * order.quantity) / invested) * 100 : 0,
+            };
+        } else { // Existing position to aggregate
+            const currentPnl = (ltp - p.avgPrice) * p.quantity * (p.type === 'BUY' ? 1 : -1);
+            dayPnl -= currentPnl; // remove old pnl contribution
+
+            const newTotalQuantity = p.quantity + order.quantity;
+            const newAvgPrice = ((p.avgPrice * p.quantity) + (order.ltp * order.quantity)) / newTotalQuantity;
+            
+            p.avgPrice = newAvgPrice;
+            p.quantity = newTotalQuantity;
+            p.ltp = ltp;
+        }
+    }
     
-    const misPositions = allOrders.filter(o => o.product === 'MIS' && o.status === 'Executed');
-    misPositions.forEach(order => {
-        const liveData = stockData.find(s => s.ticker === order.ticker);
-        const ltp = liveData?.price || order.ltp;
-        const executedValue = order.ltp * order.quantity;
-        const currentValue = ltp * order.quantity;
-        
-        totalMisInvestedValue += executedValue / 5; // 5x leverage
-        if (order.type === 'BUY') {
-            totalMisPnl += (currentValue - executedValue);
-        } else { // SELL
-            totalMisPnl += (executedValue - currentValue);
+    const updatedPositions = Object.values(positionMap);
+    
+    let cncPositionInvestedToday = 0;
+    updatedPositions.forEach(p => {
+        const pnl = (p.ltp - p.avgPrice) * p.quantity * (p.type === 'BUY' ? 1 : -1);
+        p.pnl = pnl;
+        dayPnl += pnl;
+
+        if (p.product === 'CNC') {
+            cncPositionInvestedToday += p.avgPrice * p.quantity;
         }
     });
-
-    const totalInvested = totalCncInvestedValue + totalMisInvestedValue;
-    const totalCurrentValue = totalCncCurrentValue + totalMisInvestedValue + totalMisPnl;
-    const totalPnl = (totalCncCurrentValue - totalCncInvestedValue) + totalMisPnl;
-    const totalPnlPercent = (totalInvested > 0) ? (totalPnl / totalInvested) * 100 : 0;
-
-
+    
+    // 3. Combine for final portfolio view
+    const totalInvested = totalHoldingsInvested + cncPositionInvestedToday + misMarginUsed;
+    const totalCurrentValue = totalHoldingsCurrentValue + cncPositionInvestedToday + dayPnl + misMarginUsed;
+    const totalPnl = (totalHoldingsCurrentValue - totalHoldingsInvested) + dayPnl;
+    
     const newPortfolio: Portfolio = {
-      holdings: updatedHoldings,
       investedValue: totalInvested,
       currentValue: totalCurrentValue,
-      totalPnl,
-      totalPnlPercent,
+      totalPnl: totalPnl,
+      totalPnlPercent: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0,
+      dayPnl: dayPnl,
+      dayPnlPercent: (totalInvested > 0) ? (dayPnl / totalInvested) * 100 : 0,
+      holdings: updatedHoldings,
+      positions: updatedPositions,
     };
 
     setPortfolio(newPortfolio);
-    // Persist holdings data separately
-    const newPortfolioDataToStore = { ...currentPortfolio, holdings: updatedHoldings };
-    if(JSON.stringify(newPortfolioDataToStore) !== JSON.stringify(currentPortfolio)) {
+    
+    // Persist only holdings data
+    const newPortfolioDataToStore = { holdings: currentHoldings }; // only persist what doesn't change
+    if(JSON.stringify(newPortfolioDataToStore.holdings) !== JSON.stringify(currentHoldings)) {
         localStorage.setItem('portfolioData', JSON.stringify(newPortfolioDataToStore));
     }
     
     setIsLoading(false);
   }, []);
+
 
   useEffect(() => {
     updatePortfolioData();
@@ -188,6 +241,11 @@ export function PortfolioClient() {
     (holding) =>
       holding.ticker.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  
+  const filteredPositions = portfolio.positions.filter(
+    (pos) =>
+      pos.ticker.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -199,49 +257,58 @@ export function PortfolioClient() {
         </Button>
       </header>
       
+      <Card className="my-4">
+        <CardContent className="p-4">
+            <div className="grid grid-cols-2 gap-4 text-center">
+                <div>
+                    <div className="text-sm text-muted-foreground">Invested</div>
+                    <div className="text-lg font-semibold">₹{portfolio.investedValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                </div>
+                <div>
+                    <div className="text-sm text-muted-foreground">Current</div>
+                    <div className="text-lg font-semibold">₹{portfolio.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-4 text-center">
+                <div>
+                    <div className="text-sm text-muted-foreground">Overall P&L</div>
+                    <div className={cn("text-lg font-semibold", portfolio.totalPnl >= 0 ? "text-positive" : "text-destructive")}>
+                        {portfolio.totalPnl >= 0 ? '+' : ''}{portfolio.totalPnl.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                    </div>
+                </div>
+                <div>
+                    <div className="text-sm text-muted-foreground">Day's P&L</div>
+                    <div className={cn("text-lg font-semibold", portfolio.dayPnl >= 0 ? "text-positive" : "text-destructive")}>
+                        {portfolio.dayPnl >= 0 ? '+' : ''}{portfolio.dayPnl.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                    </div>
+                </div>
+            </div>
+        </CardContent>
+      </Card>
+      
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="Holdings">Holdings</TabsTrigger>
-          <TabsTrigger value="Positions">Positions</TabsTrigger>
+          <TabsTrigger value="Holdings">Holdings ({filteredHoldings.length})</TabsTrigger>
+          <TabsTrigger value="Positions">Positions ({filteredPositions.length})</TabsTrigger>
         </TabsList>
-        <TabsContent value="Holdings">
-            <Card className="my-4">
-                <CardContent className="p-4">
-                    <div className="grid grid-cols-2 gap-4 text-center">
-                        <div>
-                            <div className="text-sm text-muted-foreground">Invested</div>
-                            <div className="text-lg font-semibold">₹{portfolio.investedValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
-                        </div>
-                        <div>
-                            <div className="text-sm text-muted-foreground">Current</div>
-                            <div className="text-lg font-semibold">₹{portfolio.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
-                        </div>
-                    </div>
-                    <div className="mt-4 text-center">
-                        <div className="text-sm text-muted-foreground">P&L</div>
-                        <div className={cn("text-lg font-semibold", portfolio.totalPnl >= 0 ? "text-positive" : "text-destructive")}>
-                            {portfolio.totalPnl >= 0 ? '+' : ''}{portfolio.totalPnl.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} ({portfolio.totalPnlPercent.toFixed(2)}%)
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <div className="my-4 flex items-center justify-between gap-4">
-              <div className="relative flex-grow">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input
-                  placeholder="SEARCH"
-                  className="pl-10"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <Button variant="ghost" className="text-primary gap-2">
-                <SlidersHorizontal className="h-5 w-5" />
-                FILTER
-              </Button>
+        
+        <div className="my-4 flex items-center justify-between gap-4">
+            <div className="relative flex-grow">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Input
+                placeholder="SEARCH"
+                className="pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+            />
             </div>
-
+            <Button variant="ghost" className="text-primary gap-2">
+            <SlidersHorizontal className="h-5 w-5" />
+            FILTER
+            </Button>
+        </div>
+        
+        <TabsContent value="Holdings">
             <div className="space-y-2">
             {isLoading ? (
                 <div className="flex justify-center items-center p-10">
@@ -250,6 +317,7 @@ export function PortfolioClient() {
             ) : filteredHoldings.length === 0 ? (
                  <div className="text-center py-10">
                     <p className="text-muted-foreground">You have no holdings.</p>
+                    <Button variant="link" onClick={() => router.push('/watchlist')}>Start Investing</Button>
                 </div>
             ) : filteredHoldings.map((holding) => (
               <Card key={holding.id} onClick={() => handleHoldingClick(holding)} className="cursor-pointer">
@@ -278,11 +346,48 @@ export function PortfolioClient() {
               </Card>
             ))}
           </div>
-          
         </TabsContent>
         <TabsContent value="Positions">
-          <div className="text-center py-10">
-            <p className="text-muted-foreground">You have no positions for the day.</p>
+          <div className="space-y-2">
+             {isLoading ? (
+                <div className="flex justify-center items-center p-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            ) : filteredPositions.length === 0 ? (
+                 <div className="text-center py-10">
+                    <p className="text-muted-foreground">You have no positions for the day.</p>
+                     <Button variant="link" onClick={() => router.push('/watchlist')}>Start Trading</Button>
+                </div>
+            ) : filteredPositions.map((pos) => (
+              <Card key={pos.id} onClick={() => handleHoldingClick(pos as Holding)} className="cursor-pointer">
+                 <CardContent className="p-3">
+                  <div className="text-xs text-muted-foreground flex justify-between">
+                    <div>
+                        <span>{pos.product}</span>
+                        <span className="mx-1">&bull;</span>
+                        <span>{pos.quantity} Qty.</span>
+                        <span className="mx-1">&bull;</span>
+                        <span>Avg. {pos.avgPrice.toFixed(2)}</span>
+                    </div>
+                    <span className={cn("font-semibold", pos.type === 'BUY' ? 'text-blue-500' : 'text-red-500')}>{pos.type}</span>
+                  </div>
+                  <div className="flex justify-between items-center mt-1">
+                      <p className="font-bold">{pos.ticker}</p>
+                      <div className={cn("text-right font-semibold", pos.pnl >= 0 ? "text-positive" : "text-destructive")}>
+                          <p>{pos.pnl >= 0 ? '+' : ''}{pos.pnl.toFixed(2)}</p>
+                      </div>
+                  </div>
+                  <div className="flex justify-between items-end mt-1 text-xs text-muted-foreground">
+                    <div>
+                        <span></span>
+                    </div>
+                    <div className="text-right">
+                        <span>LTP {pos.ltp.toFixed(2)} <span className={cn(pos.dayChange >= 0 ? "text-positive" : "text-destructive")}>({pos.dayChangePercent.toFixed(2)}%)</span></span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </TabsContent>
       </Tabs>
@@ -295,5 +400,4 @@ export function PortfolioClient() {
     </div>
   );
 }
-
     

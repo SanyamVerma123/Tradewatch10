@@ -232,7 +232,13 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     if(!stock) return;
 
     const executionPrice = getExecutionPrice();
-    const executedOrder: Order = { ...order, status: 'Executed', filledQuantity: order.quantity, ltp: executionPrice };
+    const executedOrder: Order = { 
+        ...order, 
+        status: 'Executed', 
+        filledQuantity: order.quantity, 
+        ltp: executionPrice,
+        executedAt: new Date().toISOString()
+    };
     
     let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
     const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
@@ -255,7 +261,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     setAvailableFunds(newBalance);
     
     if (product === 'CNC') {
-        const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
+        const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
         let newHoldings = [...(portfolioData.holdings || [])];
         const holdingIndex = newHoldings.findIndex(h => h.ticker === ticker);
 
@@ -264,7 +270,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                 const existingHolding = newHoldings[holdingIndex];
                 const totalQuantity = existingHolding.quantity + executedOrder.quantity;
                 const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
-                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
+                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice, investedValue: newAvgPrice * totalQuantity };
             } else {
                 newHoldings.push({
                     id: `holding-${Date.now()}`,
@@ -284,7 +290,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                 const existingHolding = newHoldings[holdingIndex];
                 const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
                 if (updatedQuantity > 0) {
-                     newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity };
+                     newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity, investedValue: existingHolding.avgPrice * updatedQuantity };
                 } else {
                     newHoldings.splice(holdingIndex, 1);
                 }
@@ -299,7 +305,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         description: `${order.type} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
     });
 
-    router.push('/orders');
+    router.push('/portfolio');
   }
 
 

@@ -1,5 +1,6 @@
 
-import type { Holding, Portfolio } from './types';
+
+import type { Holding, Portfolio, Position } from './types';
 
 // This data now serves as a default/initial state.
 // The PortfolioClient will fetch live data and update these values.
@@ -31,6 +32,8 @@ export const holdings: Holding[] = [
   },
 ];
 
+export const positions: Position[] = [];
+
 // This function will now be used to initialize the portfolio state
 // but the actual state will be managed in PortfolioClient and localStorage.
 export const getInitialPortfolio = (): Portfolio => {
@@ -47,10 +50,12 @@ export const getInitialPortfolio = (): Portfolio => {
       currentValue,
       totalPnl,
       totalPnlPercent,
+      dayPnl: 0,
+      dayPnlPercent: 0,
       holdings,
+      positions,
     };
 };
 
 export const portfolio: Portfolio = getInitialPortfolio();
-
     
