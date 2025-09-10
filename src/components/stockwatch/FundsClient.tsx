@@ -46,7 +46,7 @@ export function FundsClient() {
     if (portfolioData) {
         const holdingsInvested = portfolioData.holdings.reduce((acc, h) => acc + h.investedValue, 0);
         const holdingsCurrentValue = portfolioData.holdings.reduce((acc, h) => acc + (h.ltp * h.quantity), 0);
-        const positionsPnl = portfolioData.positions.reduce((acc, p) => acc + p.pnl, 0);
+        const positionsPnl = (portfolioData.positions || []).reduce((acc, p) => acc + p.pnl, 0);
 
         const totalInvestedVal = holdingsInvested;
         const totalCurrentVal = holdingsCurrentValue + positionsPnl;
