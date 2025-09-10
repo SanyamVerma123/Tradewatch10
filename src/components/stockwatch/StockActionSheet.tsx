@@ -43,8 +43,8 @@ const timeframes: { label: string; value: Timeframe }[] = [
 const Fundamentals = ({ stock }: { stock: Stock }) => {
   const data = [
     { label: "Open", value: stock.open?.toFixed(2) },
-    { label: "High", value: stock.dayHigh?.toFixed(2) },
-    { label: "Low", value: stock.dayLow?.toFixed(2) },
+    { label: "Day's High", value: stock.dayHigh?.toFixed(2) },
+    { label: "Day's Low", value: stock.dayLow?.toFixed(2) },
     { label: "Prev. Close", value: stock.previousClose?.toFixed(2) },
     { label: "Bid", value: stock.bid?.toFixed(2) },
     { label: "Ask", value: stock.ask?.toFixed(2) },
