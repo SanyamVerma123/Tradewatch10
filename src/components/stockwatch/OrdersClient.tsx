@@ -47,7 +47,7 @@ export function OrdersClient() {
 
   const executeOrder = useCallback((orderToExecute: Order, ltp: number) => {
     // This is a simulation. In a real app, this would be handled by a backend.
-    const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp };
+    const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString() };
 
     // Update orders in state and local storage
     let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
@@ -161,13 +161,13 @@ export function OrdersClient() {
             // AMOs execute at market open price
             if (order.isAMO) {
                 shouldExecute = true; 
-            } else if (order.orderMethod?.includes("LIMIT")) {
+            } else if (order.orderMethod === "LIMIT") {
                 if (order.type === 'BUY' && ltp <= order.limitPrice) {
                     shouldExecute = true;
                 } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
                     shouldExecute = true;
                 }
-            } else if(order.orderMethod?.includes("SL")) { // SL and SL-M
+            } else if(order.orderMethod === "SL" || order.orderMethod === "SL-M") {
                  if (order.triggerPrice && order.type === 'BUY' && ltp >= order.triggerPrice) {
                     shouldExecute = true;
                 } else if (order.triggerPrice && order.type === 'SELL' && ltp <= order.triggerPrice) {
@@ -176,8 +176,8 @@ export function OrdersClient() {
             }
             
             if (shouldExecute) {
-                 // For SL-Limit orders, the actual execution price is the limit price. For others, it's LTP.
-                const executionPrice = order.orderMethod === "SL" ? order.limitPrice : ltp;
+                // For LIMIT orders, execution price is the limit price. For SL-M, it's LTP. For SL, it should be the limit price if specified, but we'll use LTP for a more realistic fill simulation post-trigger.
+                const executionPrice = order.orderMethod === "LIMIT" ? order.limitPrice : ltp;
                 executeOrder(order, executionPrice);
                 ordersWereExecuted = true;
             }
