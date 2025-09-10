@@ -53,9 +53,11 @@ export function PortfolioClient() {
         allOrders = [];
     }
     
-    const holdingTickers = currentHoldings.map(h => h.ticker);
     const executedOrders = allOrders.filter(o => o.status === 'Executed');
     const todayExecutedOrders = executedOrders.filter(o => o.executedAt && isToday(new Date(o.executedAt)));
+    
+    // Make sure holdings are not null/undefined before mapping
+    const holdingTickers = (currentHoldings || []).map(h => h.ticker);
     const positionTickers = todayExecutedOrders.map(o => o.ticker);
     
     const allTickers = [...new Set([...holdingTickers, ...positionTickers])];
@@ -84,7 +86,7 @@ export function PortfolioClient() {
     let totalHoldingsCurrentValue = 0;
     let holdingsDayPnl = 0;
 
-    const updatedHoldings = currentHoldings.map(holding => {
+    const updatedHoldings = (currentHoldings || []).map(holding => {
       const liveData = newStocksMap[holding.ticker];
       const ltp = liveData?.price || holding.ltp;
       const prevClose = liveData?.previousClose || holding.avgPrice;
@@ -118,7 +120,7 @@ export function PortfolioClient() {
     
     const cncTradesToday = todayExecutedOrders.filter(o => o.product === 'CNC' && !o.isSellFromHolding);
 
-    for(const holding of currentHoldings) {
+    for(const holding of (currentHoldings || [])) {
         const sellsToday = todayExecutedOrders.filter(o => o.ticker === holding.ticker && o.type === 'SELL' && o.isSellFromHolding);
         if (sellsToday.length > 0) {
             // Adjust day PNL for holdings sold today
@@ -153,16 +155,28 @@ export function PortfolioClient() {
         
         p.ltp = ltp;
         const tradeValue = order.ltp * order.quantity;
+        const currentNetQuantity = p.quantity;
+        const currentAbsQuantity = Math.abs(currentNetQuantity);
 
         if (order.type === 'BUY') {
-            const newTotalValue = (p.avgPrice * p.quantity) + tradeValue;
+            const newTotalValue = (p.avgPrice * currentAbsQuantity) + tradeValue;
             p.quantity += order.quantity;
-            p.avgPrice = p.quantity !== 0 ? newTotalValue / p.quantity : 0;
+            p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
         } else { // SELL
-            // For shorts, avgPrice is also the price sold at. P&L is calculated against this.
-            const newTotalValue = (p.avgPrice * Math.abs(p.quantity)) + tradeValue;
-            p.quantity -= order.quantity;
-            p.avgPrice = p.quantity !== 0 ? newTotalValue / Math.abs(p.quantity) : 0;
+            // For shorts or selling from a long position
+             if (currentNetQuantity > 0) { // Closing a long position
+                 p.quantity -= order.quantity;
+                 // Average price doesn't change when selling
+             } else { // Adding to a short position
+                 const newTotalValue = (p.avgPrice * currentAbsQuantity) + tradeValue;
+                 p.quantity -= order.quantity;
+                 p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
+             }
+        }
+
+        // If quantities flip sign (e.g. from +10 to -5), avgPrice should be the price of the flipping trade
+        if (Math.sign(p.quantity) !== Math.sign(currentNetQuantity) && currentNetQuantity !== 0) {
+            p.avgPrice = order.ltp;
         }
     }
     
@@ -215,7 +229,7 @@ export function PortfolioClient() {
     const newPortfolioDataToStore = { holdings: newPortfolio.holdings };
     localStorage.setItem('portfolioData', JSON.stringify(newPortfolioDataToStore));
     
-    setIsLoading(false);
+    if (!isSilent) setIsLoading(false);
   }, []);
 
 
@@ -349,7 +363,7 @@ export function PortfolioClient() {
         
         <TabsContent value="Holdings">
             <div className="space-y-2">
-            {isLoading ? (
+            {isLoading && filteredHoldings.length === 0 ? (
                 <div className="flex justify-center items-center p-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
@@ -396,7 +410,7 @@ export function PortfolioClient() {
              </Card>
           )}
           <div className="space-y-2">
-             {isLoading ? (
+             {isLoading && filteredPositions.length === 0 ? (
                 <div className="flex justify-center items-center p-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
