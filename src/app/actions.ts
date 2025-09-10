@@ -36,6 +36,8 @@ export async function getStockData(tickers: string[]) {
             previousClose: stock.regularMarketPreviousClose ?? 0,
             volume: stock.regularMarketVolume ?? 0,
             avgVolume: stock.averageDailyVolume3Month ?? 0,
+            fiftyTwoWeekHigh: stock.fiftyTwoWeekHigh ?? 0,
+            fiftyTwoWeekLow: stock.fiftyTwoWeekLow ?? 0,
         }));
     } catch (error) {
         console.error('Error fetching stock data from Yahoo Finance:', error);
@@ -43,21 +45,50 @@ export async function getStockData(tickers: string[]) {
     }
 }
 
-export async function getHistoricalData(ticker: string): Promise<HistoricalHistoryResult | null> {
+export async function getHistoricalData(ticker: string, period: '5d' | '1mo' | '3mo' | '1y' | 'max' = '3mo'): Promise<HistoricalHistoryResult | null> {
   if (!ticker) return null;
-  try {
-    const today = new Date();
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(today.getMonth() - 3);
 
+  const today = new Date();
+  let startDate: Date;
+  let interval: '1d' | '1wk' | '1mo' = '1d';
+
+  switch (period) {
+    case '5d':
+      startDate = new Date();
+      startDate.setDate(today.getDate() - 5);
+      interval = '1d';
+      break;
+    case '1mo':
+      startDate = new Date();
+      startDate.setMonth(today.getMonth() - 1);
+      interval = '1d';
+      break;
+    case '1y':
+      startDate = new Date();
+      startDate.setFullYear(today.getFullYear() - 1);
+      interval = '1wk';
+      break;
+    case 'max':
+      startDate = new Date(0); // Epoch start for all data
+      interval = '1mo';
+      break;
+    case '3mo':
+    default:
+      startDate = new Date();
+      startDate.setMonth(today.getMonth() - 3);
+      interval = '1d';
+      break;
+  }
+  
+  try {
     const result = await yahooFinance.historical(ticker, {
-      period1: threeMonthsAgo.toISOString().split('T')[0],
+      period1: startDate.toISOString().split('T')[0],
       period2: today.toISOString().split('T')[0],
-      interval: '1d',
+      interval: interval,
     });
     return result;
   } catch (error) {
-    console.error(`Error fetching historical data for ${ticker}:`, error);
+    console.error(`Error fetching historical data for ${ticker} (${period}):`, error);
     return null;
   }
 }

@@ -14,6 +14,8 @@ export interface Stock {
   volume: number;
   avgVolume: number;
   exchange?: string;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
 }
 
 export interface Watchlist {

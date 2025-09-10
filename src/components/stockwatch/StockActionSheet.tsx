@@ -16,6 +16,7 @@ import { useState, useEffect, useCallback } from "react";
 import { StockChart } from "@/components/stockwatch/StockChart";
 import { getHistoricalData } from "@/app/actions";
 import type { HistoricalHistoryResult } from "yahoo-finance2/dist/esm/src/modules/historical";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 interface StockActionSheetProps {
   stock: Stock | null;
@@ -26,12 +27,24 @@ interface StockActionSheetProps {
   isFromHolding?: boolean;
 }
 
+type Timeframe = '5d' | '1mo' | '3mo' | '1y' | 'max';
+
+const timeframes: { label: string; value: Timeframe }[] = [
+  { label: '5D', value: '5d' },
+  { label: '1M', value: '1mo' },
+  { label: '3M', value: '3mo' },
+  { label: '1Y', value: '1y' },
+  { label: 'Max', value: 'max' },
+];
+
 const Fundamentals = ({ stock }: { stock: Stock }) => {
   const data = [
     { label: "Open", value: stock.open?.toFixed(2) },
     { label: "High", value: stock.dayHigh?.toFixed(2) },
     { label: "Low", value: stock.dayLow?.toFixed(2) },
     { label: "Prev. Close", value: stock.previousClose?.toFixed(2) },
+    { label: "52W High", value: stock.fiftyTwoWeekHigh?.toFixed(2) },
+    { label: "52W Low", value: stock.fiftyTwoWeekLow?.toFixed(2) },
     { label: "Volume", value: stock.volume?.toLocaleString('en-IN') },
     { label: "Market Cap", value: typeof stock.marketCap === 'number' ? `₹${(stock.marketCap / 10000000).toFixed(2)}Cr` : stock.marketCap },
   ];
@@ -43,7 +56,7 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
           {data.map(item => (
             <div key={item.label} className="flex justify-between border-b pb-1">
               <span className="text-muted-foreground">{item.label}</span>
-              <span className="font-medium">{item.value}</span>
+              <span className="font-medium">{item.value || '-'}</span>
             </div>
           ))}
         </div>
@@ -59,14 +72,15 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
 
 export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short', isFromHolding = false }: StockActionSheetProps) {
     const [historicalData, setHistoricalData] = useState<HistoricalHistoryResult | null>(null);
+    const [timeframe, setTimeframe] = useState<Timeframe>('3mo');
 
     const fetchHistorical = useCallback(async () => {
         if (stock) {
-            setHistoricalData(null); // Reset on new stock
-            const data = await getHistoricalData(stock.ticker);
+            setHistoricalData(null); // Reset on new stock/timeframe
+            const data = await getHistoricalData(stock.ticker, timeframe);
             setHistoricalData(data);
         }
-    }, [stock]);
+    }, [stock, timeframe]);
 
     useEffect(() => {
         if(isOpen && stock) {
@@ -102,9 +116,31 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
         <div className="h-64 my-4">
           <StockChart data={historicalData} isPositive={stock.change >= 0} />
         </div>
+        
+        <div className="flex justify-center mb-4">
+            <RadioGroup 
+                value={timeframe} 
+                onValueChange={(value) => setTimeframe(value as Timeframe)} 
+                className="flex gap-2 bg-muted p-1 rounded-md"
+            >
+                {timeframes.map(tf => (
+                    <RadioGroupItem key={tf.value} value={tf.value} id={`tf-${tf.value}`} className="sr-only" />
+                    <Label 
+                        htmlFor={`tf-${tf.value}`}
+                        className={cn(
+                            "px-3 py-1 text-xs font-medium rounded-md cursor-pointer transition-colors",
+                            timeframe === tf.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
+                        )}
+                    >
+                        {tf.label}
+                    </Label>
+                ))}
+            </RadioGroup>
+        </div>
+
         <div className="flex justify-center mb-4">
              <a href={`https://in.tradingview.com/chart/?symbol=NSE:${stock.ticker.replace('.NS', '')}`} target="_blank" rel="noopener noreferrer" className="text-primary text-sm font-medium flex items-center gap-2">
-                View on TradingView <ExternalLink className="h-4 w-4" />
+                View full chart <ExternalLink className="h-4 w-4" />
             </a>
         </div>
         
@@ -127,5 +163,3 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
     </Sheet>
   );
 }
-
-    
