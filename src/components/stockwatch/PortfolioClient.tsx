@@ -39,39 +39,60 @@ export function PortfolioClient() {
   const updatePortfolioData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
     
-    let currentHoldings: Holding[];
     let allOrders: Order[];
-
     try {
-        const item = localStorage.getItem('portfolioData');
-        currentHoldings = item ? JSON.parse(item).holdings : initialPortfolioData.holdings;
         const ordersItem = localStorage.getItem('orders');
         allOrders = ordersItem ? JSON.parse(ordersItem) : [];
     } catch (e) {
-        console.error("Could not parse data from local storage", e);
-        currentHoldings = initialPortfolioData.holdings;
+        console.error("Could not parse orders from local storage", e);
         allOrders = [];
     }
     
-    const executedOrders = allOrders.filter(o => o.status === 'Executed');
-    const todayExecutedOrders = executedOrders.filter(o => o.executedAt && isToday(new Date(o.executedAt)));
+    const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executedAt);
+    const todayExecutedOrders = executedOrders.filter(o => isToday(new Date(o.executedAt!)));
+    const previousDaysExecutedOrders = executedOrders.filter(o => !isToday(new Date(o.executedAt!)));
+
+    // Calculate historical holdings from previous days' CNC trades
+    const historicalHoldingsMap: { [ticker: string]: Holding } = {};
+    for (const order of previousDaysExecutedOrders) {
+      if (order.product !== 'CNC') continue;
+
+      let holding = historicalHoldingsMap[order.ticker];
+      if (!holding) {
+          holding = {
+              id: `holding-${order.ticker}`,
+              ticker: order.ticker,
+              quantity: 0,
+              avgPrice: 0,
+              investedValue: 0,
+              ltp: 0, // Will be updated later
+              pnl: 0,
+              pnlPercent: 0,
+              dayChange: 0,
+              dayChangePercent: 0,
+          };
+          historicalHoldingsMap[order.ticker] = holding;
+      }
+      
+      const tradeValue = order.ltp * order.quantity;
+
+      if(order.type === 'BUY') {
+          const newTotalValue = (holding.avgPrice * holding.quantity) + tradeValue;
+          holding.quantity += order.quantity;
+          holding.avgPrice = holding.quantity > 0 ? newTotalValue / holding.quantity : 0;
+      } else { // SELL
+          holding.quantity -= order.quantity;
+      }
+    }
+    let currentHoldings: Holding[] = Object.values(historicalHoldingsMap).filter(h => h.quantity > 0);
     
-    // Make sure holdings are not null/undefined before mapping
-    const holdingTickers = (currentHoldings || []).map(h => h.ticker);
+    // Tickers to fetch data for
+    const holdingTickers = currentHoldings.map(h => h.ticker);
     const positionTickers = todayExecutedOrders.map(o => o.ticker);
-    
     const allTickers = [...new Set([...holdingTickers, ...positionTickers])];
 
     if (allTickers.length === 0) {
-      setPortfolio({
-          ...initialPortfolioData,
-          holdings: [],
-          positions: [],
-          investedValue: 0,
-          currentValue: 0,
-          totalPnl: 0,
-          dayPnl: 0,
-      });
+      setPortfolio({ ...initialPortfolioData, holdings: [], positions: [] });
       setIsLoading(false);
       return;
     }
@@ -86,7 +107,7 @@ export function PortfolioClient() {
     let totalHoldingsCurrentValue = 0;
     let holdingsDayPnl = 0;
 
-    const updatedHoldings = (currentHoldings || []).map(holding => {
+    const updatedHoldings = currentHoldings.map(holding => {
       const liveData = newStocksMap[holding.ticker];
       const ltp = liveData?.price || holding.ltp;
       const prevClose = liveData?.previousClose || holding.avgPrice;
@@ -95,43 +116,29 @@ export function PortfolioClient() {
       const currentValue = ltp * holding.quantity;
       const pnl = currentValue - investedValue;
       const dayPnlForHolding = (ltp - prevClose) * holding.quantity;
-      holdingsDayPnl += dayPnlForHolding;
       
+      holdingsDayPnl += dayPnlForHolding;
       totalHoldingsInvested += investedValue;
       totalHoldingsCurrentValue += currentValue;
 
       return {
         ...holding,
         ltp,
-        dayChange: liveData?.change || 0,
-        dayChangePercent: liveData?.changePercent || 0,
+        investedValue,
+        currentValue,
         pnl,
         pnlPercent: (investedValue > 0) ? (pnl / investedValue) * 100 : 0,
-        investedValue,
-        currentValue
+        dayChange: liveData?.change || 0,
+        dayChangePercent: liveData?.changePercent || 0,
       };
     });
 
     // 2. Calculate Today's Positions & P&L
     let positionsDayPnl = 0;
     let misMarginUsed = 0;
-
     const positionMap: { [ticker: string]: Position } = {};
     
-    const cncTradesToday = todayExecutedOrders.filter(o => o.product === 'CNC' && !o.isSellFromHolding);
-
-    for(const holding of (currentHoldings || [])) {
-        const sellsToday = todayExecutedOrders.filter(o => o.ticker === holding.ticker && o.type === 'SELL' && o.isSellFromHolding);
-        if (sellsToday.length > 0) {
-            // Adjust day PNL for holdings sold today
-            holdingsDayPnl -= sellsToday.reduce((sum, o) => sum + ((newStocksMap[o.ticker]?.previousClose || o.ltp) - o.ltp) * o.quantity, 0)
-        }
-    }
-
-
-    const misTradesToday = todayExecutedOrders.filter(o => o.product === 'MIS');
-
-    for (const order of [...misTradesToday, ...cncTradesToday]) {
+    for (const order of todayExecutedOrders) {
         const ltp = newStocksMap[order.ticker]?.price || order.ltp;
         let p = positionMap[order.ticker];
 
@@ -148,7 +155,7 @@ export function PortfolioClient() {
                 dayChange: newStocksMap[order.ticker]?.change || 0,
                 dayChangePercent: newStocksMap[order.ticker]?.changePercent || 0,
                 pnlPercent: 0,
-                type: 'BUY', // This will be determined by net quantity
+                type: 'BUY',
             };
             positionMap[order.ticker] = p;
         }
@@ -163,38 +170,34 @@ export function PortfolioClient() {
             p.quantity += order.quantity;
             p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
         } else { // SELL
-            // For shorts or selling from a long position
-             if (currentNetQuantity > 0) { // Closing a long position
+            if (currentNetQuantity > 0) {
                  p.quantity -= order.quantity;
-                 // Average price doesn't change when selling
-             } else { // Adding to a short position
+             } else {
                  const newTotalValue = (p.avgPrice * currentAbsQuantity) + tradeValue;
                  p.quantity -= order.quantity;
                  p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
              }
         }
-
-        // If quantities flip sign (e.g. from +10 to -5), avgPrice should be the price of the flipping trade
         if (Math.sign(p.quantity) !== Math.sign(currentNetQuantity) && currentNetQuantity !== 0) {
             p.avgPrice = order.ltp;
         }
     }
     
-    const updatedPositions = Object.values(positionMap).filter(p => p.quantity !== 0);
+    const updatedPositions = Object.values(positionMap); // Keep all today's activity, even squared-off ones
 
     updatedPositions.forEach(p => {
-        p.type = p.quantity > 0 ? 'BUY' : 'SELL';
+        p.type = p.quantity > 0 ? 'BUY' : (p.quantity < 0 ? 'SELL' : 'CLOSED');
         
         const pnl = (p.ltp - p.avgPrice) * p.quantity;
         p.pnl = pnl;
-        positionsDayPnl += pnl;
+        if(p.quantity !== 0) positionsDayPnl += pnl;
 
         const netQty = Math.abs(p.quantity);
         let investedValueForPos = p.avgPrice * netQty;
         
         if(p.product === 'MIS') {
-            const margin = investedValueForPos / 5; // Approx 5x leverage
-            misMarginUsed += margin;
+            const margin = investedValueForPos / 5;
+            if(p.quantity !== 0) misMarginUsed += margin;
             p.investedValue = margin;
         } else {
              p.investedValue = investedValueForPos;
@@ -203,16 +206,20 @@ export function PortfolioClient() {
         const liveData = newStocksMap[p.ticker];
         p.dayChange = liveData?.change || 0;
         p.dayChangePercent = liveData?.changePercent || 0;
-        p.pnlPercent = p.investedValue > 0 ? (pnl / p.investedValue) * 100 : 0;
+        p.pnlPercent = p.investedValue > 0 && p.quantity !==0 ? (pnl / p.investedValue) * 100 : 0;
     });
 
-    
     // 3. Combine for final portfolio view
     const dayPnl = holdingsDayPnl + positionsDayPnl;
     const totalInvested = totalHoldingsInvested;
     const totalCurrentValue = totalHoldingsCurrentValue + positionsDayPnl;
     const totalPnl = totalCurrentValue - totalInvested;
     
+    // Save current holdings to localstorage for next session
+    const finalHoldings = updatedHoldings.filter(h => h.quantity > 0);
+    const newPortfolioDataToStore = { holdings: finalHoldings };
+    localStorage.setItem('portfolioData', JSON.stringify(newPortfolioDataToStore));
+
     const newPortfolio: Portfolio = {
       investedValue: totalInvested,
       currentValue: totalCurrentValue,
@@ -220,15 +227,11 @@ export function PortfolioClient() {
       totalPnlPercent: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0,
       dayPnl: dayPnl,
       dayPnlPercent: (totalInvested + misMarginUsed) > 0 ? (dayPnl / (totalInvested + misMarginUsed)) * 100 : 0,
-      holdings: updatedHoldings.filter(h => h.quantity > 0),
-      positions: updatedPositions,
+      holdings: finalHoldings,
+      positions: updatedPositions.filter(p => p.quantity !== 0), // Only show open positions
     };
 
     setPortfolio(newPortfolio);
-    
-    const newPortfolioDataToStore = { holdings: newPortfolio.holdings };
-    localStorage.setItem('portfolioData', JSON.stringify(newPortfolioDataToStore));
-    
     if (!isSilent) setIsLoading(false);
   }, []);
 

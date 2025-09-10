@@ -231,7 +231,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
 
   const currentHolding = holdings.find(h => h.ticker === ticker);
-  const maxSellQuantity = product === 'CNC' ? (currentHolding?.quantity || 0) : 10000;
+  const maxSellQuantity = isSellFromHolding ? (currentHolding?.quantity || 0) : 10000;
 
   const executeOrder = (order: Order) => {
     if(!stock) return;
@@ -265,46 +265,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: Math.max(0, newBalance) }));
     setAvailableFunds(Math.max(0, newBalance));
     
-    if (product === 'CNC' || isSellFromHolding) {
-        const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
-        let newHoldings = [...(portfolioData.holdings || [])];
-        const holdingIndex = newHoldings.findIndex(h => h.ticker === ticker);
-
-        if (order.type === 'BUY') {
-            if (holdingIndex > -1) {
-                const existingHolding = newHoldings[holdingIndex];
-                const totalQuantity = existingHolding.quantity + executedOrder.quantity;
-                const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
-                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice, investedValue: newAvgPrice * totalQuantity };
-            } else {
-                newHoldings.push({
-                    id: `holding-${Date.now()}`,
-                    ticker: ticker,
-                    quantity: executedOrder.quantity,
-                    avgPrice: executedOrder.ltp,
-                    ltp: executedOrder.ltp,
-                    pnl: 0,
-                    pnlPercent: 0,
-                    dayChange: stock?.change || 0,
-                    dayChangePercent: stock?.changePercent || 0,
-                    investedValue: executedOrder.ltp * executedOrder.quantity,
-                });
-            }
-        } else { // SELL from holding or CNC
-            if (holdingIndex > -1) {
-                const existingHolding = newHoldings[holdingIndex];
-                const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
-                if (updatedQuantity > 0) {
-                     newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity, investedValue: existingHolding.avgPrice * updatedQuantity };
-                } else {
-                    newHoldings.splice(holdingIndex, 1);
-                }
-            }
-        }
-        const newPortfolioData = { holdings: newHoldings };
-        localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
-    }
-    
     toast({
         title: `Order Executed!`,
         description: `${order.type} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
@@ -324,7 +284,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       return;
     }
     
-    if (orderType === 'SELL' && product === 'CNC' && (parseInt(quantity) || 0) > maxSellQuantity) {
+    if (orderType === 'SELL' && isSellFromHolding && (parseInt(quantity) || 0) > maxSellQuantity) {
        toast({ variant: "destructive", title: "Insufficient Holdings", description: `You can sell a maximum of ${maxSellQuantity} shares.` });
        return;
     }
@@ -350,6 +310,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         orderMethod: orderMethod,
         price: orderMethod.includes("MARKET") ? stock.price.toString() : price,
         isSellFromHolding: isSellFromHolding,
+        executedAt: '',
     }
 
     if (newOrder.quantity <= 0) {
@@ -478,7 +439,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                           </Button>
                           <Button asChild variant="outline" className={cn("flex-1", product === "CNC" && "border-primary text-primary")}>
                               <Label className="flex-col items-center justify-center h-full gap-0 p-2 cursor-pointer">
-                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={orderType === 'SELL' && !currentHolding} />
+                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={orderType === 'SELL' && !currentHolding && !isSellFromHolding} />
                                   Longterm <span className="text-xs text-muted-foreground">CNC</span>
                               </Label>
                           </Button>
