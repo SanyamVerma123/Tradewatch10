@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Stock } from "@/lib/types";
@@ -17,6 +18,7 @@ import { StockChart } from "@/components/stockwatch/StockChart";
 import { getHistoricalData } from "@/app/actions";
 import type { HistoricalHistoryResult } from "yahoo-finance2/dist/esm/src/modules/historical";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 interface StockActionSheetProps {
   stock: Stock | null;
@@ -124,16 +126,18 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
                 className="flex gap-2 bg-muted p-1 rounded-md"
             >
                 {timeframes.map(tf => (
-                    <RadioGroupItem key={tf.value} value={tf.value} id={`tf-${tf.value}`} className="sr-only" />
-                    <Label 
-                        htmlFor={`tf-${tf.value}`}
-                        className={cn(
-                            "px-3 py-1 text-xs font-medium rounded-md cursor-pointer transition-colors",
-                            timeframe === tf.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
-                        )}
-                    >
-                        {tf.label}
-                    </Label>
+                    <div key={tf.value} className="flex items-center">
+                        <RadioGroupItem value={tf.value} id={`tf-${tf.value}`} className="sr-only" />
+                        <Label 
+                            htmlFor={`tf-${tf.value}`}
+                            className={cn(
+                                "px-3 py-1 text-xs font-medium rounded-md cursor-pointer transition-colors",
+                                timeframe === tf.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
+                            )}
+                        >
+                            {tf.label}
+                        </Label>
+                    </div>
                 ))}
             </RadioGroup>
         </div>
