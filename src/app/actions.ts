@@ -38,6 +38,8 @@ export async function getStockData(tickers: string[]) {
             avgVolume: stock.averageDailyVolume3Month ?? 0,
             fiftyTwoWeekHigh: stock.fiftyTwoWeekHigh ?? 0,
             fiftyTwoWeekLow: stock.fiftyTwoWeekLow ?? 0,
+            ask: stock.ask ?? 0,
+            bid: stock.bid ?? 0,
         }));
     } catch (error) {
         console.error('Error fetching stock data from Yahoo Finance:', error);
@@ -98,7 +100,9 @@ export async function searchStocks(query: string) {
         return [];
     }
     try {
+        // Allow for more flexible, global search
         const searchResult = await yahooFinance.search(query, { newsCount: 0 });
+        // Filter for major exchanges and Indian exchanges
         return searchResult.quotes.filter(q => q.symbol && (q.exchange.includes('NMS') || q.exchange.includes('NYQ') || q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO'))).map(stock => ({
             ticker: stock.symbol,
             name: stock.longname || stock.shortname || stock.symbol,

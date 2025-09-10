@@ -16,6 +16,8 @@ export interface Stock {
   exchange?: string;
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
+  bid?: number;
+  ask?: number;
 }
 
 export interface Watchlist {

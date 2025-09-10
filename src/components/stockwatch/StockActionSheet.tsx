@@ -45,6 +45,8 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
     { label: "High", value: stock.dayHigh?.toFixed(2) },
     { label: "Low", value: stock.dayLow?.toFixed(2) },
     { label: "Prev. Close", value: stock.previousClose?.toFixed(2) },
+    { label: "Bid", value: stock.bid?.toFixed(2) },
+    { label: "Ask", value: stock.ask?.toFixed(2) },
     { label: "52W High", value: stock.fiftyTwoWeekHigh?.toFixed(2) },
     { label: "52W Low", value: stock.fiftyTwoWeekLow?.toFixed(2) },
     { label: "Volume", value: stock.volume?.toLocaleString('en-IN') },
