@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, Minus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import type { Portfolio } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 interface FundsData {
   balance: number;
@@ -24,21 +26,34 @@ export function FundsClient() {
   const { toast } = useToast();
   const [funds, setFunds] = useState<FundsData | null>(null);
   const [pnl, setPnl] = useState(0);
+  const [totalInvested, setTotalInvested] = useState(0);
+  const [currentValue, setCurrentValue] = useState(0);
 
   useEffect(() => {
     const storedFunds = localStorage.getItem("funds");
     if (storedFunds) {
       setFunds(JSON.parse(storedFunds));
+    } else {
+       // Initialize if not present
+      const initialFunds = { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
+      setFunds(initialFunds);
+      localStorage.setItem("funds", JSON.stringify(initialFunds));
     }
 
-    const portfolioData = localStorage.getItem("portfolioData");
+    const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem("portfolioData") || "null");
+    
     if (portfolioData) {
-      const parsedData = JSON.parse(portfolioData);
-      setPnl(parsedData.totalPnl);
+        const currentVal = portfolioData.currentValue || 0;
+        const investedVal = portfolioData.investedValue || 0;
+        setCurrentValue(currentVal);
+        setTotalInvested(investedVal);
+        setPnl(currentVal - investedVal);
     } else {
-        const investedValue = 60765.32;
-        const currentValue = 82326.12;
+        const investedValue = 0; // Starting with empty portfolio
+        const currentValue = 0;
         const totalPnl = currentValue - investedValue;
+        setCurrentValue(currentValue);
+        setTotalInvested(investedValue);
         setPnl(totalPnl);
     }
 
@@ -62,12 +77,16 @@ export function FundsClient() {
   }
 
   useEffect(() => {
-    checkAndUnlockFunds();
+    if (funds) { // Only run if funds have been loaded
+        checkAndUnlockFunds();
+    }
   }, [pnl, funds]);
 
 
   const handleAddFunds = () => {
-    if(funds?.canAddMore) {
+    if(!funds) return;
+
+    if(funds.canAddMore) {
         toast({
             title: "Profit Target Not Met",
             description: `You need to make a profit of ₹10,000 to add more funds. Current profit since last check: ₹${(pnl - (funds?.lastProfitCheck || 0)).toFixed(2)}`,
@@ -119,6 +138,31 @@ export function FundsClient() {
           </div>
         </CardContent>
       </Card>
+      
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Profit & Loss</CardTitle>
+          <CardDescription>
+            Your realized profit and loss from closed positions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+           <div className="flex justify-between font-semibold text-base">
+            <span>Overall P&L</span>
+            <span className={cn(pnl >= 0 ? 'text-positive' : 'text-destructive')}>
+                {pnl >= 0 ? '+' : ''}₹{pnl.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Total Investment</span>
+            <span>₹{totalInvested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Current Value</span>
+            <span>₹{currentValue.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="mt-6">
         <CardHeader>
@@ -130,11 +174,13 @@ export function FundsClient() {
         <CardContent className="space-y-4 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Opening Balance</span>
-            <span>₹60,765.32</span>
+            <span>₹2,00,000.00</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Payin</span>
-            <span>₹21,560.80</span>
+            <span className="text-muted-foreground">Payin/Payout</span>
+            <span className={cn(pnl >= 0 ? 'text-positive' : 'text-destructive')}>
+                {pnl >= 0 ? '+' : '-'}₹{Math.abs(pnl).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Used Margin</span>

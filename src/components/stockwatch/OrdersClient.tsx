@@ -178,24 +178,37 @@ export function OrdersClient() {
             if (ltp === undefined) return;
 
             let shouldExecute = false;
+            let executionPrice = ltp; // Default to LTP for market/triggered orders
+
             if (order.isAMO) {
                 shouldExecute = true; 
             } else if (order.orderMethod === "LIMIT") {
                 if (order.type === 'BUY' && ltp <= order.limitPrice) {
                     shouldExecute = true;
+                    executionPrice = order.limitPrice; // Execute at limit price
                 } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
                     shouldExecute = true;
+                    executionPrice = order.limitPrice; // Execute at limit price
                 }
-            } else if(order.orderMethod === "SL" || order.orderMethod === "SL-M") {
+            } else if(order.orderMethod === "SL") {
                  if (order.triggerPrice && order.type === 'BUY' && ltp >= order.triggerPrice) {
                     shouldExecute = true;
+                    executionPrice = order.limitPrice; // SL-Limit executes at limit price
                 } else if (order.triggerPrice && order.type === 'SELL' && ltp <= order.triggerPrice) {
                     shouldExecute = true;
+                    executionPrice = order.limitPrice; // SL-Limit executes at limit price
+                }
+            } else if(order.orderMethod === "SL-M") {
+                if (order.triggerPrice && order.type === 'BUY' && ltp >= order.triggerPrice) {
+                    shouldExecute = true;
+                    // executionPrice is already LTP
+                } else if (order.triggerPrice && order.type === 'SELL' && ltp <= order.triggerPrice) {
+                    shouldExecute = true;
+                    // executionPrice is already LTP
                 }
             }
             
             if (shouldExecute) {
-                const executionPrice = (order.orderMethod === "SL-M" || order.isAMO) ? ltp : order.limitPrice;
                 executeOrder(order, executionPrice);
                 ordersWereExecuted = true;
             }
@@ -355,5 +368,3 @@ export function OrdersClient() {
     </div>
   );
 }
-
-    
