@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 
 import { getStockData, searchStocks } from "@/app/actions";
