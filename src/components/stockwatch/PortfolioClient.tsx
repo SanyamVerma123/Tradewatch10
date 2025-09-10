@@ -74,16 +74,27 @@ export function PortfolioClient() {
     const todayExecutedOrders = executedOrders.filter(o => isToday(new Date(o.executedAt!)));
     
     // Tickers to fetch data for
-    const allTickersInOrders = [...new Set(allOrders.map(o => o.ticker))];
+    let allTickersInPortfolio: string[] = [];
+    try {
+      const storedPortfolio = JSON.parse(localStorage.getItem('portfolioData') || '{}');
+      const holdingTickers = (storedPortfolio.holdings || []).map((h: Holding) => h.ticker);
+      allTickersInPortfolio = [...new Set([...holdingTickers])];
+    } catch(e) {
+        // ignore
+    }
 
-    if (allTickersInOrders.length === 0) {
+    const allTickersInOrders = [...new Set(allOrders.map(o => o.ticker))];
+    const allTickers = [...new Set([...allTickersInPortfolio, ...allTickersInOrders])];
+
+
+    if (allTickers.length === 0) {
       setPortfolio({ ...initialPortfolioData, holdings: [], positions: [] });
       setIsLoading(false);
       localStorage.setItem('portfolioData', JSON.stringify({ holdings: [], positions: [] }));
       return;
     }
     
-    const stockData = await getStockData(allTickersInOrders);
+    const stockData = await getStockData(allTickers);
     const newStocksMap: Record<string, Stock> = {};
     stockData.forEach(s => newStocksMap[s.ticker] = s);
     setStocksMap(newStocksMap);
@@ -93,6 +104,7 @@ export function PortfolioClient() {
     const cncOrders = executedOrders.filter(o => o.product === 'CNC' || o.isSellFromHolding);
 
     for (const order of cncOrders) {
+        const orderDate = new Date(order.executedAt!);
         let holding = holdingsMap[order.ticker];
         
         if (order.type === 'BUY') {
@@ -114,9 +126,10 @@ export function PortfolioClient() {
             }
         }
     }
+
     // Only include holdings not created today
     const pastHoldings = Object.values(holdingsMap).filter(h => h.quantity > 0.001);
-    
+
     
     // 2. Calculate Today's Positions & P&L
     let positionsDayPnl = 0;
@@ -237,7 +250,7 @@ export function PortfolioClient() {
         return acc + ((liveData.price - liveData.previousClose) * h.quantity);
     }, 0);
 
-    const totalHoldingsInvested = pastHoldings.reduce((acc, h) => acc + h.investedValue, 0);
+    const totalHoldingsInvested = pastHoldings.reduce((acc, h) => acc + (h.avgPrice * h.quantity), 0);
     const totalHoldingsCurrentValue = pastHoldings.reduce((acc, h) => acc + ((newStocksMap[h.ticker]?.price || h.ltp) * h.quantity), 0);
     
     const dayPnl = holdingsDayPnl + positionsDayPnl;
