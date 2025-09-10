@@ -193,10 +193,12 @@ export function OrdersClient() {
             } else if(order.orderMethod === "SL") {
                  if (order.triggerPrice && order.type === 'BUY' && ltp >= order.triggerPrice) {
                     shouldExecute = true;
-                    executionPrice = order.limitPrice; // SL-Limit executes at limit price
+                    // For SL-Limit, execute at limit price if specified, otherwise LTP (simulating market)
+                    executionPrice = order.limitPrice && order.limitPrice > 0 ? order.limitPrice : ltp;
                 } else if (order.triggerPrice && order.type === 'SELL' && ltp <= order.triggerPrice) {
                     shouldExecute = true;
-                    executionPrice = order.limitPrice; // SL-Limit executes at limit price
+                     // For SL-Limit, execute at limit price if specified, otherwise LTP (simulating market)
+                    executionPrice = order.limitPrice && order.limitPrice > 0 ? order.limitPrice : ltp;
                 }
             } else if(order.orderMethod === "SL-M") {
                 if (order.triggerPrice && order.type === 'BUY' && ltp >= order.triggerPrice) {
