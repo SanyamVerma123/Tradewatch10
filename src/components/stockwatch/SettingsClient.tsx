@@ -115,7 +115,7 @@ export function SettingsClient() {
           <CardTitle>Data Management</CardTitle>
           <CardDescription>
             Clear all your local application data.
-          </Description>
+          </CardDescription>
         </CardHeader>
         <CardContent>
             <AlertDialog>
