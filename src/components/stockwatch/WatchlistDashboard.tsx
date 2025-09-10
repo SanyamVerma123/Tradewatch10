@@ -30,7 +30,7 @@ import { Search, Sparkles, Settings, Loader2, PlusCircle, X } from "lucide-react
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { watchlists as initialWatchlistsData, news as initialNewsData } from "@/lib/data";
+import { watchlists as initialWatchlistsData, news as allNewsData } from "@/lib/data";
 import { StockActionSheet } from "./StockActionSheet";
 
 
@@ -67,7 +67,20 @@ export function WatchlistDashboard() {
 
   const [editingWatchlistId, setEditingWatchlistId] = useState<string | null>(null);
   const [editingWatchlistName, setEditingWatchlistName] = useState("");
+  const [news, setNews] = useState<NewsArticle[]>([]);
   
+  const shuffleNews = useCallback(() => {
+    const shuffled = [...allNewsData].sort(() => 0.5 - Math.random());
+    setNews(shuffled.slice(0, 3));
+  }, []);
+
+  useEffect(() => {
+    shuffleNews();
+    const newsInterval = setInterval(shuffleNews, 1000 * 60 * 60); // Refresh every hour
+    
+    return () => clearInterval(newsInterval);
+  }, [shuffleNews]);
+
   useEffect(() => {
     const loadedWatchlists = JSON.parse(localStorage.getItem('watchlists') || JSON.stringify(initialWatchlistsData));
     setWatchlists(loadedWatchlists);
@@ -516,9 +529,9 @@ export function WatchlistDashboard() {
           <section className="mt-8">
             <h2 className="text-xl font-bold mb-4">Related News</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {initialNewsData.map(article => (
+                {news.map(article => (
                     <Card key={article.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                        <Image data-ai-hint="stock news" src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover" />
+                        <Image data-ai-hint="stock market news" src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover" />
                         <CardContent className="p-4">
                             <h3 className="font-semibold leading-tight mb-2">{article.headline}</h3>
                             <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>
