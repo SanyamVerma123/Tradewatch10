@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -25,19 +24,16 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "next-themes";
 
 export function SettingsClient() {
   const router = useRouter();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
 
   const handleClearData = () => {
     try {
-        localStorage.removeItem('user');
-        localStorage.removeItem('isLoggedIn');
-        localStorage.removeItem('funds');
-        localStorage.removeItem('portfolioData');
-        localStorage.removeItem('orders');
-        localStorage.removeItem('watchlists');
+        localStorage.clear(); // Clear all local storage for the domain
         toast({
             title: "Data Cleared",
             description: "All your data has been successfully cleared.",
@@ -105,7 +101,11 @@ export function SettingsClient() {
                         Reduces eye strain in low light.
                     </span>
                 </Label>
-                <Switch id="dark-mode" />
+                <Switch 
+                  id="dark-mode"
+                  checked={theme === 'dark'}
+                  onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+                />
           </div>
         </CardContent>
       </Card>
@@ -115,7 +115,7 @@ export function SettingsClient() {
           <CardTitle>Data Management</CardTitle>
           <CardDescription>
             Clear all your local application data.
-          </CardDescription>
+          </Description>
         </CardHeader>
         <CardContent>
             <AlertDialog>

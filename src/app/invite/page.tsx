@@ -1,10 +1,5 @@
-import { PlaceholderPage } from "@/components/stockwatch/PlaceholderPage";
+import { InviteClient } from "@/components/stockwatch/InviteClient";
 
 export default function InvitePage() {
-  return (
-    <PlaceholderPage
-      title="Invite Friends"
-      description="Invite your friends to StockWatch and get exclusive rewards when they sign up and start trading!"
-    />
-  );
+  return <InviteClient />;
 }

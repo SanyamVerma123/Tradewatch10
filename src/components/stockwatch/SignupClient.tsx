@@ -14,13 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Toast,
-  ToastClose,
-  ToastDescription,
-  ToastTitle,
-  ToastAction,
-} from "@/components/ui/toast"
+import type { User } from "@/lib/types";
 
 
 interface SignupClientProps {
@@ -48,11 +42,12 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
     // Generate a random user ID
     const userId = `OP${Math.floor(100000 + Math.random() * 900000)}`;
     
-    const newUser = {
+    const newUser: User = {
         id: userId,
         name,
         email,
-        password // In a real app, this should be hashed
+        password, // In a real app, this should be hashed
+        usedReferralCode: false,
     };
 
     const initialFunds = {
@@ -62,15 +57,23 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
     };
 
     try {
+        // Store individual user
         localStorage.setItem('user', JSON.stringify(newUser));
         localStorage.setItem('funds', JSON.stringify(initialFunds));
+
+        // Store user in a global list for referral lookup
+        const allUsersText = localStorage.getItem('allUsers');
+        const allUsers = allUsersText ? JSON.parse(allUsersText) : {};
+        allUsers[userId] = newUser;
+        localStorage.setItem('allUsers', JSON.stringify(allUsers));
+        
         toast({
             title: "Account Created!",
             description: `Welcome, ${name}! Your User ID is ${userId}.`,
             action: (
-              <ToastAction altText="Copy" onClick={() => copyToClipboard(userId)}>
+              <button onClick={() => copyToClipboard(userId)} className="ml-4 inline-flex items-center justify-center rounded-md border text-sm font-medium h-8 px-3">
                 <Copy className="h-4 w-4 mr-2" /> Copy ID
-              </ToastAction>
+              </button>
             ),
             duration: 10000,
         });
