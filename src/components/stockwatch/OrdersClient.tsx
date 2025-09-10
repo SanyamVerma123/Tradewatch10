@@ -149,7 +149,12 @@ export function OrdersClient() {
   useEffect(() => {
     const fetchOrdersDataAndCheckPending = async () => {
         const storedOrdersText = localStorage.getItem('orders') || '[]';
-        const storedOrders = JSON.parse(storedOrdersText);
+        let storedOrders: Order[];
+        try {
+            storedOrders = JSON.parse(storedOrdersText);
+        } catch {
+            storedOrders = [];
+        }
         
         const pendingOrders = storedOrders.filter((o:Order) => o.status === 'Pending');
 
@@ -178,36 +183,39 @@ export function OrdersClient() {
             if (ltp === undefined) return;
 
             let shouldExecute = false;
-            let executionPrice = ltp; // Default to LTP for market/triggered orders
+            // Default execution price is LTP, which is correct for MARKET, SL-M, and triggered SL orders.
+            let executionPrice = ltp; 
 
             if (order.isAMO) {
                 shouldExecute = true; 
             } else if (order.orderMethod === "LIMIT") {
                 if (order.type === 'BUY' && ltp <= order.limitPrice) {
                     shouldExecute = true;
-                    executionPrice = order.limitPrice; // Execute at limit price
+                    executionPrice = Math.min(order.limitPrice, ltp); // Get the best price
                 } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
                     shouldExecute = true;
-                    executionPrice = order.limitPrice; // Execute at limit price
+                    executionPrice = Math.max(order.limitPrice, ltp); // Get the best price
                 }
             } else if(order.orderMethod === "SL") {
-                 if (order.triggerPrice && order.type === 'BUY' && ltp >= order.triggerPrice) {
-                    shouldExecute = true;
-                    // For SL-Limit, execute at limit price if specified, otherwise LTP (simulating market)
-                    executionPrice = order.limitPrice && order.limitPrice > 0 ? order.limitPrice : ltp;
-                } else if (order.triggerPrice && order.type === 'SELL' && ltp <= order.triggerPrice) {
-                    shouldExecute = true;
-                     // For SL-Limit, execute at limit price if specified, otherwise LTP (simulating market)
-                    executionPrice = order.limitPrice && order.limitPrice > 0 ? order.limitPrice : ltp;
-                }
+                 // Stop-Loss Limit: trigger activates a limit order
+                 if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                    // SL order becomes a limit order once triggered
+                    if (order.type === 'BUY' && ltp <= order.limitPrice) {
+                        shouldExecute = true;
+                        executionPrice = Math.min(order.limitPrice, ltp);
+                    } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
+                        shouldExecute = true;
+                        executionPrice = Math.max(order.limitPrice, ltp);
+                    }
+                 }
             } else if(order.orderMethod === "SL-M") {
-                if (order.triggerPrice && order.type === 'BUY' && ltp >= order.triggerPrice) {
-                    shouldExecute = true;
-                    // executionPrice is already LTP
-                } else if (order.triggerPrice && order.type === 'SELL' && ltp <= order.triggerPrice) {
+                 // Stop-Loss Market: trigger activates a market order
+                if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
                     shouldExecute = true;
                     // executionPrice is already LTP
                 }
+            } else if (order.orderMethod === "MARKET") {
+                shouldExecute = true; // Market orders execute at LTP
             }
             
             if (shouldExecute) {

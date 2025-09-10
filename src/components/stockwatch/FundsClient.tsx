@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -43,11 +44,16 @@ export function FundsClient() {
     const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem("portfolioData") || "null");
     
     if (portfolioData) {
-        const currentVal = portfolioData.currentValue || 0;
-        const investedVal = portfolioData.investedValue || 0;
-        setCurrentValue(currentVal);
-        setTotalInvested(investedVal);
-        setPnl(currentVal - investedVal);
+        const holdingsInvested = portfolioData.holdings.reduce((acc, h) => acc + h.investedValue, 0);
+        const holdingsCurrentValue = portfolioData.holdings.reduce((acc, h) => acc + (h.ltp * h.quantity), 0);
+        const positionsPnl = portfolioData.positions.reduce((acc, p) => acc + p.pnl, 0);
+
+        const totalInvestedVal = holdingsInvested;
+        const totalCurrentVal = holdingsCurrentValue + positionsPnl;
+
+        setTotalInvested(totalInvestedVal);
+        setCurrentValue(totalCurrentVal);
+        setPnl(totalCurrentVal - totalInvestedVal);
     } else {
         const investedValue = 0; // Starting with empty portfolio
         const currentValue = 0;
@@ -143,7 +149,7 @@ export function FundsClient() {
         <CardHeader>
           <CardTitle>Profit & Loss</CardTitle>
           <CardDescription>
-            Your realized profit and loss from closed positions.
+            Your realized and unrealized profit and loss.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
