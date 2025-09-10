@@ -31,13 +31,14 @@ export function SupportClient() {
     e.preventDefault();
     if (!query.trim() || isLoading) return;
 
-    const userMessage: Message = { role: 'user', content: query };
+    const currentQuery = query;
+    const userMessage: Message = { role: 'user', content: currentQuery };
     setMessages(prev => [...prev, userMessage]);
     setQuery("");
     setIsLoading(true);
 
     try {
-      const response = await getSupportResponse(query);
+      const response = await getSupportResponse(currentQuery);
       const botMessage: Message = { role: 'bot', content: response };
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
