@@ -31,17 +31,28 @@ export function PortfolioClient() {
   
   const updatePortfolioData = useCallback(async (isSilent = false) => {
     let currentPortfolio: Portfolio;
+    let allOrders: Order[];
+
     try {
         const item = localStorage.getItem('portfolioData');
         currentPortfolio = item ? JSON.parse(item) : initialPortfolioData;
+        const ordersItem = localStorage.getItem('orders');
+        allOrders = ordersItem ? JSON.parse(ordersItem) : [];
     } catch (e) {
-        console.error("Could not parse portfolio data from local storage", e);
+        console.error("Could not parse data from local storage", e);
         currentPortfolio = initialPortfolioData;
+        allOrders = [];
     }
 
     const tickers = currentPortfolio.holdings.map(h => h.ticker);
-    if (tickers.length === 0) {
-      setPortfolio(currentPortfolio);
+    if (tickers.length === 0 && allOrders.filter(o => o.product === 'MIS' && o.status === 'Executed').length === 0) {
+      setPortfolio({
+          ...currentPortfolio,
+          investedValue: 0,
+          currentValue: 0,
+          totalPnl: 0,
+          totalPnlPercent: 0,
+      });
       setIsLoading(false);
       return;
     }
@@ -49,15 +60,17 @@ export function PortfolioClient() {
     if (!isSilent) {
         setIsLoading(true);
     }
-
-    const stockData = await getStockData(tickers);
+    
+    const misTickers = allOrders.filter(o => o.product === 'MIS' && o.status === 'Executed').map(o => o.ticker);
+    const allTickers = [...new Set([...tickers, ...misTickers])];
+    const stockData = await getStockData(allTickers);
     
     const newStocksMap: Record<string, Stock> = {};
     stockData.forEach(s => newStocksMap[s.ticker] = s);
     setStocksMap(newStocksMap);
 
-    let totalInvestedValue = 0;
-    let totalCurrentValue = 0;
+    let totalCncInvestedValue = 0;
+    let totalCncCurrentValue = 0;
 
     const updatedHoldings = currentPortfolio.holdings.map(holding => {
       const liveData = stockData.find(s => s.ticker === holding.ticker);
@@ -69,8 +82,8 @@ export function PortfolioClient() {
       const currentValue = ltp * holding.quantity;
       const pnl = currentValue - investedValue;
       
-      totalInvestedValue += investedValue;
-      totalCurrentValue += currentValue;
+      totalCncInvestedValue += investedValue;
+      totalCncCurrentValue += currentValue;
 
       return {
         ...holding,
@@ -84,21 +97,43 @@ export function PortfolioClient() {
       };
     });
 
-    const totalPnl = totalCurrentValue - totalInvestedValue;
-    const totalPnlPercent = (totalInvestedValue > 0) ? (totalPnl / totalInvestedValue) * 100 : 0;
+    let totalMisInvestedValue = 0; // This will be margin value
+    let totalMisPnl = 0;
+    
+    const misPositions = allOrders.filter(o => o.product === 'MIS' && o.status === 'Executed');
+    misPositions.forEach(order => {
+        const liveData = stockData.find(s => s.ticker === order.ticker);
+        const ltp = liveData?.price || order.ltp;
+        const executedValue = order.ltp * order.quantity;
+        const currentValue = ltp * order.quantity;
+        
+        totalMisInvestedValue += executedValue / 5; // 5x leverage
+        if (order.type === 'BUY') {
+            totalMisPnl += (currentValue - executedValue);
+        } else { // SELL
+            totalMisPnl += (executedValue - currentValue);
+        }
+    });
+
+    const totalInvested = totalCncInvestedValue + totalMisInvestedValue;
+    const totalCurrentValue = totalCncCurrentValue + totalMisInvestedValue + totalMisPnl;
+    const totalPnl = (totalCncCurrentValue - totalCncInvestedValue) + totalMisPnl;
+    const totalPnlPercent = (totalInvested > 0) ? (totalPnl / totalInvested) * 100 : 0;
+
 
     const newPortfolio: Portfolio = {
       holdings: updatedHoldings,
-      investedValue: totalInvestedValue,
+      investedValue: totalInvested,
       currentValue: totalCurrentValue,
       totalPnl,
       totalPnlPercent,
     };
 
     setPortfolio(newPortfolio);
-    // Persist data only if there's a meaningful change to avoid re-renders
-    if(JSON.stringify(newPortfolio) !== JSON.stringify(currentPortfolio)) {
-        localStorage.setItem('portfolioData', JSON.stringify(newPortfolio));
+    // Persist holdings data separately
+    const newPortfolioDataToStore = { ...currentPortfolio, holdings: updatedHoldings };
+    if(JSON.stringify(newPortfolioDataToStore) !== JSON.stringify(currentPortfolio)) {
+        localStorage.setItem('portfolioData', JSON.stringify(newPortfolioDataToStore));
     }
     
     setIsLoading(false);
@@ -133,18 +168,18 @@ export function PortfolioClient() {
      const holding = portfolio.holdings.find(h => h.ticker === ticker);
      const stock = stocksMap[ticker];
 
-     const orderToEdit: Partial<Order> = {
-        type: type,
+     const orderData: Partial<Order> = {
+        type: type.toUpperCase() as 'BUY' | 'SELL',
         ticker: ticker,
         quantity: type === 'sell' ? (holding?.quantity || 1) : 1,
-        orderType: 'CNC LIMIT', // Default to CNC LIMIT
-        product: 'CNC',
+        product: 'CNC', // Default to CNC for portfolio actions
         orderMethod: 'LIMIT',
         ltp: stock?.price || 0,
-        price: stock?.price.toFixed(2) || '0',
+        price: stock?.price?.toFixed(2) || '0',
+        isFromPortfolio: type === 'sell' // Flag to identify sell from portfolio
      }
 
-     const orderQueryParam = encodeURIComponent(JSON.stringify(orderToEdit));
+     const orderQueryParam = encodeURIComponent(JSON.stringify(orderData));
      router.push(`/trade/${encodeURIComponent(ticker)}?order=${orderQueryParam}`);
      setIsActionSheetOpen(false);
   }

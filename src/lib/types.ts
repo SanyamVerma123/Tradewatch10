@@ -13,6 +13,7 @@ export interface Stock {
   previousClose: number;
   volume: number;
   avgVolume: number;
+  exchange?: string;
 }
 
 export interface Watchlist {
@@ -47,6 +48,7 @@ export interface Order {
   product?: string;
   orderMethod?: string;
   price?: string;
+  isFromPortfolio?: boolean;
 }
 
 export interface Holding {

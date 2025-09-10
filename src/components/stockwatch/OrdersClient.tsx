@@ -24,14 +24,15 @@ function isMarketOpen() {
     const istTime = new Date(now.getTime() + (istOffset + utcOffset) * 60000);
     
     const day = istTime.getDay(); // Sunday = 0, Monday = 1, etc.
-    const hour = istTime.getHours();
-    const minute = istTime.getMinutes();
+    if (day === 0 || day === 6) return false; // Weekend
 
-    if (day > 0 && day < 6) { // Monday to Friday
-        if (hour > 9 || (hour === 9 && minute >= 15)) {
-            if (hour < 15 || (hour === 15 && minute <= 30)) {
-                return true;
-            }
+    const hours = istTime.getHours();
+    const minutes = istTime.getMinutes();
+    
+    // Market is open between 9:15 AM and 3:30 PM
+    if (hours > 9 || (hours === 9 && minutes >= 15)) {
+        if (hours < 15 || (hours === 15 && minutes <= 30)) {
+            return true;
         }
     }
     return false;
@@ -49,15 +50,21 @@ export function OrdersClient() {
     const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp };
 
     // Update orders in state and local storage
-    const allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
-    const updatedOrders = allOrders.map(o => o.id === executedOrder.id ? executedOrder : o);
-    localStorage.setItem('orders', JSON.stringify(updatedOrders));
-    setOrders(updatedOrders); // Force state update
+    let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
+    // If the order was pending, update it. If it was a new market order, add it.
+    const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
+    if (existingOrderIndex > -1) {
+      allOrders[existingOrderIndex] = executedOrder;
+    } else {
+      allOrders = [executedOrder, ...allOrders];
+    }
+    localStorage.setItem('orders', JSON.stringify(allOrders));
+    setOrders(allOrders);
 
     // Simulate Tax & Fund deduction/addition
     const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
     const brokerage = Math.min(20, finalTradeValue * 0.0005);
-    const product = executedOrder.orderType.split(' ')[0];
+    const product = executedOrder.product || 'CNC';
     const stt = executedOrder.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
     const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
     
@@ -67,46 +74,48 @@ export function OrdersClient() {
       localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
     }
     
-    // Update portfolio
-    const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
-    let newHoldings = [...(portfolioData.holdings || [])];
-    const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
+    // Update portfolio only for CNC (delivery) orders
+    if (product === 'CNC') {
+        const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
+        let newHoldings = [...(portfolioData.holdings || [])];
+        const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
 
-    if (executedOrder.type === 'BUY') {
-        if (holdingIndex > -1) {
-            const existingHolding = newHoldings[holdingIndex];
-            const totalQuantity = existingHolding.quantity + executedOrder.quantity;
-            const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
-            newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
-        } else {
-            newHoldings.push({
-                id: `holding-${Date.now()}`,
-                ticker: executedOrder.ticker,
-                quantity: executedOrder.quantity,
-                avgPrice: executedOrder.ltp,
-                ltp: executedOrder.ltp,
-                pnl: 0,
-                pnlPercent: 0,
-                dayChange: 0, 
-                dayChangePercent: 0,
-                investedValue: executedOrder.ltp * executedOrder.quantity,
-            });
-        }
-    } else { // SELL
-        if (holdingIndex > -1) {
-            const existingHolding = newHoldings[holdingIndex];
-            const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
-            if (updatedQuantity <= 0) {
-                // Remove the holding if all shares are sold
-                newHoldings.splice(holdingIndex, 1);
+        if (executedOrder.type === 'BUY') {
+            if (holdingIndex > -1) {
+                const existingHolding = newHoldings[holdingIndex];
+                const totalQuantity = existingHolding.quantity + executedOrder.quantity;
+                const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
+                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
             } else {
-                // Otherwise, just update the quantity
-                newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity };
+                newHoldings.push({
+                    id: `holding-${Date.now()}`,
+                    ticker: executedOrder.ticker,
+                    quantity: executedOrder.quantity,
+                    avgPrice: executedOrder.ltp,
+                    ltp: executedOrder.ltp,
+                    pnl: 0,
+                    pnlPercent: 0,
+                    dayChange: 0, 
+                    dayChangePercent: 0,
+                    investedValue: executedOrder.ltp * executedOrder.quantity,
+                });
+            }
+        } else { // SELL
+            if (holdingIndex > -1) {
+                const existingHolding = newHoldings[holdingIndex];
+                const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
+                if (updatedQuantity <= 0) {
+                    // Remove the holding if all shares are sold
+                    newHoldings.splice(holdingIndex, 1);
+                } else {
+                    // Otherwise, just update the quantity
+                    newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity };
+                }
             }
         }
+        const newPortfolioData = { ...portfolioData, holdings: newHoldings };
+        localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
     }
-    const newPortfolioData = { ...portfolioData, holdings: newHoldings };
-    localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
     
     toast({
         title: `Order Executed!`,
@@ -152,23 +161,23 @@ export function OrdersClient() {
             // AMOs execute at market open price
             if (order.isAMO) {
                 shouldExecute = true; 
-            } else if (order.orderType.includes("LIMIT")) {
+            } else if (order.orderMethod?.includes("LIMIT")) {
                 if (order.type === 'BUY' && ltp <= order.limitPrice) {
                     shouldExecute = true;
                 } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
                     shouldExecute = true;
                 }
-            } else if(order.orderType.includes("SL")) { // SL and SL-M
-                 if (order.type === 'BUY' && ltp >= order.triggerPrice!) {
+            } else if(order.orderMethod?.includes("SL")) { // SL and SL-M
+                 if (order.triggerPrice && order.type === 'BUY' && ltp >= order.triggerPrice) {
                     shouldExecute = true;
-                } else if (order.type === 'SELL' && ltp <= order.triggerPrice!) {
+                } else if (order.triggerPrice && order.type === 'SELL' && ltp <= order.triggerPrice) {
                     shouldExecute = true;
                 }
             }
             
             if (shouldExecute) {
                  // For SL-Limit orders, the actual execution price is the limit price. For others, it's LTP.
-                const executionPrice = order.orderType === "SL" ? order.limitPrice : ltp;
+                const executionPrice = order.orderMethod === "SL" ? order.limitPrice : ltp;
                 executeOrder(order, executionPrice);
                 ordersWereExecuted = true;
             }
@@ -283,7 +292,7 @@ export function OrdersClient() {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
                     </div>
                      <div className="text-right">
-                        <p className="font-semibold">Avg. ₹{order.limitPrice.toFixed(2)}</p>
+                        <p className="font-semibold">Avg. ₹{order.ltp.toFixed(2)}</p>
                     </div>
                   </div>
                 </CardContent>

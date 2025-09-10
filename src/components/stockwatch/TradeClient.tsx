@@ -25,7 +25,7 @@ interface TradeClientProps {
 
 type OrderType = "BUY" | "SELL";
 
-const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, orderType: OrderType, disabled?: boolean }) => {
+const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: () => void, orderType: OrderType, disabled?: boolean, buttonText: string }) => {
     const [swiping, setSwiping] = useState(false);
     const [position, setPosition] = useState(0);
     const swipeRef = useRef<HTMLDivElement>(null);
@@ -93,7 +93,7 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
      useEffect(() => {
         hasSwiped.current = false;
         resetSwipe();
-    }, [orderType, disabled]);
+    }, [orderType, disabled, buttonText]);
 
 
     return (
@@ -119,7 +119,7 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
             >
                 <ChevronsRight className="h-6 w-6 text-white" />
             </div>
-            <span className="text-white pointer-events-none">SWIPE TO {orderToEdit?.id ? 'MODIFY' : orderType}</span>
+            <span className="text-white pointer-events-none">{buttonText}</span>
         </Button>
     );
 };
@@ -131,14 +131,14 @@ function isMarketOpen() {
     const istTime = new Date(now.getTime() + (istOffset + utcOffset) * 60000);
     
     const day = istTime.getDay();
+    if (day === 0 || day === 6) return false;
+
     const hour = istTime.getHours();
     const minute = istTime.getMinutes();
 
-    if (day > 0 && day < 6) { 
-        if (hour > 9 || (hour === 9 && minute >= 15)) {
-            if (hour < 15 || (hour === 15 && minute <= 30)) {
-                return true;
-            }
+    if (hour > 9 || (hour === 9 && minute >= 15)) {
+        if (hour < 15 || (hour === 15 && minute <= 30)) {
+            return true;
         }
     }
     return false;
@@ -152,14 +152,13 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [stock, setStock] = useState<Stock | null>(initialStock);
   const [availableFunds, setAvailableFunds] = useState(0);
   const [holdings, setHoldings] = useState<Holding[]>([]);
-  const isSellFromPortfolio = searchParams.get('order') && orderToEdit?.type === 'SELL' && !orderToEdit?.id;
+  const isSellFromPortfolio = !!orderToEdit?.isFromPortfolio;
 
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
   const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
-  const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
+  const [price, setPrice] = useState(orderToEdit?.price?.toString() || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
   
-  // Use 'product' and 'orderMethod' from orderToEdit if available, otherwise set defaults
   const initialProduct = orderToEdit?.product || "CNC";
   const initialOrderMethod = orderToEdit?.orderMethod || "LIMIT";
 
@@ -213,30 +212,38 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
   const isEditing = !!orderToEdit?.id;
 
-  const currentPrice = orderMethod === 'MARKET' || orderMethod === 'SL-M' ? stock?.price || 0 : parseFloat(price) || 0;
-  const tradeValue = (parseInt(quantity) || 0) * currentPrice;
+  const getExecutionPrice = () => {
+    if (orderMethod.includes('MARKET')) {
+        return stock?.price || 0;
+    }
+    if (orderMethod === 'SL') {
+        return parseFloat(price) || 0;
+    }
+    return parseFloat(price) || 0;
+  }
+
+  const tradeValue = (parseInt(quantity) || 0) * (parseFloat(price) || stock?.price || 0);
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
 
   const currentHolding = holdings.find(h => h.ticker === ticker);
-  const maxSellQuantity = currentHolding?.quantity || 0;
+  const maxSellQuantity = product === 'CNC' ? (currentHolding?.quantity || 0) : 10000; // Arbitrary high number for MIS
 
   const executeOrder = (order: Order) => {
     if(!stock) return;
 
-    const executedOrder: Order = { ...order, status: 'Executed', filledQuantity: order.quantity, ltp: stock.price };
+    const executionPrice = getExecutionPrice();
+    const executedOrder: Order = { ...order, status: 'Executed', filledQuantity: order.quantity, ltp: executionPrice };
     
-    const allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
-    let updatedOrders;
-    // If we're editing, we replace. If it's a new order, we find and replace the pending version.
+    let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
     const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
+
     if (existingOrderIndex > -1) {
-        updatedOrders = allOrders.map(o => o.id === executedOrder.id ? executedOrder : o);
+        allOrders[existingOrderIndex] = executedOrder;
     } else {
-        updatedOrders = [...allOrders, executedOrder];
+        allOrders = [executedOrder, ...allOrders];
     }
-    localStorage.setItem('orders', JSON.stringify(updatedOrders));
+    localStorage.setItem('orders', JSON.stringify(allOrders));
     
-    // Simulate Tax & Fund deduction/addition
     const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
     const brokerage = Math.min(20, finalTradeValue * 0.0005);
     const stt = order.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
@@ -246,43 +253,46 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     const newBalance = order.type === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
     localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
     setAvailableFunds(newBalance);
+    
+    if (product === 'CNC') {
+        const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
+        let newHoldings = [...(portfolioData.holdings || [])];
+        const holdingIndex = newHoldings.findIndex(h => h.ticker === ticker);
 
-    // Update portfolio
-    const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
-    let newHoldings = [...(portfolioData.holdings || [])];
-    const holdingIndex = newHoldings.findIndex(h => h.ticker === ticker);
-
-    if (order.type === 'BUY') {
-        if (holdingIndex > -1) {
-            const existingHolding = newHoldings[holdingIndex];
-            const totalQuantity = existingHolding.quantity + executedOrder.quantity;
-            const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
-            newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
-        } else {
-            newHoldings.push({
-                id: `holding-${Date.now()}`,
-                ticker: ticker,
-                quantity: executedOrder.quantity,
-                avgPrice: executedOrder.ltp,
-                ltp: executedOrder.ltp,
-                pnl: 0,
-                pnlPercent: 0,
-                dayChange: stock?.change || 0,
-                dayChangePercent: stock?.changePercent || 0,
-                investedValue: executedOrder.ltp * executedOrder.quantity,
-            });
-        }
-    } else { // SELL
-        if (holdingIndex > -1) {
-            const existingHolding = newHoldings[holdingIndex];
-            existingHolding.quantity -= executedOrder.quantity;
-            if (existingHolding.quantity <= 0) {
-                newHoldings.splice(holdingIndex, 1);
+        if (order.type === 'BUY') {
+            if (holdingIndex > -1) {
+                const existingHolding = newHoldings[holdingIndex];
+                const totalQuantity = existingHolding.quantity + executedOrder.quantity;
+                const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
+                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
+            } else {
+                newHoldings.push({
+                    id: `holding-${Date.now()}`,
+                    ticker: ticker,
+                    quantity: executedOrder.quantity,
+                    avgPrice: executedOrder.ltp,
+                    ltp: executedOrder.ltp,
+                    pnl: 0,
+                    pnlPercent: 0,
+                    dayChange: stock?.change || 0,
+                    dayChangePercent: stock?.changePercent || 0,
+                    investedValue: executedOrder.ltp * executedOrder.quantity,
+                });
+            }
+        } else { // SELL
+            if (holdingIndex > -1) {
+                const existingHolding = newHoldings[holdingIndex];
+                const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
+                if (updatedQuantity > 0) {
+                     newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity };
+                } else {
+                    newHoldings.splice(holdingIndex, 1);
+                }
             }
         }
+        const newPortfolioData = { ...portfolioData, holdings: newHoldings };
+        localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
     }
-    const newPortfolioData = { ...portfolioData, holdings: newHoldings };
-    localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
     
     toast({
         title: `Order Executed!`,
@@ -301,12 +311,13 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       return;
     }
     
-    if (orderType === 'SELL' && (parseInt(quantity) || 0) > maxSellQuantity) {
+    if (orderType === 'SELL' && product === 'CNC' && (parseInt(quantity) || 0) > maxSellQuantity) {
        toast({ variant: "destructive", title: "Insufficient Holdings", description: `You can sell a maximum of ${maxSellQuantity} shares.` });
        return;
     }
 
     const marketIsOpen = isMarketOpen();
+    const limitPrice = orderMethod.includes('MARKET') ? stock.price : parseFloat(price) || 0;
 
     const newOrder: Order = {
         id: orderToEdit?.id || `order-${Date.now()}`,
@@ -314,16 +325,17 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         ticker,
         quantity: parseInt(quantity) || 0,
         filledQuantity: 0,
-        limitPrice: currentPrice,
+        limitPrice: limitPrice,
         triggerPrice: parseFloat(triggerPrice) || undefined,
         status: 'Pending',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        exchange: 'NSE',
+        exchange: stock.exchange || 'NSE',
         orderType: `${product} ${orderMethod}`,
         ltp: stock?.price || 0,
         isAMO: !marketIsOpen,
         product: product,
         orderMethod: orderMethod,
+        price: price,
     }
 
     if (newOrder.quantity <= 0) {
@@ -341,6 +353,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     // For market orders during open market, simulate immediate execution
     if (orderMethod.includes('MARKET') && marketIsOpen) {
+        toast({title: "Executing Market Order..."});
         setTimeout(() => executeOrder(newOrder), 1500); // simulate network delay
         return; // Important: stop further processing
     }
@@ -363,6 +376,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   }
 
   const isSLOrder = orderMethod === "SL" || orderMethod === "SL-M";
+  const swipeText = `SWIPE TO ${isEditing ? 'MODIFY' : orderType}`;
 
   const PageLoader = () => (
     <div className="flex justify-center items-center h-64">
@@ -417,8 +431,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                   <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
-                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} max={orderType === 'SELL' ? maxSellQuantity : undefined} />
-                          {orderType === 'SELL' && <p className="text-xs text-muted-foreground">Holding: {maxSellQuantity}</p>}
+                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} max={orderType === 'SELL' && product === 'CNC' ? maxSellQuantity : undefined} />
+                          {orderType === 'SELL' && product === 'CNC' && <p className="text-xs text-muted-foreground">Holding: {maxSellQuantity}</p>}
                           {orderType === 'BUY' && <p className="text-xs text-muted-foreground">Lot size 1</p>}
                       </div>
                       <div className="space-y-1">
@@ -535,7 +549,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                       <span className="font-semibold">₹{availableFunds.toFixed(2)}</span>
                   </div>
               </div>
-               <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={isLoading} />
+               <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={isLoading} buttonText={swipeText} />
           </div>
         </footer>
         )}
