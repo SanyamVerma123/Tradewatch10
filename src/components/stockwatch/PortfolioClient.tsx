@@ -461,7 +461,7 @@ export function PortfolioClient() {
         isOpen={isActionSheetOpen} 
         onOpenChange={setIsActionSheetOpen} 
         onTrade={onActionSheetTrade}
-        tradeButtonVariant={activeTab === 'Holdings' ? 'buy-sell' : 'long-short'}
+        tradeButtonVariant="buy-sell"
         isFromHolding={activeTab === 'Holdings'}
       />
     </div>
@@ -470,4 +470,5 @@ export function PortfolioClient() {
     
 
     
+
 
