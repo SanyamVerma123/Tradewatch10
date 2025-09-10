@@ -24,9 +24,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import Image from "next/image";
-import { ArrowUp, ArrowDown, Search, Sparkles, Settings, Loader2, PlusCircle, X } from "lucide-react";
+import { Search, Sparkles, Settings, Loader2, PlusCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -64,14 +64,17 @@ export function WatchlistDashboard() {
 
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
+
+  const [editingWatchlistId, setEditingWatchlistId] = useState<string | null>(null);
+  const [editingWatchlistName, setEditingWatchlistName] = useState("");
   
   useEffect(() => {
     const loadedWatchlists = JSON.parse(localStorage.getItem('watchlists') || JSON.stringify(initialWatchlistsData));
     setWatchlists(loadedWatchlists);
-    if (loadedWatchlists.length > 0) {
+    if (loadedWatchlists.length > 0 && !activeTab) {
       setActiveTab(loadedWatchlists[0].id);
     }
-  }, []);
+  }, [activeTab]);
 
   const activeWatchlist = useMemo(() => {
     return watchlists.find((w) => w.id === activeTab);
@@ -258,6 +261,39 @@ export function WatchlistDashboard() {
     setIsActionSheetOpen(false);
   }
 
+  const handleStartEditing = (watchlist: Watchlist) => {
+    setEditingWatchlistId(watchlist.id);
+    setEditingWatchlistName(watchlist.name);
+  };
+
+  const handleSaveWatchlistName = () => {
+    if (!editingWatchlistId || !editingWatchlistName.trim()) {
+        setEditingWatchlistId(null);
+        return;
+    };
+
+    const updatedWatchlists = watchlists.map(wl => 
+        wl.id === editingWatchlistId ? { ...wl, name: editingWatchlistName } : wl
+    );
+    setWatchlists(updatedWatchlists);
+    localStorage.setItem('watchlists', JSON.stringify(updatedWatchlists));
+    toast({
+        title: "Watchlist Renamed",
+        description: `Successfully renamed to "${editingWatchlistName}".`
+    });
+    setEditingWatchlistId(null);
+  };
+
+  const handleEditingKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSaveWatchlistName();
+    }
+    if (e.key === 'Escape') {
+      setEditingWatchlistId(null);
+    }
+  };
+
+
   const renderStockSkeleton = () => (
     [...Array(3)].map((_, i) => (
       <TableRow key={`skeleton-${i}`}>
@@ -328,8 +364,19 @@ export function WatchlistDashboard() {
                 <div className="flex items-center space-x-1 p-1 bg-muted rounded-md">
                     <TabsList className="p-0 bg-transparent">
                     {watchlists.map((wl) => (
-                        <TabsTrigger key={wl.id} value={wl.id}>
-                        {wl.name}
+                        <TabsTrigger key={wl.id} value={wl.id} onDoubleClick={() => handleStartEditing(wl)}>
+                          {editingWatchlistId === wl.id ? (
+                               <Input
+                                  value={editingWatchlistName}
+                                  onChange={(e) => setEditingWatchlistName(e.target.value)}
+                                  onBlur={handleSaveWatchlistName}
+                                  onKeyDown={handleEditingKeyDown}
+                                  autoFocus
+                                  className="h-7 text-sm"
+                               />
+                          ) : (
+                            wl.name
+                          )}
                         </TabsTrigger>
                     ))}
                     </TabsList>
@@ -492,5 +539,3 @@ export function WatchlistDashboard() {
     </div>
   );
 }
-
-    
