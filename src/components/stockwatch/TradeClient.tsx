@@ -101,7 +101,7 @@ const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: ()
             ref={containerRef}
             className={cn(
                 "w-full h-12 text-lg relative overflow-hidden p-1 cursor-ew-resize rounded-md",
-                orderType === "BUY" ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"
+                orderType === "BUY" ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-600"
             )}
             onMouseDown={handleInteractionStart}
             onTouchStart={(e) => e.type === 'touchstart' && handleInteractionStart(e)}
@@ -224,14 +224,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     if (orderMethod.includes('MARKET')) {
         return stock?.price || 0;
     }
-    if (orderMethod === 'SL') {
-        // When SL triggers, it should execute at market price in this simulation
-        return stock?.price || parseFloat(price) || 0;
-    }
-    return parseFloat(price) || 0;
+    return parseFloat(price) || stock?.price || 0;
   }
 
-  const tradeValue = (parseInt(quantity) || 0) * (parseFloat(price) || stock?.price || 0);
+  const tradeValue = (parseInt(quantity) || 0) * getExecutionPrice();
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
 
   const currentHolding = holdings.find(h => h.ticker === ticker);
@@ -352,7 +348,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         isAMO: !marketIsOpen,
         product: product,
         orderMethod: orderMethod,
-        price: price,
+        price: orderMethod.includes("MARKET") ? stock.price.toString() : price,
         isSellFromHolding: isSellFromHolding,
     }
 
