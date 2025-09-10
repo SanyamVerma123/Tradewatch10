@@ -147,14 +147,14 @@ export function FundsClient() {
       
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>Profit & Loss</CardTitle>
+          <CardTitle>Profit &amp; Loss</CardTitle>
           <CardDescription>
             Your realized and unrealized profit and loss.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
            <div className="flex justify-between font-semibold text-base">
-            <span>Overall P&L</span>
+            <span>Overall P&amp;L</span>
             <span className={cn(pnl >= 0 ? 'text-positive' : 'text-destructive')}>
                 {pnl >= 0 ? '+' : ''}₹{pnl.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
             </span>
