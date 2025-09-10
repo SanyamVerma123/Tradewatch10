@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -27,12 +27,19 @@ export function SupportClient() {
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+        scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   const handleQuerySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim() || isLoading) return;
-
     const currentQuery = query.trim();
+    if (!currentQuery || isLoading) return;
+
     const userMessage: Message = { role: 'user', content: currentQuery };
     
     setMessages(prev => [...prev, userMessage]);
@@ -72,7 +79,7 @@ export function SupportClient() {
             Ask me anything about how to use the StockWatch app.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto space-y-4 pr-2">
+        <CardContent ref={scrollAreaRef} className="flex-1 overflow-y-auto space-y-4 pr-2">
             {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
                     <Bot className="h-12 w-12 mb-4" />
