@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -31,8 +32,9 @@ export function SupportClient() {
     e.preventDefault();
     if (!query.trim() || isLoading) return;
 
-    const currentQuery = query;
+    const currentQuery = query.trim();
     const userMessage: Message = { role: 'user', content: currentQuery };
+    
     setMessages(prev => [...prev, userMessage]);
     setQuery("");
     setIsLoading(true);
