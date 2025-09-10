@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -43,16 +44,15 @@ export function OrdersClient() {
   const [orders, setOrders] = useState<Order[]>([]);
   const { toast } = useToast();
 
-  const executeOrder = useCallback((order: Order, ltp: number) => {
+  const executeOrder = useCallback((orderToExecute: Order, ltp: number) => {
     // This is a simulation. In a real app, this would be handled by a backend.
-    const executedOrder = { ...order, status: 'Executed' as const, filledQuantity: order.quantity, ltp: ltp };
-    
+    const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp };
+
     // Update orders in state and local storage
-    setOrders(prevOrders => {
-        const updated = prevOrders.map(o => o.id === executedOrder.id ? executedOrder : o);
-        localStorage.setItem('orders', JSON.stringify(updated));
-        return updated;
-    });
+    const allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
+    const updatedOrders = allOrders.map(o => o.id === executedOrder.id ? executedOrder : o);
+    localStorage.setItem('orders', JSON.stringify(updatedOrders));
+    setOrders(updatedOrders); // Force state update
 
     // Simulate Tax & Fund deduction/addition
     const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
@@ -62,8 +62,10 @@ export function OrdersClient() {
     const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
     
     const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
-    const newBalance = executedOrder.type === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
-    localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
+    if (fundsData.balance) {
+      const newBalance = executedOrder.type === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
+      localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
+    }
     
     // Update portfolio
     const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
@@ -85,17 +87,21 @@ export function OrdersClient() {
                 ltp: executedOrder.ltp,
                 pnl: 0,
                 pnlPercent: 0,
-                dayChange: 0, // This would ideally come from getStockData
-                dayChangePercent: 0, // This would ideally come from getStockData
+                dayChange: 0, 
+                dayChangePercent: 0,
                 investedValue: executedOrder.ltp * executedOrder.quantity,
             });
         }
     } else { // SELL
         if (holdingIndex > -1) {
             const existingHolding = newHoldings[holdingIndex];
-            existingHolding.quantity -= executedOrder.quantity;
-            if (existingHolding.quantity <= 0) {
+            const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
+            if (updatedQuantity <= 0) {
+                // Remove the holding if all shares are sold
                 newHoldings.splice(holdingIndex, 1);
+            } else {
+                // Otherwise, just update the quantity
+                newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity };
             }
         }
     }
@@ -115,33 +121,21 @@ export function OrdersClient() {
         const storedOrdersText = localStorage.getItem('orders') || '[]';
         const storedOrders = JSON.parse(storedOrdersText);
         
-        // Prevent re-render if data is the same
-        if (JSON.stringify(orders) === storedOrdersText) {
-            return;
-        }
-
         const pendingOrders = storedOrders.filter((o:Order) => o.status === 'Pending');
 
         if (pendingOrders.length === 0) {
-            // Still update the LTP for all orders
-            const allTickers = [...new Set(storedOrders.map((o:Order) => o.ticker))];
-            if (allTickers.length > 0) {
-                const stockData = await getStockData(allTickers);
-                const ltpMap = new Map(stockData.map(s => [s.ticker, s.price]));
-                const ordersWithFreshLtp = storedOrders.map((o: Order) => ({...o, ltp: ltpMap.get(o.ticker) || o.ltp}));
-                 // Only update if there's a meaningful change
-                if(JSON.stringify(orders) !== JSON.stringify(ordersWithFreshLtp)) {
-                    setOrders(ordersWithFreshLtp);
-                }
-            } else {
-                 setOrders(storedOrders);
+            // Still update the LTP for all orders if the state is not up to date
+             if(JSON.stringify(orders) !== storedOrdersText) {
+                setOrders(storedOrders);
             }
             return;
         }
 
         const marketIsOpen = isMarketOpen();
         if (!marketIsOpen) {
-            setOrders(storedOrders);
+            if(JSON.stringify(orders) !== storedOrdersText) {
+                setOrders(storedOrders);
+            }
             return;
         }
 
@@ -149,12 +143,14 @@ export function OrdersClient() {
         const stockData = await getStockData(tickers);
         const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
 
+        let ordersWereExecuted = false;
         pendingOrders.forEach((order: Order) => {
             const ltp = stockPriceMap.get(order.ticker);
             if (ltp === undefined) return;
 
             let shouldExecute = false;
-            if (order.orderType.includes("MARKET") && order.isAMO) {
+            // AMOs execute at market open price
+            if (order.isAMO) {
                 shouldExecute = true; 
             } else if (order.orderType.includes("LIMIT")) {
                 if (order.type === 'BUY' && ltp <= order.limitPrice) {
@@ -174,15 +170,19 @@ export function OrdersClient() {
                  // For SL-Limit orders, the actual execution price is the limit price. For others, it's LTP.
                 const executionPrice = order.orderType === "SL" ? order.limitPrice : ltp;
                 executeOrder(order, executionPrice);
+                ordersWereExecuted = true;
             }
         });
         
-        // Update LTP for all orders after potential executions
-        const latestOrders = JSON.parse(localStorage.getItem('orders') || '[]');
-        const updatedOrdersWithLtp = latestOrders.map((o: Order) => ({...o, ltp: stockPriceMap.get(o.ticker) || o.ltp}));
-        // Only update state if the data has actually changed to prevent infinite loops
-        if(JSON.stringify(orders) !== JSON.stringify(updatedOrdersWithLtp)){
-            setOrders(updatedOrdersWithLtp);
+        // If no orders were executed, we might still need to update the LTP for pending orders.
+        if (!ordersWereExecuted) {
+            const ordersWithFreshLtp = storedOrders.map((o: Order) => ({
+                ...o,
+                ltp: stockPriceMap.get(o.ticker) || o.ltp,
+            }));
+            if (JSON.stringify(orders) !== JSON.stringify(ordersWithFreshLtp)) {
+                setOrders(ordersWithFreshLtp);
+            }
         }
     };
 
@@ -199,14 +199,14 @@ export function OrdersClient() {
     }
   };
 
-  const filteredOrders = orders.filter(
+  const filteredPendingOrders = orders.filter(
     (order) =>
-      order.status === activeTab &&
+      order.status === 'Pending' &&
       (order.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
        (order.exchange && order.exchange.toLowerCase().includes(searchTerm.toLowerCase())))
   );
   
-  const executedOrders = orders.filter(o => o.status === 'Executed');
+  const filteredExecutedOrders = orders.filter(o => o.status === 'Executed' && (o.ticker.toLowerCase().includes(searchTerm.toLowerCase())));
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -234,7 +234,7 @@ export function OrdersClient() {
         </div>
         <TabsContent value="Pending">
           <div className="space-y-4">
-            {filteredOrders.length > 0 ? filteredOrders.map((order) => (
+            {filteredPendingOrders.length > 0 ? filteredPendingOrders.map((order) => (
               <Card key={order.id} onClick={() => handleEditClick(order)} className={order.status === 'Pending' ? 'cursor-pointer' : ''}>
                 <CardContent className="p-4">
                   <div className="flex justify-between items-start">
@@ -264,7 +264,7 @@ export function OrdersClient() {
         </TabsContent>
         <TabsContent value="Executed">
         <div className="space-y-4">
-            {executedOrders.length > 0 ? executedOrders.map((order) => (
+            {filteredExecutedOrders.length > 0 ? filteredExecutedOrders.map((order) => (
               <Card key={order.id}>
                 <CardContent className="p-4">
                   <div className="flex justify-between items-start">
@@ -300,3 +300,5 @@ export function OrdersClient() {
     </div>
   );
 }
+
+    

@@ -13,7 +13,7 @@ export default async function TradePage({ params, searchParams }: { params: { ti
   
   const initialStockData = await getStockData([decodedTicker]);
   
-  // Logic to handle editing a pending order
+  // Logic to handle editing a pending order or creating a new sell order from portfolio
   const orderToEditString = searchParams.order ? decodeURIComponent(searchParams.order as string) : undefined;
   let orderToEdit: Order | undefined = undefined;
   if(orderToEditString) {
@@ -31,3 +31,5 @@ export default async function TradePage({ params, searchParams }: { params: { ti
     </Suspense>
   );
 }
+
+    

@@ -1,4 +1,5 @@
 
+
 export interface Stock {
   ticker: string;
   name: string;
@@ -43,6 +44,9 @@ export interface Order {
   orderType: string;
   ltp: number;
   isAMO?: boolean;
+  product?: string;
+  orderMethod?: string;
+  price?: string;
 }
 
 export interface Holding {
@@ -73,3 +77,5 @@ export interface User {
     email: string;
     password?: string;
 }
+
+    

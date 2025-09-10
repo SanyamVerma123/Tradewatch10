@@ -1,9 +1,10 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import type { Portfolio, Holding, Stock } from "@/lib/types";
+import type { Portfolio, Holding, Stock, Order } from "@/lib/types";
 import { getStockData } from "@/app/actions";
 import {
   Card,
@@ -95,6 +96,7 @@ export function PortfolioClient() {
     };
 
     setPortfolio(newPortfolio);
+    // Persist data only if there's a meaningful change to avoid re-renders
     if(JSON.stringify(newPortfolio) !== JSON.stringify(currentPortfolio)) {
         localStorage.setItem('portfolioData', JSON.stringify(newPortfolio));
     }
@@ -128,19 +130,22 @@ export function PortfolioClient() {
   };
 
   const onActionSheetTrade = (type: 'buy' | 'sell', ticker: string) => {
-     if(type === 'sell'){
-        const holding = portfolio.holdings.find(h => h.ticker === ticker);
-        const sellOrder = {
-          type: 'SELL',
-          ticker: ticker,
-          quantity: holding?.quantity || 1, // Default to selling all
-          orderType: 'CNC' // Assume CNC for portfolio holdings
-        }
-        const orderQueryParam = encodeURIComponent(JSON.stringify(sellOrder));
-        router.push(`/trade/${encodeURIComponent(ticker)}?order=${orderQueryParam}`);
-     } else {
-        router.push(`/trade/${encodeURIComponent(ticker)}`);
+     const holding = portfolio.holdings.find(h => h.ticker === ticker);
+     const stock = stocksMap[ticker];
+
+     const orderToEdit: Partial<Order> = {
+        type: type,
+        ticker: ticker,
+        quantity: type === 'sell' ? (holding?.quantity || 1) : 1,
+        orderType: 'CNC LIMIT', // Default to CNC LIMIT
+        product: 'CNC',
+        orderMethod: 'LIMIT',
+        ltp: stock?.price || 0,
+        price: stock?.price.toFixed(2) || '0',
      }
+
+     const orderQueryParam = encodeURIComponent(JSON.stringify(orderToEdit));
+     router.push(`/trade/${encodeURIComponent(ticker)}?order=${orderQueryParam}`);
      setIsActionSheetOpen(false);
   }
 
@@ -255,3 +260,5 @@ export function PortfolioClient() {
     </div>
   );
 }
+
+    

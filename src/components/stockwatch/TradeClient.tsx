@@ -1,10 +1,11 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Order, Stock, Portfolio, Holding } from "@/lib/types";
 import { getStockData } from "@/app/actions";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, MoreVertical, Info, RefreshCcw, Loader2, ChevronsRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,7 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
         if (newPosition >= maxPosition - 5) { // Threshold for completion
             hasSwiped.current = true;
             onSwipe();
+            setTimeout(() => { hasSwiped.current = false; }, 1000); // Prevent multi-swipe
             resetSwipe();
         }
     };
@@ -75,13 +77,22 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
     };
     
     const resetSwipe = () => {
-        setPosition(4);
+        const snapBack = setInterval(() => {
+            setPosition(p => {
+                const newPos = p - 20;
+                if(newPos <= 4) {
+                    clearInterval(snapBack);
+                    return 4;
+                }
+                return newPos;
+            });
+        }, 10);
         setSwiping(false);
     }
     
      useEffect(() => {
-        // Reset hasSwiped when the order details change, allowing for another swipe
         hasSwiped.current = false;
+        resetSwipe();
     }, [orderType, disabled]);
 
 
@@ -108,23 +119,22 @@ const SwipeButton = ({ onSwipe, orderType, disabled }: { onSwipe: () => void, or
             >
                 <ChevronsRight className="h-6 w-6 text-white" />
             </div>
-            <span className="text-white pointer-events-none">SWIPE TO {orderType}</span>
+            <span className="text-white pointer-events-none">SWIPE TO {orderToEdit?.id ? 'MODIFY' : orderType}</span>
         </Button>
     );
 };
 
-// Heuristic to check if market is open (9:15 AM to 3:30 PM India time on weekdays)
 function isMarketOpen() {
     const now = new Date();
-    const istOffset = 330; // 5.5 hours in minutes
+    const istOffset = 330; 
     const utcOffset = now.getTimezoneOffset();
     const istTime = new Date(now.getTime() + (istOffset + utcOffset) * 60000);
     
-    const day = istTime.getDay(); // Sunday = 0, Monday = 1, etc.
+    const day = istTime.getDay();
     const hour = istTime.getHours();
     const minute = istTime.getMinutes();
 
-    if (day > 0 && day < 6) { // Monday to Friday
+    if (day > 0 && day < 6) { 
         if (hour > 9 || (hour === 9 && minute >= 15)) {
             if (hour < 15 || (hour === 15 && minute <= 30)) {
                 return true;
@@ -137,22 +147,25 @@ function isMarketOpen() {
 
 export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [stock, setStock] = useState<Stock | null>(initialStock);
   const [availableFunds, setAvailableFunds] = useState(0);
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const isSellFromPortfolio = searchParams.get('order') && orderToEdit?.type === 'SELL' && !orderToEdit?.id;
 
-  // Order State
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
-  const [quantity, setQuantity] = useState(orderToEdit?.quantity.toString() || "1");
+  const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
   const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
-  const [product, setProduct] = useState((orderToEdit?.orderType.split(' ')[0] || "CNC").toUpperCase());
-  const [orderMethod, setOrderMethod] = useState((orderToEdit?.orderType.split(' ')[1] || "LIMIT").toUpperCase());
   
-  // Advanced options
-  const [stoploss, setStoploss] = useState("");
-  const [target, setTarget] = useState("");
+  // Use 'product' and 'orderMethod' from orderToEdit if available, otherwise set defaults
+  const initialProduct = orderToEdit?.product || "CNC";
+  const initialOrderMethod = orderToEdit?.orderMethod || "LIMIT";
+
+  const [product, setProduct] = useState(initialProduct.toUpperCase());
+  const [orderMethod, setOrderMethod] = useState(initialOrderMethod.toUpperCase());
+  
   const [isStoplossEnabled, setIsStoplossEnabled] = useState(false);
   const [isTargetEnabled, setIsTargetEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(!initialStock);
@@ -191,10 +204,16 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     const interval = setInterval(() => fetchStock(true), 5000);
     return () => clearInterval(interval);
   }, [fetchStock]);
+  
+  useEffect(() => {
+    if (stock && (price === "" || (orderMethod === "MARKET" && price !== stock.price.toFixed(2)))) {
+        setPrice(stock.price.toFixed(2));
+    }
+  }, [stock, orderMethod, price]);
 
-  const isEditing = !!orderToEdit;
+  const isEditing = !!orderToEdit?.id;
 
-  const currentPrice = orderMethod === 'MARKET' || orderMethod === 'SL-M' ? stock?.price || 0 : parseFloat(price) || 0
+  const currentPrice = orderMethod === 'MARKET' || orderMethod === 'SL-M' ? stock?.price || 0 : parseFloat(price) || 0;
   const tradeValue = (parseInt(quantity) || 0) * currentPrice;
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
 
@@ -204,15 +223,24 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const executeOrder = (order: Order) => {
     if(!stock) return;
 
-    const executedOrder = { ...order, status: 'Executed' as const, filledQuantity: order.quantity, ltp: stock.price };
-    const finalOrders = JSON.parse(localStorage.getItem('orders') || '[]').map((o: Order) => o.id === executedOrder.id ? executedOrder : o);
-    localStorage.setItem('orders', JSON.stringify(finalOrders));
+    const executedOrder: Order = { ...order, status: 'Executed', filledQuantity: order.quantity, ltp: stock.price };
+    
+    const allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
+    let updatedOrders;
+    // If we're editing, we replace. If it's a new order, we find and replace the pending version.
+    const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
+    if (existingOrderIndex > -1) {
+        updatedOrders = allOrders.map(o => o.id === executedOrder.id ? executedOrder : o);
+    } else {
+        updatedOrders = [...allOrders, executedOrder];
+    }
+    localStorage.setItem('orders', JSON.stringify(updatedOrders));
     
     // Simulate Tax & Fund deduction/addition
     const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
     const brokerage = Math.min(20, finalTradeValue * 0.0005);
-    const stt = orderType === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
-    const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
+    const stt = order.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
+    const totalCharges = brokerage + stt + (finalTradeValue * 0.000345);
     
     const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
     const newBalance = order.type === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
@@ -258,12 +286,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     
     toast({
         title: `Order Executed!`,
-        description: `${orderType} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
+        description: `${order.type} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
     });
 
-    if (!isEditing) {
-        router.push('/orders');
-    }
+    router.push('/orders');
   }
 
 
@@ -296,6 +322,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         orderType: `${product} ${orderMethod}`,
         ltp: stock?.price || 0,
         isAMO: !marketIsOpen,
+        product: product,
+        orderMethod: orderMethod,
     }
 
     if (newOrder.quantity <= 0) {
@@ -314,6 +342,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     // For market orders during open market, simulate immediate execution
     if (orderMethod.includes('MARKET') && marketIsOpen) {
         setTimeout(() => executeOrder(newOrder), 1500); // simulate network delay
+        return; // Important: stop further processing
     }
 
     const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
@@ -327,13 +356,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     toast({
         title: `Order ${isEditing ? 'Modified' : 'Placed'} (${orderType})`,
-        description: `${quantity} shares of ${ticker} at ${orderMethod.includes('MARKET') ? 'Market Price' : `₹${price}`}.`,
+        description: `${quantity} shares of ${ticker} at ${orderMethod.includes('MARKET') ? 'Market Price' : `₹${price}`}. ${!marketIsOpen ? '(AMO)' : ''}`,
     });
     
-    // Always navigate to orders page for pending/AMO orders
-    if(!orderMethod.includes('MARKET') || !marketIsOpen){
-        router.push('/orders');
-    }
+    router.push('/orders');
   }
 
   const isSLOrder = orderMethod === "SL" || orderMethod === "SL-M";
@@ -372,10 +398,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         
         <main className="flex-1 overflow-y-auto pb-4">
           <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="BUY" disabled={isEditing && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
-                  <TabsTrigger value="SELL" disabled={isEditing && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
-              </TabsList>
+              {!isSellFromPortfolio && (
+                <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="BUY" disabled={isEditing && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
+                    <TabsTrigger value="SELL" disabled={isEditing && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
+                </TabsList>
+              )}
               <div className="p-4 space-y-6">
                   <Tabs defaultValue="Regular" className="w-full">
                       <TabsList>
@@ -467,7 +495,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                           <div className="grid grid-cols-2 gap-4 items-center animate-in fade-in-50">
                               <Label htmlFor="stoploss-percent">Stoploss %</Label>
                               <div className="relative">
-                                  <Input id="stoploss-percent" type="number" value={stoploss} onChange={e => setStoploss(e.target.value)} placeholder="-5.0" />
+                                  <Input id="stoploss-percent" type="number" placeholder="-5.0" />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
                               </div>
                           </div>
@@ -482,7 +510,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                       {isTargetEnabled && (
                           <div className="grid grid-cols-2 gap-4 items-center animate-in fade-in-50">
                               <Label htmlFor="target-percent">Target %</Label>                              <div className="relative">
-                                  <Input id="target-percent" type="number" value={target} onChange={e => setTarget(e.target.value)} placeholder="5.0" />
+                                  <Input id="target-percent" type="number" placeholder="5.0" />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
                               </div>
                           </div>
