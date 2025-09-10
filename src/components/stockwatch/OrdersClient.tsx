@@ -45,13 +45,38 @@ export function OrdersClient() {
   const [orders, setOrders] = useState<Order[]>([]);
   const { toast } = useToast();
 
+  const cancelOrder = useCallback((orderToCancel: Order, reason: string) => {
+    let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
+    const updatedOrders = allOrders.map(o => o.id === orderToCancel.id ? { ...o, status: 'Cancelled' } : o);
+    localStorage.setItem('orders', JSON.stringify(updatedOrders));
+    setOrders(updatedOrders);
+    toast({
+        variant: "destructive",
+        title: "Order Cancelled",
+        description: `${orderToCancel.ticker}: ${reason}`,
+    });
+  }, [toast]);
+
+
   const executeOrder = useCallback((orderToExecute: Order, ltp: number) => {
     // This is a simulation. In a real app, this would be handled by a backend.
+    const product = orderToExecute.product || 'CNC';
+    const finalTradeValue = orderToExecute.quantity * ltp;
+    const brokerage = Math.min(20, finalTradeValue * 0.0005);
+    const stt = orderToExecute.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
+    const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
+
+    // Final funds check before execution
+    const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
+    if (orderToExecute.type === 'BUY' && fundsData.balance < finalTradeValue + totalCharges) {
+        cancelOrder(orderToExecute, `Insufficient funds. Required: ₹${(finalTradeValue + totalCharges).toFixed(2)}`);
+        return;
+    }
+
     const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString() };
 
     // Update orders in state and local storage
     let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
-    // If the order was pending, update it. If it was a new market order, add it.
     const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
     if (existingOrderIndex > -1) {
       allOrders[existingOrderIndex] = executedOrder;
@@ -62,20 +87,18 @@ export function OrdersClient() {
     setOrders(allOrders);
 
     // Simulate Tax & Fund deduction/addition
-    const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
-    const brokerage = Math.min(20, finalTradeValue * 0.0005);
-    const product = executedOrder.product || 'CNC';
-    const stt = executedOrder.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
-    const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
-    
-    const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
-    if (fundsData.balance) {
-      const newBalance = executedOrder.type === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
+    if (fundsData.balance !== undefined) {
+      let newBalance = executedOrder.type === 'BUY' 
+        ? fundsData.balance - finalTradeValue - totalCharges 
+        : fundsData.balance + finalTradeValue - totalCharges;
+      
+      newBalance = Math.max(0, newBalance); // Ensure balance doesn't go below zero
+
       localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
     }
     
     // Update portfolio only for CNC (delivery) orders
-    if (product === 'CNC') {
+    if (product === 'CNC' || orderToExecute.isSellFromHolding) {
         const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
         let newHoldings = [...(portfolioData.holdings || [])];
         const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
@@ -84,20 +107,20 @@ export function OrdersClient() {
             if (holdingIndex > -1) {
                 const existingHolding = newHoldings[holdingIndex];
                 const totalQuantity = existingHolding.quantity + executedOrder.quantity;
-                const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (executedOrder.ltp * executedOrder.quantity)) / totalQuantity;
+                const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (ltp * executedOrder.quantity)) / totalQuantity;
                 newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
             } else {
                 newHoldings.push({
                     id: `holding-${Date.now()}`,
                     ticker: executedOrder.ticker,
                     quantity: executedOrder.quantity,
-                    avgPrice: executedOrder.ltp,
-                    ltp: executedOrder.ltp,
+                    avgPrice: ltp,
+                    ltp: ltp,
                     pnl: 0,
                     pnlPercent: 0,
                     dayChange: 0, 
                     dayChangePercent: 0,
-                    investedValue: executedOrder.ltp * executedOrder.quantity,
+                    investedValue: ltp * executedOrder.quantity,
                 });
             }
         } else { // SELL
@@ -105,10 +128,8 @@ export function OrdersClient() {
                 const existingHolding = newHoldings[holdingIndex];
                 const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
                 if (updatedQuantity <= 0) {
-                    // Remove the holding if all shares are sold
                     newHoldings.splice(holdingIndex, 1);
                 } else {
-                    // Otherwise, just update the quantity
                     newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity };
                 }
             }
@@ -122,7 +143,7 @@ export function OrdersClient() {
         description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}. Est. charges: ₹${totalCharges.toFixed(2)}`,
     });
 
-  }, [toast]);
+  }, [toast, cancelOrder]);
 
 
   useEffect(() => {
@@ -133,7 +154,6 @@ export function OrdersClient() {
         const pendingOrders = storedOrders.filter((o:Order) => o.status === 'Pending');
 
         if (pendingOrders.length === 0) {
-            // Still update the LTP for all orders if the state is not up to date
              if(JSON.stringify(orders) !== storedOrdersText) {
                 setOrders(storedOrders);
             }
@@ -158,7 +178,6 @@ export function OrdersClient() {
             if (ltp === undefined) return;
 
             let shouldExecute = false;
-            // AMOs execute at market open price
             if (order.isAMO) {
                 shouldExecute = true; 
             } else if (order.orderMethod === "LIMIT") {
@@ -176,14 +195,12 @@ export function OrdersClient() {
             }
             
             if (shouldExecute) {
-                // For LIMIT orders, execution price is the limit price. For SL-M, it's LTP. For SL, it should be the limit price if specified, but we'll use LTP for a more realistic fill simulation post-trigger.
-                const executionPrice = order.orderMethod === "LIMIT" ? order.limitPrice : ltp;
+                const executionPrice = (order.orderMethod === "SL-M" || order.isAMO) ? ltp : order.limitPrice;
                 executeOrder(order, executionPrice);
                 ordersWereExecuted = true;
             }
         });
         
-        // If no orders were executed, we might still need to update the LTP for pending orders.
         if (!ordersWereExecuted) {
             const ordersWithFreshLtp = storedOrders.map((o: Order) => ({
                 ...o,
@@ -196,10 +213,10 @@ export function OrdersClient() {
     };
 
     fetchOrdersDataAndCheckPending();
-    const interval = setInterval(fetchOrdersDataAndCheckPending, 5000); // Check every 5 seconds
+    const interval = setInterval(fetchOrdersDataAndCheckPending, 5000);
 
     return () => clearInterval(interval);
-  }, [executeOrder, orders]);
+  }, [executeOrder, orders, cancelOrder]);
 
   const handleEditClick = (order: Order) => {
     if (order.status === 'Pending') {
@@ -216,6 +233,7 @@ export function OrdersClient() {
   );
   
   const filteredExecutedOrders = orders.filter(o => o.status === 'Executed' && (o.ticker.toLowerCase().includes(searchTerm.toLowerCase())));
+  const filteredCancelledOrders = orders.filter(o => o.status === 'Cancelled' && (o.ticker.toLowerCase().includes(searchTerm.toLowerCase())));
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -298,6 +316,34 @@ export function OrdersClient() {
                 </CardContent>
               </Card>
             )) : <div className="text-center py-10"><p className="text-muted-foreground">You have no executed orders.</p></div>}
+          </div>
+          {filteredCancelledOrders.length > 0 && <h3 className="text-lg font-semibold my-4">Cancelled</h3>}
+           <div className="space-y-4">
+            {filteredCancelledOrders.map((order) => (
+              <Card key={order.id}>
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                        <span className={`font-bold ${order.type === 'BUY' ? 'text-blue-500' : 'text-red-500'}`}>{order.type}</span>
+                        <span className="ml-2 text-red-500">{order.filledQuantity}/{order.quantity}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground text-right">
+                        <span>{order.timestamp}</span>
+                         <span className="text-xs font-semibold text-red-600 ml-2">CANCELLED</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-end mt-1">
+                    <div>
+                        <p className="font-semibold">{order.ticker}</p>
+                        <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
+                    </div>
+                     <div className="text-right">
+                        <p className="font-semibold">₹{order.limitPrice.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </TabsContent>
         <TabsContent value="GTT">

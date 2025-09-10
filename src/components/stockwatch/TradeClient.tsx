@@ -159,8 +159,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [price, setPrice] = useState(orderToEdit?.price?.toString() || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
   
-  const initialProduct = orderToEdit?.product || "CNC";
-  const initialOrderMethod = orderToEdit?.orderMethod || "LIMIT";
+  const initialProduct = orderToEdit?.product || (isSellFromHolding ? "CNC" : "MIS");
+  const initialOrderMethod = orderToEdit?.orderMethod || "MARKET";
 
   const [product, setProduct] = useState(initialProduct.toUpperCase());
   const [orderMethod, setOrderMethod] = useState(initialOrderMethod.toUpperCase());
@@ -199,12 +199,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     if(orderToEdit) {
         setOrderType(orderToEdit.type || "BUY");
-        setProduct(orderToEdit.product?.toUpperCase() || "CNC");
-        setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
+        setProduct(orderToEdit.product?.toUpperCase() || (isSellFromHolding ? "CNC" : "MIS"));
+        setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "MARKET");
         setQuantity(orderToEdit.quantity?.toString() || "1");
         setPrice(orderToEdit.price?.toString() || "");
     }
-  }, [orderToEdit]);
+  }, [orderToEdit, isSellFromHolding]);
 
   useEffect(() => {
     fetchStock();
@@ -266,13 +266,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     
     const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
     const newBalance = order.type === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
-    localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
-    setAvailableFunds(newBalance);
+    localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: Math.max(0, newBalance) }));
+    setAvailableFunds(Math.max(0, newBalance));
     
-    // For CNC orders, update holdings in portfolioData
-    // We only update if it's NOT a sell from holding, because that's handled differently now.
-    // Selling from holding means we directly adjust the holding quantity.
-    if (product === 'CNC') {
+    if (product === 'CNC' || isSellFromHolding) {
         const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
         let newHoldings = [...(portfolioData.holdings || [])];
         const holdingIndex = newHoldings.findIndex(h => h.ticker === ticker);
@@ -297,7 +294,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                     investedValue: executedOrder.ltp * executedOrder.quantity,
                 });
             }
-        } else if (order.type === 'SELL' && isSellFromHolding) { 
+        } else { // SELL from holding or CNC
             if (holdingIndex > -1) {
                 const existingHolding = newHoldings[holdingIndex];
                 const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
@@ -323,9 +320,11 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
   const handlePlaceOrder = () => {
     if(isLoading || !stock) return;
+    
+    const requiredFunds = approxMargin + 50; // Add buffer for charges
 
-    if (orderType === 'BUY' && approxMargin > availableFunds) {
-      toast({ variant: "destructive", title: "Insufficient Funds", description: `You need ₹${approxMargin.toFixed(2)} but have ₹${availableFunds.toFixed(2)}.` });
+    if (orderType === 'BUY' && requiredFunds > availableFunds) {
+      toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~₹${requiredFunds.toFixed(2)}. Available: ₹${availableFunds.toFixed(2)}.` });
       return;
     }
     
@@ -431,16 +430,15 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         
         <main className="flex-1 overflow-y-auto pb-4">
           <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full">
-              {!isSellFromHolding && (
+              {isSellFromHolding ? (
+                 <div className="px-4">
+                    <h2 className="text-center font-bold text-lg text-red-600">SELL FROM HOLDING</h2>
+                 </div>
+              ) : (
                 <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="BUY" disabled={isEditing && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
                     <TabsTrigger value="SELL" disabled={isEditing && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
                 </TabsList>
-              )}
-              {isSellFromHolding && (
-                 <div className="px-4">
-                    <h2 className="text-center font-bold text-lg text-red-600">SELL FROM HOLDING</h2>
-                 </div>
               )}
               <div className="p-4 space-y-6">
                   <Tabs defaultValue="Regular" className="w-full">
@@ -478,13 +476,13 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                       <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4">
                           <Button asChild variant="outline" className={cn("flex-1", product === "MIS" && "border-primary text-primary")}>
                               <Label className="flex-col items-center justify-center h-full gap-0 p-2 cursor-pointer">
-                                  <RadioGroupItem value="MIS" id="mis" className="sr-only"/>
+                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isSellFromHolding} />
                                   Intraday <span className="text-xs text-muted-foreground">MIS</span>
                               </Label>
                           </Button>
                           <Button asChild variant="outline" className={cn("flex-1", product === "CNC" && "border-primary text-primary")}>
                               <Label className="flex-col items-center justify-center h-full gap-0 p-2 cursor-pointer">
-                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only"/>
+                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={orderType === 'SELL' && !currentHolding} />
                                   Longterm <span className="text-xs text-muted-foreground">CNC</span>
                               </Label>
                           </Button>
@@ -580,7 +578,5 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
-
-    
 
     
