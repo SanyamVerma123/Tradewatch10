@@ -65,7 +65,7 @@ export function WatchlistDashboard() {
   const [isSearching, setIsSearching] = useState(false);
   const [isAnalysisDialogOpen, setIsAnalysisDialogOpen] = useState(false);
 
-  const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
+  const [selectedStockTicker, setSelectedStockTicker] = useState<string | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
 
   const [editingWatchlistId, setEditingWatchlistId] = useState<string | null>(null);
@@ -225,7 +225,7 @@ export function WatchlistDashboard() {
   };
 
   const handleStockClick = (stock: Stock) => {
-    setSelectedStock(stock);
+    setSelectedStockTicker(stock.ticker);
     setIsActionSheetOpen(true);
   }
 
@@ -295,6 +295,8 @@ export function WatchlistDashboard() {
       </TableRow>
     ))
   );
+  
+  const selectedStock = selectedStockTicker ? stocks[selectedStockTicker] : null;
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
