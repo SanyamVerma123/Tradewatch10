@@ -19,6 +19,7 @@ import { getHistoricalData } from "@/app/actions";
 import type { HistoricalHistoryResult } from "yahoo-finance2/dist/esm/src/modules/historical";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { MarketDepthHistory } from "./MarketDepthHistory";
 
 
 interface StockActionSheetProps {
@@ -157,6 +158,12 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
           <Fundamentals stock={stock} />
         </div>
         
+        <Separator />
+
+        <div className="py-4">
+          <MarketDepthHistory stock={stock} />
+        </div>
+
         <Separator />
         
         <div className="py-4 sticky bottom-0 bg-background">
