@@ -28,18 +28,17 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
           [{ price: stock.bid!, id: now }, ...prev].slice(0, MAX_HISTORY)
         );
         lastBidRef.current = stock.bid;
-        // Simulate a fluctuating total volume for visual effect
-        setTotalBid(Math.floor(Math.random() * 5000) + (stock.volume / 1000));
       }
+      // Simulate volume changes for visual effect without blocking rendering
+      setTotalBid(Math.floor(Math.random() * 5000) + ((stock.volume || 0) / 1000));
 
       if (stock.ask && stock.ask !== lastAskRef.current) {
         setAsks((prev) =>
           [{ price: stock.ask!, id: now + 1 }, ...prev].slice(0, MAX_HISTORY)
         );
         lastAskRef.current = stock.ask;
-        // Simulate a fluctuating total volume for visual effect
-        setTotalAsk(Math.floor(Math.random() * 5000) + (stock.volume / 1000));
       }
+      setTotalAsk(Math.floor(Math.random() * 5000) + ((stock.volume || 0) / 1000));
     }
   }, [stock]);
 
@@ -92,8 +91,8 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
             </div>
         </div>
          <div className="grid grid-cols-2 text-center font-semibold text-xs text-muted-foreground border-t pt-2 mt-1">
-            <div>Total Bid: <span className="text-foreground">{Math.floor(totalBid).toLocaleString('en-IN')}</span></div>
-            <div>Total Ask: <span className="text-foreground">{Math.floor(totalAsk).toLocaleString('en-IN')}</span></div>
+            <div>Total Bid: <span className="text-foreground transition-colors">{Math.floor(totalBid).toLocaleString('en-IN')}</span></div>
+            <div>Total Ask: <span className="text-foreground transition-colors">{Math.floor(totalAsk).toLocaleString('en-IN')}</span></div>
         </div>
       </div>
     </div>
