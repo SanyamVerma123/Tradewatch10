@@ -181,25 +181,45 @@ export function WatchlistDashboard() {
   const addStockToWatchlist = (ticker: string) => {
     if (!activeWatchlist || !user) return;
 
-    const updatedWatchlists = watchlists.map(wl => {
-      if (wl.id === activeWatchlist.id) {
-        if (wl.stocks.includes(ticker)) {
-          toast({
-            description: `${ticker} is already in this watchlist.`,
-          });
-          return wl;
-        }
+    if (activeWatchlist.stocks.includes(ticker)) {
         toast({
-          title: "Success",
-          description: `${ticker} added to ${wl.name}.`,
+            description: `${ticker} is already in this watchlist.`,
         });
-        return { ...wl, stocks: [...wl.stocks, ticker] };
-      }
-      return wl;
+        return;
+    }
+
+    let previousWatchlistName: string | undefined;
+
+    const updatedWatchlists = watchlists.map(wl => {
+        // Remove from any other watchlist
+        if (wl.stocks.includes(ticker)) {
+            previousWatchlistName = wl.name;
+            return { ...wl, stocks: wl.stocks.filter(s => s !== ticker) };
+        }
+        return wl;
+    }).map(wl => {
+        // Add to the active watchlist
+        if (wl.id === activeWatchlist.id) {
+            return { ...wl, stocks: [...wl.stocks, ticker] };
+        }
+        return wl;
     });
 
     setWatchlists(updatedWatchlists);
     localStorage.setItem(`watchlists_${user.id}`, JSON.stringify(updatedWatchlists));
+    
+    if (previousWatchlistName) {
+        toast({
+            title: "Stock Moved",
+            description: `${ticker} moved from "${previousWatchlistName}" to "${activeWatchlist.name}".`,
+        });
+    } else {
+        toast({
+            title: "Stock Added",
+            description: `${ticker} added to "${activeWatchlist.name}".`,
+        });
+    }
+    
     const newActiveWl = updatedWatchlists.find(wl => wl.id === activeWatchlist.id);
     if (newActiveWl) {
         setIsLoadingStocks(true);
@@ -210,6 +230,7 @@ export function WatchlistDashboard() {
             setIsLoadingStocks(false);
         });
     }
+
     setSearchQuery("");
     setSearchResults([]);
     setIsSearchMode(false);
@@ -496,3 +517,5 @@ export function WatchlistDashboard() {
     </div>
   );
 }
+
+    
