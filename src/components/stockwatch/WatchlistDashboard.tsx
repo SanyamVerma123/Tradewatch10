@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Stock, Watchlist, NewsArticle, Order, User } from "@/lib/types";
+import type { Stock, Watchlist, NewsArticle, Order } from "@/lib/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +36,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { watchlists as initialWatchlistsData, news as allNewsData } from "@/lib/data";
 import { StockActionSheet } from "./StockActionSheet";
 import { AIAnalysisDialog } from "./AIAnalysisDialog";
+import { supabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 
 const getStockStatusMessage = (changePercent: number): string => {
@@ -79,19 +81,23 @@ export function WatchlistDashboard() {
   }, []);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        const loadedWatchlists = JSON.parse(localStorage.getItem(`watchlists_${parsedUser.id}`) || JSON.stringify(initialWatchlistsData));
-        setWatchlists(loadedWatchlists);
-        if (loadedWatchlists.length > 0 && !activeTab) {
-            setActiveTab(loadedWatchlists[0].id);
-        }
-    } else {
+    const fetchUserAndData = async () => {
+      const { data: { user: sbUser }, error } = await supabase.auth.getUser();
+      if (error || !sbUser) {
         router.replace('/');
-    }
-
+        return;
+      }
+      setUser(sbUser);
+      
+      const watchlistsKey = `watchlists_${sbUser.id}`;
+      const loadedWatchlists = JSON.parse(localStorage.getItem(watchlistsKey) || JSON.stringify(initialWatchlistsData));
+      setWatchlists(loadedWatchlists);
+      if (loadedWatchlists.length > 0 && !activeTab) {
+          setActiveTab(loadedWatchlists[0].id);
+      }
+    };
+    
+    fetchUserAndData();
     shuffleNews();
     const newsInterval = setInterval(shuffleNews, 1000 * 60 * 60); // Refresh every hour
     

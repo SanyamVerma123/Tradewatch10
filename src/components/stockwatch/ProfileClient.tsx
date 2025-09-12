@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { User } from "@/lib/types";
+import type { User as AppUser } from "@/lib/types";
 import {
   Card,
   CardContent,
@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ChevronDown, ChevronRight, Settings, Info, User as UserIcon, HelpCircle, Gift, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
 
 const menuItems = [
     { label: "Funds", icon: () => <span className="font-bold text-lg">₹</span>, href: "/funds" },
@@ -23,28 +24,33 @@ const menuItems = [
 
 export function ProfileClient() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
 
   useEffect(() => {
-    const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    if (!isLoggedIn) {
-      router.replace('/');
-      return;
-    }
-
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    } else {
-      // This case should ideally not be reached if isLoggedIn is true
-      router.replace('/');
-    }
+    const fetchUser = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error || !session) {
+        router.replace('/');
+        return;
+      }
+      
+      const currentUser = session.user;
+      setUser({
+        id: currentUser.id,
+        name: currentUser.user_metadata.full_name || 'User',
+        email: currentUser.email || '',
+        referralCode: currentUser.user_metadata.referral_code,
+        usedReferralCode: currentUser.user_metadata.used_referral_code
+      });
+    };
+    
+    fetchUser();
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('isLoggedIn');
-    // We don't remove other user's data on logout
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    // No need to clear local storage items one by one. Session is managed by Supabase.
+    // The app will redirect to '/' automatically via the BottomNav/other client components.
     router.push('/');
   };
 

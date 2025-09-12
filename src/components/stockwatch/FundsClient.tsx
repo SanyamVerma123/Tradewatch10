@@ -10,11 +10,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Plus, Minus } from "lucide-react";
+import { ArrowLeft, Plus, Minus, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import type { Portfolio, User } from "@/lib/types";
+import type { Portfolio } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 interface FundsData {
   balance: number;
@@ -30,24 +32,28 @@ export function FundsClient() {
   const [totalInvested, setTotalInvested] = useState(0);
   const [currentValue, setCurrentValue] = useState(0);
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      const parsedUser: User = JSON.parse(storedUser);
-      setUser(parsedUser);
+    const fetchUserAndData = async () => {
+      const { data: { user: sbUser }, error } = await supabase.auth.getUser();
+      if (error || !sbUser) {
+        router.replace('/');
+        return;
+      }
+      setUser(sbUser);
 
-      const storedFunds = localStorage.getItem(`funds_${parsedUser.id}`);
+      const fundsKey = `funds_${sbUser.id}`;
+      const storedFunds = localStorage.getItem(fundsKey);
       if (storedFunds) {
         setFunds(JSON.parse(storedFunds));
       } else {
-        // Initialize if not present
         const initialFunds = { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
         setFunds(initialFunds);
-        localStorage.setItem(`funds_${parsedUser.id}`, JSON.stringify(initialFunds));
+        localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
       }
 
-      const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem(`portfolioData_${parsedUser.id}`) || "null");
+      const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem(`portfolioData_${sbUser.id}`) || "null");
       
       if (portfolioData) {
           const holdingsInvested = portfolioData.holdings.reduce((acc, h) => acc + h.investedValue, 0);
@@ -60,42 +66,35 @@ export function FundsClient() {
           setTotalInvested(totalInvestedVal);
           setCurrentValue(totalCurrentVal);
           setPnl(totalCurrentVal - totalInvestedVal);
-      } else {
-          const investedValue = 0; // Starting with empty portfolio
-          const currentValue = 0;
-          const totalPnl = currentValue - investedValue;
-          setCurrentValue(currentValue);
-          setTotalInvested(investedValue);
-          setPnl(totalPnl);
       }
-    } else {
-        router.replace('/');
-    }
+      setIsLoading(false);
+    };
 
+    fetchUserAndData();
   }, [router]);
 
-  const checkAndUnlockFunds = () => {
-    if (user && funds && pnl - funds.lastProfitCheck >= 10000 && funds.canAddMore) {
-        const newFunds = {
-            ...funds,
-            balance: funds.balance + 200000,
-            canAddMore: false, // One time bonus
-            lastProfitCheck: pnl
-        };
-        setFunds(newFunds);
-        localStorage.setItem(`funds_${user.id}`, JSON.stringify(newFunds));
-        toast({
-            title: "Congratulations!",
-            description: "You've earned a ₹10,000 profit! You can now add an additional ₹2,00,000 to your funds.",
-        });
-    }
-  }
-
   useEffect(() => {
+    const checkAndUnlockFunds = () => {
+      if (user && funds && pnl - funds.lastProfitCheck >= 10000 && funds.canAddMore) {
+          const newFunds = {
+              ...funds,
+              balance: funds.balance + 200000,
+              canAddMore: false, // One time bonus
+              lastProfitCheck: pnl
+          };
+          setFunds(newFunds);
+          localStorage.setItem(`funds_${user.id}`, JSON.stringify(newFunds));
+          toast({
+              title: "Congratulations!",
+              description: "You've earned a ₹10,000 profit! You can now add an additional ₹2,00,000 to your funds.",
+          });
+      }
+    }
+    
     if (funds) { // Only run if funds have been loaded
         checkAndUnlockFunds();
     }
-  }, [pnl, funds]);
+  }, [pnl, funds, user, toast]);
 
 
   const handleAddFunds = () => {
@@ -121,6 +120,10 @@ export function FundsClient() {
         description: "Your withdrawal request is being processed."
     })
   };
+
+  if (isLoading) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">

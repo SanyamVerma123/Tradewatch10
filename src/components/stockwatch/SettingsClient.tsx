@@ -26,21 +26,23 @@ import { ArrowLeft, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
+import { supabase } from "@/lib/supabase/client";
 
 export function SettingsClient() {
   const router = useRouter();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
 
-  const handleClearData = () => {
+  const handleClearData = async () => {
     try {
+        await supabase.auth.signOut();
         localStorage.clear(); // Clear all local storage for the domain
         toast({
             title: "Data Cleared",
             description: "All app data has been successfully cleared from this device.",
         });
         // Redirect to auth page after clearing data
-        setTimeout(() => router.push('/'), 500);
+        router.push('/');
     } catch(e) {
         toast({
             variant: "destructive",
@@ -116,7 +118,7 @@ export function SettingsClient() {
         <CardHeader>
           <CardTitle>Data Management</CardTitle>
           <CardDescription>
-            Clear all your local application data from this device.
+            Clear all your local application data from this device. This will log you out.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -131,7 +133,7 @@ export function SettingsClient() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete all user accounts, portfolios, orders, and watchlists from this device.
+                    This action cannot be undone. This will permanently delete all portfolios, orders, and watchlists from this device and log you out. User accounts will remain.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

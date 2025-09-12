@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -6,6 +7,7 @@ import { LayoutGrid, ShoppingBag, PieChart, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/watchlist", label: "Watchlist", icon: LayoutGrid },
@@ -18,19 +20,37 @@ export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    setIsLoggedIn(loggedIn);
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const loggedIn = !!session;
+      setIsLoggedIn(loggedIn);
+      setIsLoading(false);
 
-    if (!loggedIn && pathname !== '/' && !isRedirecting) {
-      setIsRedirecting(true); // Set flag to prevent multiple redirects
-      router.replace('/');
-    }
-  }, [pathname, router, isRedirecting]);
+      if (!loggedIn && pathname !== '/') {
+        router.replace('/');
+      }
+    };
 
-  if (!isLoggedIn || pathname === '/') {
+    checkSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+        const loggedIn = !!session;
+        setIsLoggedIn(loggedIn);
+        if (!loggedIn && pathname !== '/') {
+            router.replace('/');
+        }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+
+  }, [pathname, router]);
+
+  if (isLoading || !isLoggedIn || pathname === '/') {
     return null;
   }
 

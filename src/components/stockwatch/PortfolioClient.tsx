@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import type { Portfolio, Holding, Stock, Order, Position, User } from "@/lib/types";
+import type { Portfolio, Holding, Stock, Order, Position } from "@/lib/types";
 import { getStockData } from "@/app/actions";
 import {
   Card,
@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 import { portfolio as initialPortfolioData } from "@/lib/portfolio";
 import { StockActionSheet } from "./StockActionSheet";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 const isToday = (date: Date) => {
     const today = new Date();
@@ -57,21 +59,27 @@ export function PortfolioClient() {
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    } else {
-      router.replace('/');
-    }
+    const fetchUser = async () => {
+      const { data: { user: sbUser }, error } = await supabase.auth.getUser();
+      if (error || !sbUser) {
+        router.replace('/');
+      } else {
+        setUser(sbUser);
+      }
+    };
+    fetchUser();
   }, [router]);
   
   const updatePortfolioData = useCallback(async (isSilent = false) => {
     if (!user) return;
     if (!isSilent) setIsLoading(true);
     
+    const ordersKey = `orders_${user.id}`;
+    const portfolioKey = `portfolioData_${user.id}`;
+    
     let allOrders: Order[];
     try {
-        const ordersItem = localStorage.getItem(`orders_${user.id}`);
+        const ordersItem = localStorage.getItem(ordersKey);
         allOrders = ordersItem ? JSON.parse(ordersItem) : [];
     } catch (e) {
         console.error("Could not parse orders from local storage", e);
@@ -86,7 +94,7 @@ export function PortfolioClient() {
     // Tickers to fetch data for
     let allTickersInPortfolio: string[] = [];
     try {
-      const storedPortfolio = JSON.parse(localStorage.getItem(`portfolioData_${user.id}`) || '{}');
+      const storedPortfolio = JSON.parse(localStorage.getItem(portfolioKey) || '{}');
       const holdingTickers = (storedPortfolio.holdings || []).map((h: Holding) => h.ticker);
       allTickersInPortfolio = [...new Set([...holdingTickers])];
     } catch(e) {
@@ -100,7 +108,7 @@ export function PortfolioClient() {
     if (allTickers.length === 0) {
       setPortfolio({ ...initialPortfolioData, holdings: [], positions: [] });
       setIsLoading(false);
-      localStorage.setItem(`portfolioData_${user.id}`, JSON.stringify({ holdings: [], positions: [] }));
+      localStorage.setItem(portfolioKey, JSON.stringify({ holdings: [], positions: [] }));
       return;
     }
     
@@ -248,7 +256,7 @@ export function PortfolioClient() {
 
             if (newOrdersForSquareOff.length > 0) {
                 const updatedOrders = [...allOrders, ...newOrdersForSquareOff];
-                localStorage.setItem(`orders_${user.id}`, JSON.stringify(updatedOrders));
+                localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
                 toast({
                     title: "Auto Square-Off",
                     description: `Your open intraday positions have been automatically closed as the market is now closed.`
@@ -295,7 +303,7 @@ export function PortfolioClient() {
     }).filter(h => h.quantity > 0);
 
 
-    localStorage.setItem(`portfolioData_${user.id}`, JSON.stringify({ holdings: finalHoldings }));
+    localStorage.setItem(portfolioKey, JSON.stringify({ holdings: finalHoldings }));
 
     const newPortfolio: Portfolio = {
       investedValue: totalInvested,

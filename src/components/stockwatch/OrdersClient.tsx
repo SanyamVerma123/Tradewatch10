@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Order, Portfolio, Stock, Holding, User } from "@/lib/types";
+import type { Order, Portfolio, Stock, Holding } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -11,10 +11,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Search, SlidersHorizontal, Loader2 } from "lucide-react";
 import { getStockData } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 // Heuristic to check if market is open (9:15 AM to 3:30 PM India time on weekdays)
 function isMarketOpen() {
@@ -52,21 +54,27 @@ export function OrdersClient() {
   const [orders, setOrders] = useState<Order[]>([]);
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    } else {
-      router.replace('/');
-    }
+    const fetchUser = async () => {
+      const { data: { user: sbUser }, error } = await supabase.auth.getUser();
+      if (error || !sbUser) {
+        router.replace('/');
+      } else {
+        setUser(sbUser);
+      }
+      setIsLoading(false);
+    };
+    fetchUser();
   }, [router]);
 
   const cancelOrder = useCallback((orderToCancel: Order, reason: string) => {
     if (!user) return;
-    let allOrders: Order[] = JSON.parse(localStorage.getItem(`orders_${user.id}`) || '[]');
+    const ordersKey = `orders_${user.id}`;
+    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     const updatedOrders = allOrders.map(o => o.id === orderToCancel.id ? { ...o, status: 'Cancelled' } : o);
-    localStorage.setItem(`orders_${user.id}`, JSON.stringify(updatedOrders));
+    localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
     setOrders(updatedOrders);
     toast({
         variant: "destructive",
@@ -85,8 +93,12 @@ export function OrdersClient() {
     const stt = orderToExecute.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
     const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
 
+    const fundsKey = `funds_${user.id}`;
+    const ordersKey = `orders_${user.id}`;
+    const portfolioKey = `portfolioData_${user.id}`;
+    
     // Final funds check before execution
-    const fundsData = JSON.parse(localStorage.getItem(`funds_${user.id}`) || '{}');
+    const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
     if (orderToExecute.type === 'BUY' && fundsData.balance < finalTradeValue + totalCharges) {
         cancelOrder(orderToExecute, `Insufficient funds. Required: ₹${(finalTradeValue + totalCharges).toFixed(2)}`);
         return;
@@ -94,8 +106,8 @@ export function OrdersClient() {
     
     let realizedPnl: number | undefined = undefined;
     if (orderToExecute.type === 'SELL') {
-      const allOrders: Order[] = JSON.parse(localStorage.getItem(`orders_${user.id}`) || '[]');
-      const portfolio: Portfolio = JSON.parse(localStorage.getItem(`portfolioData_${user.id}`) || '{ "holdings": [] }');
+      let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+      const portfolio: Portfolio = JSON.parse(localStorage.getItem(portfolioKey) || '{ "holdings": [] }');
       
       const relatedBuyOrders = allOrders
         .filter(o => o.status === 'Executed' && o.type === 'BUY' && o.ticker === orderToExecute.ticker)
@@ -122,14 +134,14 @@ export function OrdersClient() {
     const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString(), realizedPnl };
 
     // Update orders in state and local storage
-    let allOrders: Order[] = JSON.parse(localStorage.getItem(`orders_${user.id}`) || '[]');
+    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
     if (existingOrderIndex > -1) {
       allOrders[existingOrderIndex] = executedOrder;
     } else {
       allOrders = [executedOrder, ...allOrders];
     }
-    localStorage.setItem(`orders_${user.id}`, JSON.stringify(allOrders));
+    localStorage.setItem(ordersKey, JSON.stringify(allOrders));
     setOrders(allOrders);
 
     // Simulate Tax & Fund deduction/addition
@@ -140,11 +152,11 @@ export function OrdersClient() {
       
       newBalance = Math.max(0, newBalance); // Ensure balance doesn't go below zero
 
-      localStorage.setItem(`funds_${user.id}`, JSON.stringify({ ...fundsData, balance: newBalance }));
+      localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
     }
     
     if (product === 'CNC' || orderToExecute.isSellFromHolding) {
-        const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem(`portfolioData_${user.id}`) || JSON.stringify({ holdings: [] }));
+        const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem(portfolioKey) || JSON.stringify({ holdings: [] }));
         let newHoldings = [...(portfolioData.holdings || [])];
         const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
 
@@ -179,7 +191,7 @@ export function OrdersClient() {
                 }
             }
         }
-        localStorage.setItem(`portfolioData_${user.id}`, JSON.stringify({ ...portfolioData, holdings: newHoldings }));
+        localStorage.setItem(portfolioKey, JSON.stringify({ ...portfolioData, holdings: newHoldings }));
     }
     
     toast({
@@ -192,9 +204,10 @@ export function OrdersClient() {
 
   useEffect(() => {
     if (!user) return;
+    const ordersKey = `orders_${user.id}`;
 
     const fetchOrdersDataAndCheckPending = async () => {
-        const storedOrdersText = localStorage.getItem(`orders_${user.id}`) || '[]';
+        const storedOrdersText = localStorage.getItem(ordersKey) || '[]';
         let storedOrders: Order[];
         try {
             storedOrders = JSON.parse(storedOrdersText);
@@ -293,6 +306,10 @@ export function OrdersClient() {
       router.push(`/trade/${encodeURIComponent(order.ticker)}?order=${orderQueryParam}`);
     }
   };
+
+  if (isLoading) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   const filteredPendingOrders = orders.filter(
     (order) =>

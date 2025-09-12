@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
-import type { User } from '@/lib/types';
+import type { User as AppUser } from '@/lib/types';
 import {
   Card,
   CardContent,
@@ -10,49 +11,53 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Copy, Share2 } from "lucide-react";
+import { ArrowLeft, Copy, Share2, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 export function InviteClient() {
   const router = useRouter();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
+  const [sbUser, setSbUser] = useState<User | null>(null);
   const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      const parsedUser: User = JSON.parse(storedUser);
-      setUser(parsedUser);
-      if(parsedUser.referralCode) {
-        setReferralCode(parsedUser.referralCode);
+    const fetchUser = async () => {
+      setIsLoading(true);
+      const { data: { user }, error } = await supabase.auth.getUser();
+
+      if (error || !user) {
+        router.replace("/");
+        return;
       }
-    } else {
-      router.replace("/");
-    }
+      setSbUser(user);
+      setReferralCode(user.user_metadata.referral_code || null);
+      setIsLoading(false);
+    };
+
+    fetchUser();
   }, [router]);
 
-  const generateReferralCode = () => {
-    if (!user) return;
-    const code = `${user.name.substring(0, 3).toUpperCase()}${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-    const updatedUser = { ...user, referralCode: code };
+  const generateReferralCode = async () => {
+    if (!sbUser) return;
+    setIsLoading(true);
 
-    // Update current user in local storage
-    localStorage.setItem('user', JSON.stringify(updatedUser));
-    setUser(updatedUser);
-    setReferralCode(code);
-
-    // Update user in the global list for lookup
-    const allUsersText = localStorage.getItem('allUsers');
-    const allUsers = allUsersText ? JSON.parse(allUsersText) : {};
-    allUsers[user.id] = updatedUser;
-    localStorage.setItem('allUsers', JSON.stringify(allUsers));
+    const code = `${(sbUser.user_metadata.full_name || "USER").substring(0, 3).toUpperCase()}${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     
-    toast({
-      title: "Code Generated!",
-      description: "Your unique referral code is ready to be shared.",
+    const { data, error } = await supabase.auth.updateUser({
+      data: { referral_code: code }
     });
+
+    if (error) {
+      toast({ variant: 'destructive', title: 'Error', description: error.message });
+    } else {
+      setReferralCode(code);
+      toast({ title: "Code Generated!", description: "Your unique referral code is ready to be shared." });
+    }
+    setIsLoading(false);
   };
 
   const copyToClipboard = (text: string) => {
@@ -69,12 +74,15 @@ export function InviteClient() {
         text: `Hey! I'm inviting you to StockWatch. Use my referral code to get a ₹1,00,000 bonus when you sign up: ${referralCode}`,
         url: window.location.origin,
       }).catch((error) => console.log('Error sharing', error));
-    } else {
+    } else if (referralCode) {
         copyToClipboard(`Hey! I'm inviting you to StockWatch. Use my referral code to get a ₹1,00,000 bonus when you sign up: ${referralCode}`);
         toast({description: "Share not supported. Invite message copied to clipboard."});
     }
   }
 
+  if (isLoading && !referralCode) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -102,12 +110,14 @@ export function InviteClient() {
                             <Copy className="h-5 w-5" />
                         </Button>
                     </div>
-                    <Button onClick={shareCode}>
+                    <Button onClick={shareCode} disabled={isLoading}>
                         <Share2 className="mr-2 h-4 w-4" /> Share with Friends
                     </Button>
                 </div>
             ) : (
-                <Button size="lg" onClick={generateReferralCode}>Generate Your Referral Code</Button>
+                <Button size="lg" onClick={generateReferralCode} disabled={isLoading}>
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Generate Your Referral Code'}
+                </Button>
             )}
         </CardContent>
       </Card>
