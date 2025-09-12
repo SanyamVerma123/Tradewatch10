@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ExternalLink, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { StockChart } from "@/components/stockwatch/StockChart";
 import { getHistoricalData } from "@/app/actions";
 import type { HistoricalHistoryResult } from "yahoo-finance2/dist/esm/src/modules/historical";
@@ -74,6 +74,8 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
   );
 };
 
+const MemoizedStockChart = memo(StockChart);
+
 
 export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short', isFromHolding = false }: StockActionSheetProps) {
     const [historicalData, setHistoricalData] = useState<HistoricalHistoryResult | null>(null);
@@ -85,13 +87,13 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
             const data = await getHistoricalData(stock.ticker, timeframe);
             setHistoricalData(data);
         }
-    }, [stock, timeframe]);
+    }, [stock?.ticker, timeframe]);
 
     useEffect(() => {
         if(isOpen && stock) {
             fetchHistorical();
         }
-    }, [isOpen, stock, fetchHistorical]);
+    }, [isOpen, stock?.ticker, fetchHistorical]);
 
     if (!stock) return null;
 
@@ -119,7 +121,7 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
         </SheetHeader>
         
         <div className="h-64 my-4">
-          <StockChart data={historicalData} isPositive={stock.change >= 0} />
+          <MemoizedStockChart data={historicalData} isPositive={stock.change >= 0} />
         </div>
         
         <div className="flex justify-center mb-4">
