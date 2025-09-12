@@ -98,8 +98,8 @@ export function ProfileDetailsClient() {
     }
 
     // In a real app, you'd look up the referrer's name from your database.
-    // Here, we'll just simulate it for the UI.
-    const simulatedReferrerName = "Your Friend";
+    // Here, we'll use a hardcoded name for demonstration.
+    const simulatedReferrerName = "Shreyas";
 
     // 1. Update current user (referee) metadata to mark as used
     const { data: updatedUser, error: refereeUpdateError } = await supabase.auth.updateUser({
