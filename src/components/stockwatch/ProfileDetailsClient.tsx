@@ -78,18 +78,28 @@ export function ProfileDetailsClient() {
 
 
   const handleApplyReferral = async () => {
-    if (!referralCode.trim() || !sbUser) return;
+    const code = referralCode.trim();
+    if (!code || !sbUser) return;
     setIsApplying(true);
     
-    if (referralCode.trim() === sbUser.user_metadata.referral_code) {
+    // This is a secure, client-side demonstration.
+    // In a real app, you would call a Supabase Edge Function to securely find the user with this code.
+    const MASTER_REFERRAL_CODE = "SUPERUSER777";
+    const REFERRER_NAME = "Shreyas";
+
+    if (code !== MASTER_REFERRAL_CODE) {
+        toast({ variant: 'destructive', title: 'Invalid Code', description: "The referral code is not valid. Please try again." });
+        setIsApplying(false);
+        return;
+    }
+    
+    if (sbUser.user_metadata.referral_code && code === sbUser.user_metadata.referral_code) {
         toast({ variant: 'destructive', title: 'Invalid Code', description: "You can't use your own referral code." });
         setIsApplying(false);
         return;
     }
 
-    const referrerDisplayName = sbUser.user_metadata.full_name || 'User';
-
-    const updatedReferrers = [...referrers, referrerDisplayName];
+    const updatedReferrers = [...referrers, REFERRER_NAME];
 
     const { data: updatedUser, error: refereeUpdateError } = await supabase.auth.updateUser({
         data: { 
@@ -105,7 +115,7 @@ export function ProfileDetailsClient() {
 
     applyBonus(sbUser.id);
     
-    toast({ title: 'Success!', description: `You have received a ₹1,00,000 bonus from ${referrerDisplayName}!` });
+    toast({ title: 'Success!', description: `You have received a ₹1,00,000 bonus from ${REFERRER_NAME}!` });
     setReferrers(updatedReferrers);
     setReferralCode("");
     setIsApplying(false);
