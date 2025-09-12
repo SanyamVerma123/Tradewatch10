@@ -34,6 +34,7 @@ export function InviteClient() {
         return;
       }
       setSbUser(user);
+      // The user object from Supabase auth has the latest metadata
       setReferralCode(user.user_metadata.referral_code || null);
       setIsLoading(false);
     };
@@ -47,14 +48,16 @@ export function InviteClient() {
 
     const code = `${(sbUser.user_metadata.full_name || "USER").substring(0, 3).toUpperCase()}${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     
+    // Update the user metadata in Supabase Auth
     const { data, error } = await supabase.auth.updateUser({
       data: { referral_code: code }
     });
 
     if (error) {
       toast({ variant: 'destructive', title: 'Error', description: error.message });
-    } else {
-      setReferralCode(code);
+    } else if (data.user) {
+      // Set the new code from the updated user object
+      setReferralCode(data.user.user_metadata.referral_code);
       toast({ title: "Code Generated!", description: "Your unique referral code is ready to be shared." });
     }
     setIsLoading(false);
