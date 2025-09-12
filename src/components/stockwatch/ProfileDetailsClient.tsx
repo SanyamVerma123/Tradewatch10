@@ -85,27 +85,22 @@ export function ProfileDetailsClient() {
   const handleApplyReferral = async () => {
     if (!referralCode.trim() || !sbUser) return;
     setIsApplying(true);
-
-    // This is an illustrative, client-side-only implementation.
-    // In a real app, you would need a secure, server-side function to validate
-    // the code against a database to prevent abuse.
     
-    // Simulate finding a referrer. In a real app, you'd find this user in your DB.
     if (referralCode.trim() === sbUser.user_metadata.referral_code) {
         toast({ variant: 'destructive', title: 'Invalid Code', description: "You can't use your own referral code." });
         setIsApplying(false);
         return;
     }
 
-    // In a real app, you'd look up the referrer's name from your database.
-    // Here, we'll use a hardcoded name for demonstration.
-    const simulatedReferrerName = "Shreyas";
+    // This is for demonstration. It uses the current user's name as the referrer's name.
+    // A real implementation would require a secure backend function to look up the referrer.
+    const referrerDisplayName = sbUser.user_metadata.full_name || "a friend";
 
     // 1. Update current user (referee) metadata to mark as used
     const { data: updatedUser, error: refereeUpdateError } = await supabase.auth.updateUser({
         data: { 
             used_referral_code: true,
-            referred_by_name: simulatedReferrerName,
+            referred_by_name: referrerDisplayName, // Store the name for display
         }
     });
     
@@ -118,11 +113,12 @@ export function ProfileDetailsClient() {
     // 2. Apply bonus to the current user.
     applyBonus(sbUser.id);
     
-    // In a real app, you would also need to find the referrer and apply their bonus.
+    // In a real app, you would also need to find the referrer by their code (via a backend function)
+    // and apply their bonus.
     
-    toast({ title: 'Success!', description: `You have received a ₹1,00,000 bonus from ${simulatedReferrerName}!` });
+    toast({ title: 'Success!', description: `You have received a ₹1,00,000 bonus from ${referrerDisplayName}!` });
     setAppliedReferral(true);
-    setReferrerName(simulatedReferrerName);
+    setReferrerName(referrerDisplayName);
     setIsApplying(false);
   };
 
