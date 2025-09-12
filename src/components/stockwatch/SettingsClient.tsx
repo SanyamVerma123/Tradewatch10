@@ -27,6 +27,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabase/client";
+import { watchlists as initialWatchlistsData } from "@/lib/data";
 
 export function SettingsClient() {
   const router = useRouter();
@@ -35,22 +36,45 @@ export function SettingsClient() {
 
   const handleClearData = async () => {
     try {
-        await supabase.auth.signOut();
-        localStorage.clear(); // Clear all local storage for the domain
-        toast({
-            title: "Data Cleared",
-            description: "All app data has been successfully cleared from this device.",
-        });
-        // Redirect to auth page after clearing data
-        router.push('/');
-    } catch(e) {
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Could not clear app data.",
-        })
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        // Specifically remove app-related data for the logged-in user
+        const fundsKey = `funds_${user.id}`;
+        const watchlistsKey = `watchlists_${user.id}`;
+        const ordersKey = `orders_${user.id}`;
+        const portfolioKey = `portfolioData_${user.id}`;
+
+        localStorage.removeItem(fundsKey);
+        localStorage.removeItem(watchlistsKey);
+        localStorage.removeItem(ordersKey);
+        localStorage.removeItem(portfolioKey);
+        
+        // Re-initialize data to default state
+        const initialFunds = { balance: 200000.00, canAddMore: true, lastProfitCheck: 0 };
+        localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
+        localStorage.setItem(watchlistsKey, JSON.stringify(initialWatchlistsData));
+        localStorage.setItem(ordersKey, '[]');
+        localStorage.setItem(portfolioKey, '{"holdings":[],"positions":[]}');
+      }
+
+      toast({
+        title: "App Data Cleared",
+        description: "Your local watchlists, orders, and portfolio have been reset.",
+      });
+
+      // Redirect to a main page to see the fresh state
+      router.push('/watchlist');
+      
+    } catch (e) {
+      console.error("Error clearing app data:", e);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not clear app data.",
+      });
     }
-  }
+  };
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -118,7 +142,7 @@ export function SettingsClient() {
         <CardHeader>
           <CardTitle>Data Management</CardTitle>
           <CardDescription>
-            Clear all your local application data from this device. This will log you out.
+            Clear your local application data (watchlists, portfolio, etc.) from this device. You will remain logged in.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -133,7 +157,7 @@ export function SettingsClient() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete all portfolios, orders, and watchlists from this device and log you out. User accounts will remain.
+                    This action cannot be undone. This will permanently delete all portfolios, orders, and watchlists from this device and reset them to default. Your account will not be deleted and you will remain logged in.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
