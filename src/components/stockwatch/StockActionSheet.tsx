@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ExternalLink, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { StockChart } from "@/components/stockwatch/StockChart";
 import { getHistoricalData } from "@/app/actions";
 import type { HistoricalHistoryResult } from "yahoo-finance2/dist/esm/src/modules/historical";
@@ -41,7 +41,7 @@ const timeframes: { label: string; value: Timeframe }[] = [
   { label: 'Max', value: 'max' },
 ];
 
-const Fundamentals = ({ stock }: { stock: Stock }) => {
+const Fundamentals = memo(({ stock }: { stock: Stock }) => {
   const data = [
     { label: "Open", value: stock.open?.toFixed(2) },
     { label: "Day's High", value: stock.dayHigh?.toFixed(2) },
@@ -73,7 +73,8 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
         </a>
     </div>
   );
-};
+});
+Fundamentals.displayName = 'Fundamentals';
 
 
 export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short', isFromHolding = false }: StockActionSheetProps) {
