@@ -79,20 +79,22 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
 export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short', isFromHolding = false }: StockActionSheetProps) {
     const [historicalData, setHistoricalData] = useState<HistoricalHistoryResult | null>(null);
     const [timeframe, setTimeframe] = useState<Timeframe>('3mo');
+    const stockTicker = stock?.ticker;
 
     const fetchHistorical = useCallback(async () => {
-        if (stock) {
+        if (stockTicker) {
             setHistoricalData(null); // Reset on new stock/timeframe
-            const data = await getHistoricalData(stock.ticker, timeframe);
+            const data = await getHistoricalData(stockTicker, timeframe);
             setHistoricalData(data);
         }
-    }, [stock, timeframe]);
+    }, [stockTicker, timeframe]);
 
     useEffect(() => {
-        if(isOpen && stock) {
+        if(isOpen && stockTicker) {
             fetchHistorical();
         }
-    }, [isOpen, stock, fetchHistorical]);
+    }, [isOpen, stockTicker, timeframe, fetchHistorical]);
+
 
     if (!stock) return null;
 
