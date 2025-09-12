@@ -26,11 +26,10 @@ export function ProfileDetailsClient() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [referralCode, setReferralCode] = useState("");
-  const [appliedReferral, setAppliedReferral] = useState(false);
+  const [referrers, setReferrers] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
-  const [referrerName, setReferrerName] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -45,10 +44,7 @@ export function ProfileDetailsClient() {
       setSbUser(user);
       setName(user.user_metadata.full_name || "");
       setEmail(user.email || "");
-      setAppliedReferral(!!user.user_metadata.used_referral_code);
-      if (user.user_metadata.used_referral_code) {
-        setReferrerName(user.user_metadata.referred_by_name || "a friend");
-      }
+      setReferrers(user.user_metadata.referred_by_names || []);
       setIsLoading(false);
     };
 
@@ -74,7 +70,6 @@ export function ProfileDetailsClient() {
   
   const applyBonus = (userId: string) => {
       const fundsKey = `funds_${userId}`;
-      // Initialize if funds don't exist for some reason
       const fundsDataText = localStorage.getItem(fundsKey);
       const fundsData = fundsDataText ? JSON.parse(fundsDataText) : { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
       const newFunds = { ...fundsData, balance: (fundsData.balance || 0) + 100000 };
@@ -92,15 +87,13 @@ export function ProfileDetailsClient() {
         return;
     }
 
-    // This is for demonstration. It uses the current user's name as the referrer's name.
-    // A real implementation would require a secure backend function to look up the referrer.
-    const referrerDisplayName = sbUser.user_metadata.full_name || "a friend";
+    const referrerDisplayName = sbUser.user_metadata.full_name || 'User';
 
-    // 1. Update current user (referee) metadata to mark as used
+    const updatedReferrers = [...referrers, referrerDisplayName];
+
     const { data: updatedUser, error: refereeUpdateError } = await supabase.auth.updateUser({
         data: { 
-            used_referral_code: true,
-            referred_by_name: referrerDisplayName, // Store the name for display
+            referred_by_names: updatedReferrers
         }
     });
     
@@ -110,15 +103,11 @@ export function ProfileDetailsClient() {
         return;
     }
 
-    // 2. Apply bonus to the current user.
     applyBonus(sbUser.id);
     
-    // In a real app, you would also need to find the referrer by their code (via a backend function)
-    // and apply their bonus.
-    
     toast({ title: 'Success!', description: `You have received a ₹1,00,000 bonus from ${referrerDisplayName}!` });
-    setAppliedReferral(true);
-    setReferrerName(referrerDisplayName);
+    setReferrers(updatedReferrers);
+    setReferralCode("");
     setIsApplying(false);
   };
 
@@ -188,25 +177,29 @@ export function ProfileDetailsClient() {
               Have a referral code? Enter it here to claim your bonus.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {appliedReferral ? (
-                 <div className="text-green-600 font-semibold space-y-1">
-                    <p>Referral bonus has been applied to your account!</p>
-                    {referrerName && <p className="text-sm font-medium text-muted-foreground">Bonus from: {referrerName}</p>}
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+                <Input
+                    id="referral"
+                    placeholder="Enter referral code"
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value)}
+                    disabled={isApplying}
+                />
+                <Button onClick={handleApplyReferral} disabled={isApplying || !referralCode.trim()}>
+                    {isApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                </Button>
+            </div>
+
+            {referrers.length > 0 && (
+                 <div className="space-y-2 pt-2">
+                    <p className="text-sm font-medium">Bonuses received from:</p>
+                    <ul className="list-disc list-inside text-sm text-muted-foreground">
+                      {referrers.map((referrer, index) => (
+                        <li key={index}>{referrer}</li>
+                      ))}
+                    </ul>
                  </div>
-            ) : (
-                <div className="flex gap-2">
-                    <Input
-                        id="referral"
-                        placeholder="Enter referral code"
-                        value={referralCode}
-                        onChange={(e) => setReferralCode(e.target.value)}
-                        disabled={isApplying}
-                    />
-                    <Button onClick={handleApplyReferral} disabled={isApplying || !referralCode.trim()}>
-                        {isApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
-                    </Button>
-                </div>
             )}
           </CardContent>
       </Card>

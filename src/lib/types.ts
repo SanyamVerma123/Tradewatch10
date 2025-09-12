@@ -93,6 +93,7 @@ export interface User {
     email: string;
     referralCode?: string;
     usedReferralCode?: boolean;
+    referredByNames?: string[];
 }
 
     

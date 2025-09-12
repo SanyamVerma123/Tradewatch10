@@ -40,7 +40,8 @@ export function ProfileClient() {
         name: currentUser.user_metadata.full_name || 'User',
         email: currentUser.email || '',
         referralCode: currentUser.user_metadata.referral_code,
-        usedReferralCode: currentUser.user_metadata.used_referral_code
+        usedReferralCode: currentUser.user_metadata.used_referral_code,
+        referredByNames: currentUser.user_metadata.referred_by_names,
       });
     };
     
@@ -49,8 +50,6 @@ export function ProfileClient() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    // No need to clear local storage items one by one. Session is managed by Supabase.
-    // The app will redirect to '/' automatically via the BottomNav/other client components.
     router.push('/');
   };
 
