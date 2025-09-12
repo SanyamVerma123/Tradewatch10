@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -31,14 +32,19 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     try {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            const user = JSON.parse(storedUser);
-            if (user.email === email && user.password === password) {
+        const allUsersText = localStorage.getItem('allUsers');
+        if (allUsersText) {
+            const allUsers = JSON.parse(allUsersText);
+            const user = Object.values(allUsers).find(
+                (u: any) => u.email === email && u.password === password
+            );
+
+            if (user) {
                 localStorage.setItem('isLoggedIn', 'true');
+                localStorage.setItem('user', JSON.stringify(user)); // Set the current user
                 toast({
                     title: "Login Successful",
-                    description: `Welcome back, ${user.name}!`,
+                    description: `Welcome back, ${(user as any).name}!`,
                 });
                 router.push("/watchlist");
             } else {

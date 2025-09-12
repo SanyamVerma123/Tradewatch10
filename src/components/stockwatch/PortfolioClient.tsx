@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import type { Portfolio, Holding, Stock, Order, Position } from "@/lib/types";
+import type { Portfolio, Holding, Stock, Order, Position, User } from "@/lib/types";
 import { getStockData } from "@/app/actions";
 import {
   Card,
@@ -51,16 +51,27 @@ export function PortfolioClient() {
   const [portfolio, setPortfolio] = useState<Portfolio>(initialPortfolioData);
   const [isLoading, setIsLoading] = useState(true);
   const [stocksMap, setStocksMap] = useState<Record<string, Stock>>({});
+  const [user, setUser] = useState<User | null>(null);
 
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    } else {
+      router.replace('/');
+    }
+  }, [router]);
   
   const updatePortfolioData = useCallback(async (isSilent = false) => {
+    if (!user) return;
     if (!isSilent) setIsLoading(true);
     
     let allOrders: Order[];
     try {
-        const ordersItem = localStorage.getItem('orders');
+        const ordersItem = localStorage.getItem(`orders_${user.id}`);
         allOrders = ordersItem ? JSON.parse(ordersItem) : [];
     } catch (e) {
         console.error("Could not parse orders from local storage", e);
@@ -75,7 +86,7 @@ export function PortfolioClient() {
     // Tickers to fetch data for
     let allTickersInPortfolio: string[] = [];
     try {
-      const storedPortfolio = JSON.parse(localStorage.getItem('portfolioData') || '{}');
+      const storedPortfolio = JSON.parse(localStorage.getItem(`portfolioData_${user.id}`) || '{}');
       const holdingTickers = (storedPortfolio.holdings || []).map((h: Holding) => h.ticker);
       allTickersInPortfolio = [...new Set([...holdingTickers])];
     } catch(e) {
@@ -89,7 +100,7 @@ export function PortfolioClient() {
     if (allTickers.length === 0) {
       setPortfolio({ ...initialPortfolioData, holdings: [], positions: [] });
       setIsLoading(false);
-      localStorage.setItem('portfolioData', JSON.stringify({ holdings: [], positions: [] }));
+      localStorage.setItem(`portfolioData_${user.id}`, JSON.stringify({ holdings: [], positions: [] }));
       return;
     }
     
@@ -237,7 +248,7 @@ export function PortfolioClient() {
 
             if (newOrdersForSquareOff.length > 0) {
                 const updatedOrders = [...allOrders, ...newOrdersForSquareOff];
-                localStorage.setItem('orders', JSON.stringify(updatedOrders));
+                localStorage.setItem(`orders_${user.id}`, JSON.stringify(updatedOrders));
                 toast({
                     title: "Auto Square-Off",
                     description: `Your open intraday positions have been automatically closed as the market is now closed.`
@@ -284,7 +295,7 @@ export function PortfolioClient() {
     }).filter(h => h.quantity > 0);
 
 
-    localStorage.setItem('portfolioData', JSON.stringify({ holdings: finalHoldings }));
+    localStorage.setItem(`portfolioData_${user.id}`, JSON.stringify({ holdings: finalHoldings }));
 
     const newPortfolio: Portfolio = {
       investedValue: totalInvested,
@@ -299,15 +310,16 @@ export function PortfolioClient() {
 
     setPortfolio(newPortfolio);
     if (!isSilent) setIsLoading(false);
-  }, [toast]);
+  }, [toast, user]);
 
 
   useEffect(() => {
+    if (!user) return;
     updatePortfolioData();
     const interval = setInterval(() => updatePortfolioData(true), 5000);
     
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'portfolioData' || event.key === 'orders') {
+      if ((event.key === `portfolioData_${user.id}` || event.key === `orders_${user.id}`)) {
         updatePortfolioData(true);
       }
     };
@@ -317,7 +329,7 @@ export function PortfolioClient() {
       clearInterval(interval);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [updatePortfolioData]);
+  }, [updatePortfolioData, user]);
 
   const handleHoldingClick = (holding: Holding) => {
     const stockData = stocksMap[holding.ticker];
@@ -532,15 +544,3 @@ export function PortfolioClient() {
     </div>
   );
 }
-    
-
-    
-
-
-
-
-    
-
-    
-
-    

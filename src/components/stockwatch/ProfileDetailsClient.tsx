@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -46,6 +47,12 @@ export function ProfileDetailsClient() {
     if (user) {
       const updatedUser = { ...user, name, email };
       localStorage.setItem("user", JSON.stringify(updatedUser));
+      
+      const allUsersText = localStorage.getItem('allUsers');
+      const allUsers = allUsersText ? JSON.parse(allUsersText) : {};
+      allUsers[user.id] = updatedUser;
+      localStorage.setItem('allUsers', JSON.stringify(allUsers));
+      
       setUser(updatedUser);
       toast({
         title: "Profile Updated",
@@ -67,16 +74,21 @@ export function ProfileDetailsClient() {
     const referrer = Object.values(allUsers).find(u => u.referralCode === referralCode.trim());
 
     if (referrer && referrer.id !== user.id) {
-        // Update referee's data
-        const refereeFundsData = JSON.parse(localStorage.getItem('funds') || '{}');
+        // Update referee's data (current user)
+        const refereeFundsData = JSON.parse(localStorage.getItem(`funds_${user.id}`) || '{}');
         const newRefereeFunds = { ...refereeFundsData, balance: (refereeFundsData.balance || 0) + 100000 };
-        localStorage.setItem('funds', JSON.stringify(newRefereeFunds));
+        localStorage.setItem(`funds_${user.id}`, JSON.stringify(newRefereeFunds));
         
         const updatedRefereeUser = { ...user, usedReferralCode: true };
         localStorage.setItem('user', JSON.stringify(updatedRefereeUser));
         
+        // Update current user in the global list as well
+        const updatedAllUsers = { ...allUsers, [user.id]: updatedRefereeUser };
+        localStorage.setItem('allUsers', JSON.stringify(updatedAllUsers));
+        
         // Update referrer's data
-        const referrerFundsData = JSON.parse(localStorage.getItem(`funds_${referrer.id}`) || JSON.stringify({ balance: 200000 }));
+        const referrerFundsDataText = localStorage.getItem(`funds_${referrer.id}`);
+        const referrerFundsData = referrerFundsDataText ? JSON.parse(referrerFundsDataText) : { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
         const newReferrerFunds = { ...referrerFundsData, balance: (referrerFundsData.balance || 0) + 100000 };
         localStorage.setItem(`funds_${referrer.id}`, JSON.stringify(newReferrerFunds));
         

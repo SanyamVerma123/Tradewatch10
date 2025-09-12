@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -43,7 +44,7 @@ export function ProfileClient() {
   const handleLogout = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('funds');
+    // We don't remove other user's data on logout
     router.push('/');
   };
 

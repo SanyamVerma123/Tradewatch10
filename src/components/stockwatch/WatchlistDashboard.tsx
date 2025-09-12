@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Stock, Watchlist, NewsArticle, Order } from "@/lib/types";
+import type { Stock, Watchlist, NewsArticle, Order, User } from "@/lib/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,6 +58,7 @@ export function WatchlistDashboard() {
   const [stocks, setStocks] = useState<Record<string, Stock>>({});
   const [isLoadingStocks, setIsLoadingStocks] = useState(true);
   const [newWatchlistName, setNewWatchlistName] = useState("");
+  const [user, setUser] = useState<User | null>(null);
 
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -78,19 +79,24 @@ export function WatchlistDashboard() {
   }, []);
 
   useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        const loadedWatchlists = JSON.parse(localStorage.getItem(`watchlists_${parsedUser.id}`) || JSON.stringify(initialWatchlistsData));
+        setWatchlists(loadedWatchlists);
+        if (loadedWatchlists.length > 0 && !activeTab) {
+            setActiveTab(loadedWatchlists[0].id);
+        }
+    } else {
+        router.replace('/');
+    }
+
     shuffleNews();
     const newsInterval = setInterval(shuffleNews, 1000 * 60 * 60); // Refresh every hour
     
     return () => clearInterval(newsInterval);
-  }, [shuffleNews]);
-
-  useEffect(() => {
-    const loadedWatchlists = JSON.parse(localStorage.getItem('watchlists') || JSON.stringify(initialWatchlistsData));
-    setWatchlists(loadedWatchlists);
-    if (loadedWatchlists.length > 0 && !activeTab) {
-      setActiveTab(loadedWatchlists[0].id);
-    }
-  }, [activeTab]);
+  }, [router, shuffleNews, activeTab]);
 
   const activeWatchlist = useMemo(() => {
     return watchlists.find((w) => w.id === activeTab);
@@ -167,7 +173,7 @@ export function WatchlistDashboard() {
   };
 
   const addStockToWatchlist = (ticker: string) => {
-    if (!activeWatchlist) return;
+    if (!activeWatchlist || !user) return;
 
     const updatedWatchlists = watchlists.map(wl => {
       if (wl.id === activeWatchlist.id) {
@@ -187,7 +193,7 @@ export function WatchlistDashboard() {
     });
 
     setWatchlists(updatedWatchlists);
-    localStorage.setItem('watchlists', JSON.stringify(updatedWatchlists));
+    localStorage.setItem(`watchlists_${user.id}`, JSON.stringify(updatedWatchlists));
     const newActiveWl = updatedWatchlists.find(wl => wl.id === activeWatchlist.id);
     if (newActiveWl) {
         setIsLoadingStocks(true);
@@ -204,7 +210,7 @@ export function WatchlistDashboard() {
   };
 
   const handleCreateWatchlist = () => {
-    if (!newWatchlistName.trim()) {
+    if (!newWatchlistName.trim() || !user) {
       toast({
         variant: "destructive",
         title: "Error",
@@ -219,7 +225,7 @@ export function WatchlistDashboard() {
     };
     const updatedWatchlists = [...watchlists, newWatchlist];
     setWatchlists(updatedWatchlists);
-    localStorage.setItem('watchlists', JSON.stringify(updatedWatchlists));
+    localStorage.setItem(`watchlists_${user.id}`, JSON.stringify(updatedWatchlists));
     setActiveTab(newWatchlist.id);
     setNewWatchlistName("");
   };
@@ -250,7 +256,7 @@ export function WatchlistDashboard() {
   };
 
   const handleSaveWatchlistName = () => {
-    if (!editingWatchlistId || !editingWatchlistName.trim()) {
+    if (!editingWatchlistId || !editingWatchlistName.trim() || !user) {
         setEditingWatchlistId(null);
         return;
     };
@@ -259,7 +265,7 @@ export function WatchlistDashboard() {
         wl.id === editingWatchlistId ? { ...wl, name: editingWatchlistName } : wl
     );
     setWatchlists(updatedWatchlists);
-    localStorage.setItem('watchlists', JSON.stringify(updatedWatchlists));
+    localStorage.setItem(`watchlists_${user.id}`, JSON.stringify(updatedWatchlists));
     toast({
         title: "Watchlist Renamed",
         description: `Successfully renamed to "${editingWatchlistName}".`
@@ -295,6 +301,8 @@ export function WatchlistDashboard() {
       </TableRow>
     ))
   );
+  
+  const currentStockForSheet = selectedStock ? stocks[selectedStock.ticker] : null;
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -473,7 +481,7 @@ export function WatchlistDashboard() {
         </>
       )}
        <StockActionSheet 
-        stock={selectedStock} 
+        stock={currentStockForSheet} 
         isOpen={isActionSheetOpen} 
         onOpenChange={setIsActionSheetOpen}
         onTrade={handleTradeAction}

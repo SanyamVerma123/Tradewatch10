@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -36,9 +37,10 @@ export function SettingsClient() {
         localStorage.clear(); // Clear all local storage for the domain
         toast({
             title: "Data Cleared",
-            description: "All your data has been successfully cleared.",
+            description: "All app data has been successfully cleared from this device.",
         });
-        router.push('/');
+        // Redirect to auth page after clearing data
+        setTimeout(() => router.push('/'), 500);
     } catch(e) {
         toast({
             variant: "destructive",
@@ -114,7 +116,7 @@ export function SettingsClient() {
         <CardHeader>
           <CardTitle>Data Management</CardTitle>
           <CardDescription>
-            Clear all your local application data.
+            Clear all your local application data from this device.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -129,7 +131,7 @@ export function SettingsClient() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete all your account data, including profile, portfolio, orders, and watchlists from this device.
+                    This action cannot be undone. This will permanently delete all user accounts, portfolios, orders, and watchlists from this device.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

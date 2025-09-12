@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, Minus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import type { Portfolio } from "@/lib/types";
+import type { Portfolio, User } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface FundsData {
@@ -29,44 +29,53 @@ export function FundsClient() {
   const [pnl, setPnl] = useState(0);
   const [totalInvested, setTotalInvested] = useState(0);
   const [currentValue, setCurrentValue] = useState(0);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const storedFunds = localStorage.getItem("funds");
-    if (storedFunds) {
-      setFunds(JSON.parse(storedFunds));
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      const parsedUser: User = JSON.parse(storedUser);
+      setUser(parsedUser);
+
+      const storedFunds = localStorage.getItem(`funds_${parsedUser.id}`);
+      if (storedFunds) {
+        setFunds(JSON.parse(storedFunds));
+      } else {
+        // Initialize if not present
+        const initialFunds = { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
+        setFunds(initialFunds);
+        localStorage.setItem(`funds_${parsedUser.id}`, JSON.stringify(initialFunds));
+      }
+
+      const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem(`portfolioData_${parsedUser.id}`) || "null");
+      
+      if (portfolioData) {
+          const holdingsInvested = portfolioData.holdings.reduce((acc, h) => acc + h.investedValue, 0);
+          const holdingsCurrentValue = portfolioData.holdings.reduce((acc, h) => acc + (h.ltp * h.quantity), 0);
+          const positionsPnl = (portfolioData.positions || []).reduce((acc, p) => acc + p.pnl, 0);
+
+          const totalInvestedVal = holdingsInvested;
+          const totalCurrentVal = holdingsCurrentValue + positionsPnl;
+
+          setTotalInvested(totalInvestedVal);
+          setCurrentValue(totalCurrentVal);
+          setPnl(totalCurrentVal - totalInvestedVal);
+      } else {
+          const investedValue = 0; // Starting with empty portfolio
+          const currentValue = 0;
+          const totalPnl = currentValue - investedValue;
+          setCurrentValue(currentValue);
+          setTotalInvested(investedValue);
+          setPnl(totalPnl);
+      }
     } else {
-       // Initialize if not present
-      const initialFunds = { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
-      setFunds(initialFunds);
-      localStorage.setItem("funds", JSON.stringify(initialFunds));
+        router.replace('/');
     }
 
-    const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem("portfolioData") || "null");
-    
-    if (portfolioData) {
-        const holdingsInvested = portfolioData.holdings.reduce((acc, h) => acc + h.investedValue, 0);
-        const holdingsCurrentValue = portfolioData.holdings.reduce((acc, h) => acc + (h.ltp * h.quantity), 0);
-        const positionsPnl = (portfolioData.positions || []).reduce((acc, p) => acc + p.pnl, 0);
-
-        const totalInvestedVal = holdingsInvested;
-        const totalCurrentVal = holdingsCurrentValue + positionsPnl;
-
-        setTotalInvested(totalInvestedVal);
-        setCurrentValue(totalCurrentVal);
-        setPnl(totalCurrentVal - totalInvestedVal);
-    } else {
-        const investedValue = 0; // Starting with empty portfolio
-        const currentValue = 0;
-        const totalPnl = currentValue - investedValue;
-        setCurrentValue(currentValue);
-        setTotalInvested(investedValue);
-        setPnl(totalPnl);
-    }
-
-  }, []);
+  }, [router]);
 
   const checkAndUnlockFunds = () => {
-    if (funds && pnl - funds.lastProfitCheck >= 10000 && funds.canAddMore) {
+    if (user && funds && pnl - funds.lastProfitCheck >= 10000 && funds.canAddMore) {
         const newFunds = {
             ...funds,
             balance: funds.balance + 200000,
@@ -74,7 +83,7 @@ export function FundsClient() {
             lastProfitCheck: pnl
         };
         setFunds(newFunds);
-        localStorage.setItem("funds", JSON.stringify(newFunds));
+        localStorage.setItem(`funds_${user.id}`, JSON.stringify(newFunds));
         toast({
             title: "Congratulations!",
             description: "You've earned a ₹10,000 profit! You can now add an additional ₹2,00,000 to your funds.",

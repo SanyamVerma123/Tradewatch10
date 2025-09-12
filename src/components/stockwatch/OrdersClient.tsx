@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Order, Portfolio, Stock, Holding } from "@/lib/types";
+import type { Order, Portfolio, Stock, Holding, User } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -38,27 +38,46 @@ function isMarketOpen() {
     return false;
 }
 
+const isToday = (someDate: Date) => {
+    const today = new Date();
+    return someDate.getDate() === today.getDate() &&
+        someDate.getMonth() === today.getMonth() &&
+        someDate.getFullYear() === today.getFullYear();
+};
+
 export function OrdersClient() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Pending");
   const [searchTerm, setSearchTerm] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const { toast } = useToast();
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    } else {
+      router.replace('/');
+    }
+  }, [router]);
 
   const cancelOrder = useCallback((orderToCancel: Order, reason: string) => {
-    let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
+    if (!user) return;
+    let allOrders: Order[] = JSON.parse(localStorage.getItem(`orders_${user.id}`) || '[]');
     const updatedOrders = allOrders.map(o => o.id === orderToCancel.id ? { ...o, status: 'Cancelled' } : o);
-    localStorage.setItem('orders', JSON.stringify(updatedOrders));
+    localStorage.setItem(`orders_${user.id}`, JSON.stringify(updatedOrders));
     setOrders(updatedOrders);
     toast({
         variant: "destructive",
         title: "Order Cancelled",
         description: `${orderToCancel.ticker}: ${reason}`,
     });
-  }, [toast]);
+  }, [toast, user]);
 
 
   const executeOrder = useCallback((orderToExecute: Order, ltp: number) => {
+    if (!user) return;
     // This is a simulation. In a real app, this would be handled by a backend.
     const product = orderToExecute.product || 'CNC';
     const finalTradeValue = orderToExecute.quantity * ltp;
@@ -67,7 +86,7 @@ export function OrdersClient() {
     const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
 
     // Final funds check before execution
-    const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
+    const fundsData = JSON.parse(localStorage.getItem(`funds_${user.id}`) || '{}');
     if (orderToExecute.type === 'BUY' && fundsData.balance < finalTradeValue + totalCharges) {
         cancelOrder(orderToExecute, `Insufficient funds. Required: ₹${(finalTradeValue + totalCharges).toFixed(2)}`);
         return;
@@ -75,8 +94,8 @@ export function OrdersClient() {
     
     let realizedPnl: number | undefined = undefined;
     if (orderToExecute.type === 'SELL') {
-      const allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
-      const portfolio: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || '{ "holdings": [] }');
+      const allOrders: Order[] = JSON.parse(localStorage.getItem(`orders_${user.id}`) || '[]');
+      const portfolio: Portfolio = JSON.parse(localStorage.getItem(`portfolioData_${user.id}`) || '{ "holdings": [] }');
       
       const relatedBuyOrders = allOrders
         .filter(o => o.status === 'Executed' && o.type === 'BUY' && o.ticker === orderToExecute.ticker)
@@ -103,14 +122,14 @@ export function OrdersClient() {
     const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString(), realizedPnl };
 
     // Update orders in state and local storage
-    let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
+    let allOrders: Order[] = JSON.parse(localStorage.getItem(`orders_${user.id}`) || '[]');
     const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
     if (existingOrderIndex > -1) {
       allOrders[existingOrderIndex] = executedOrder;
     } else {
       allOrders = [executedOrder, ...allOrders];
     }
-    localStorage.setItem('orders', JSON.stringify(allOrders));
+    localStorage.setItem(`orders_${user.id}`, JSON.stringify(allOrders));
     setOrders(allOrders);
 
     // Simulate Tax & Fund deduction/addition
@@ -121,13 +140,11 @@ export function OrdersClient() {
       
       newBalance = Math.max(0, newBalance); // Ensure balance doesn't go below zero
 
-      localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
+      localStorage.setItem(`funds_${user.id}`, JSON.stringify({ ...fundsData, balance: newBalance }));
     }
     
-    // Update portfolio for CNC orders - this logic is now primarily handled in PortfolioClient
-    // but we still need a way to trigger a re-fetch there. The storage event listener will do this.
     if (product === 'CNC' || orderToExecute.isSellFromHolding) {
-        const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
+        const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem(`portfolioData_${user.id}`) || JSON.stringify({ holdings: [] }));
         let newHoldings = [...(portfolioData.holdings || [])];
         const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
 
@@ -162,7 +179,7 @@ export function OrdersClient() {
                 }
             }
         }
-        localStorage.setItem('portfolioData', JSON.stringify({ ...portfolioData, holdings: newHoldings }));
+        localStorage.setItem(`portfolioData_${user.id}`, JSON.stringify({ ...portfolioData, holdings: newHoldings }));
     }
     
     toast({
@@ -170,12 +187,14 @@ export function OrdersClient() {
         description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}. Est. charges: ₹${totalCharges.toFixed(2)}`,
     });
 
-  }, [toast, cancelOrder]);
+  }, [toast, cancelOrder, user]);
 
 
   useEffect(() => {
+    if (!user) return;
+
     const fetchOrdersDataAndCheckPending = async () => {
-        const storedOrdersText = localStorage.getItem('orders') || '[]';
+        const storedOrdersText = localStorage.getItem(`orders_${user.id}`) || '[]';
         let storedOrders: Order[];
         try {
             storedOrders = JSON.parse(storedOrdersText);
@@ -266,7 +285,7 @@ export function OrdersClient() {
     const interval = setInterval(fetchOrdersDataAndCheckPending, 5000);
 
     return () => clearInterval(interval);
-  }, [executeOrder, orders, cancelOrder]);
+  }, [executeOrder, orders, cancelOrder, user]);
 
   const handleEditClick = (order: Order) => {
     if (order.status === 'Pending') {
@@ -410,7 +429,3 @@ export function OrdersClient() {
     </div>
   );
 }
-
-    
-
-    

@@ -1,9 +1,8 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Order, Stock, Portfolio, Holding } from "@/lib/types";
+import type { Order, Stock, Portfolio, Holding, User } from "@/lib/types";
 import { getStockData } from "@/app/actions";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, MoreVertical, Info, RefreshCcw, Loader2, ChevronsRight } from "lucide-react";
@@ -147,12 +146,12 @@ function isMarketOpen() {
 
 export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [stock, setStock] = useState<Stock | null>(initialStock);
   const [availableFunds, setAvailableFunds] = useState(0);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const isSellFromHolding = orderToEdit?.isSellFromHolding;
+  const [user, setUser] = useState<User | null>(null);
 
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
   const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
@@ -191,11 +190,19 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   }, [ticker, toast, price, orderMethod]);
 
   useEffect(() => {
-    const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
-    setAvailableFunds(fundsData.balance || 0);
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+        const parsedUser: User = JSON.parse(storedUser);
+        setUser(parsedUser);
+        
+        const fundsData = JSON.parse(localStorage.getItem(`funds_${parsedUser.id}`) || '{}');
+        setAvailableFunds(fundsData.balance || 0);
 
-    const portfolioData = JSON.parse(localStorage.getItem('portfolioData') || '{}');
-    setHoldings(portfolioData.holdings || []);
+        const portfolioData = JSON.parse(localStorage.getItem(`portfolioData_${parsedUser.id}`) || '{}');
+        setHoldings(portfolioData.holdings || []);
+    } else {
+        router.replace('/');
+    }
 
     if(orderToEdit) {
         setOrderType(orderToEdit.type || "BUY");
@@ -204,7 +211,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         setQuantity(orderToEdit.quantity?.toString() || "1");
         setPrice(orderToEdit.price?.toString() || "");
     }
-  }, [orderToEdit, isSellFromHolding]);
+  }, [orderToEdit, isSellFromHolding, router]);
 
   useEffect(() => {
     fetchStock();
@@ -234,7 +241,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const maxSellQuantity = isSellFromHolding ? (currentHolding?.quantity || 0) : 10000;
 
   const executeOrder = (order: Order) => {
-    if(!stock) return;
+    if(!stock || !user) return;
 
     const executionPrice = getExecutionPrice();
     const executedOrder: Order = { 
@@ -245,7 +252,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         executedAt: new Date().toISOString()
     };
     
-    let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
+    let allOrders: Order[] = JSON.parse(localStorage.getItem(`orders_${user.id}`) || '[]');
     const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
 
     if (existingOrderIndex > -1) {
@@ -253,16 +260,16 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     } else {
         allOrders = [executedOrder, ...allOrders];
     }
-    localStorage.setItem('orders', JSON.stringify(allOrders));
+    localStorage.setItem(`orders_${user.id}`, JSON.stringify(allOrders));
     
     const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
     const brokerage = Math.min(20, finalTradeValue * 0.0005);
     const stt = order.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
     const totalCharges = brokerage + stt + (finalTradeValue * 0.000345);
     
-    const fundsData = JSON.parse(localStorage.getItem('funds') || '{}');
+    const fundsData = JSON.parse(localStorage.getItem(`funds_${user.id}`) || '{}');
     const newBalance = order.type === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
-    localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: Math.max(0, newBalance) }));
+    localStorage.setItem(`funds_${user.id}`, JSON.stringify({ ...fundsData, balance: Math.max(0, newBalance) }));
     setAvailableFunds(Math.max(0, newBalance));
     
     toast({
@@ -275,7 +282,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
 
   const handlePlaceOrder = () => {
-    if(isLoading || !stock) return;
+    if(isLoading || !stock || !user) return;
     
     const requiredFunds = approxMargin + 50; // Add buffer for charges
 
@@ -333,14 +340,14 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         return;
     }
 
-    const storedOrders = JSON.parse(localStorage.getItem('orders') || '[]');
+    const storedOrders = JSON.parse(localStorage.getItem(`orders_${user.id}`) || '[]');
     let updatedOrders;
     if(isEditing) {
         updatedOrders = storedOrders.map((o: Order) => o.id === newOrder.id ? newOrder : o);
     } else {
         updatedOrders = [newOrder, ...storedOrders];
     }
-    localStorage.setItem('orders', JSON.stringify(updatedOrders));
+    localStorage.setItem(`orders_${user.id}`, JSON.stringify(updatedOrders));
 
     toast({
         title: `Order ${isEditing ? 'Modified' : 'Placed'} (${orderType})`,
@@ -535,5 +542,3 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
-
-    

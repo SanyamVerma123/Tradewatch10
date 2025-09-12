@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -15,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { User } from "@/lib/types";
-
+import { watchlists as initialWatchlistsData } from "@/lib/data";
 
 interface SignupClientProps {
   onToggleView: () => void;
@@ -57,19 +58,33 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
     };
 
     try {
-        // Store individual user
-        localStorage.setItem('user', JSON.stringify(newUser));
-        localStorage.setItem('funds', JSON.stringify(initialFunds));
-
         // Store user in a global list for referral lookup
         const allUsersText = localStorage.getItem('allUsers');
         const allUsers = allUsersText ? JSON.parse(allUsersText) : {};
+
+        // Check if email already exists
+        const emailExists = Object.values(allUsers).some((u: any) => u.email === email);
+        if (emailExists) {
+            toast({
+                variant: "destructive",
+                title: "Email already in use",
+                description: "Please use a different email address or sign in.",
+            });
+            return;
+        }
+
         allUsers[userId] = newUser;
         localStorage.setItem('allUsers', JSON.stringify(allUsers));
         
+        // Set up initial data for the new user
+        localStorage.setItem(`funds_${userId}`, JSON.stringify(initialFunds));
+        localStorage.setItem(`watchlists_${userId}`, JSON.stringify(initialWatchlistsData));
+        localStorage.setItem(`orders_${userId}`, '[]');
+        localStorage.setItem(`portfolioData_${userId}`, '{"holdings":[],"positions":[]}');
+        
         toast({
             title: "Account Created!",
-            description: `Welcome, ${name}! Your User ID is ${userId}.`,
+            description: `Welcome, ${name}! Your User ID is ${userId}. Please sign in.`,
             action: (
               <button onClick={() => copyToClipboard(userId)} className="ml-4 inline-flex items-center justify-center rounded-md border text-sm font-medium h-8 px-3">
                 <Copy className="h-4 w-4 mr-2" /> Copy ID
