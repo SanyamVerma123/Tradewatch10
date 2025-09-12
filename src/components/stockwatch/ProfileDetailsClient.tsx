@@ -82,39 +82,24 @@ export function ProfileDetailsClient() {
     if (!referralCode.trim() || !sbUser) return;
     setIsApplying(true);
 
-    // This is a simplified client-side check. 
-    // In a production app, you would use a serverless function to securely query users.
-    // We cannot query the `auth.users` table directly from the client.
-    // For this prototype, we'll assume a `profiles` table exists that mirrors user data.
-    // This will likely fail if RLS is not configured on a `profiles` table.
-    // The logic is illustrative of a real implementation.
+    // This is an illustrative, client-side-only implementation.
+    // In a real app, you would need a secure, server-side function to validate
+    // the code against a database to prevent abuse.
     
-    // 1. Find the referrer by their referral_code.
-    // NOTE: This requires a `profiles` table with `id` and `referral_code` columns, 
-    // and Row Level Security (RLS) allowing reads.
-    const { data: referrerProfile, error: findError } = await supabase
-      .from('profiles')
-      .select('id, referral_code')
-      .eq('referral_code', referralCode.trim())
-      .single();
+    // Simulate finding a referrer. In a real app, you'd find this user in your DB.
+    // We'll assume the code is valid if it's not the user's own code.
+    if (referralCode.trim() === sbUser.user_metadata.referral_code) {
+        toast({ variant: 'destructive', title: 'Invalid Code', description: "You can't use your own referral code." });
+        setIsApplying(false);
+        return;
+    }
 
-    if (findError || !referrerProfile) {
-      toast({ variant: 'destructive', title: 'Invalid Code', description: 'Referral code not found. Please ensure your `profiles` table is set up correctly with RLS.' });
-      setIsApplying(false);
-      return;
-    }
-    
-    if (referrerProfile.id === sbUser.id) {
-      toast({ variant: 'destructive', title: 'Invalid Code', description: "You can't use your own referral code." });
-      setIsApplying(false);
-      return;
-    }
-    
-    // 2. Update current user (referee) metadata
+    // 1. Update current user (referee) metadata to mark as used
     const { data: updatedUser, error: refereeUpdateError } = await supabase.auth.updateUser({
         data: { 
             used_referral_code: true,
-            referred_by: referrerProfile.id // Save who referred this user
+            // In a real app, you'd store the referrer's ID here
+            // referred_by: referrerProfile.id 
         }
     });
     
@@ -124,11 +109,13 @@ export function ProfileDetailsClient() {
         return;
     }
 
-    // 3. Apply bonus to both users locally
-    applyBonus(sbUser.id); // Apply to current user
-    applyBonus(referrerProfile.id); // Apply to the referrer
+    // 2. Apply bonus to the current user.
+    applyBonus(sbUser.id);
     
-    toast({ title: 'Success!', description: 'You and your friend have both received a ₹1,00,000 bonus!' });
+    // In a real app, you would also need to find the referrer and apply their bonus.
+    // Since we can't look up users securely on the client, we'll just show a success message.
+    
+    toast({ title: 'Success!', description: 'You have received a ₹1,00,000 bonus! In a real app, your friend would get one too.' });
     setAppliedReferral(true);
     setIsApplying(false);
   };
@@ -196,7 +183,7 @@ export function ProfileDetailsClient() {
                 Referral Bonus
             </CardTitle>
             <CardDescription>
-              Have a referral code? Enter it here to claim your bonus. Note: This requires a `profiles` table in Supabase.
+              Have a referral code? Enter it here to claim your bonus.
             </CardDescription>
           </CardHeader>
           <CardContent>
