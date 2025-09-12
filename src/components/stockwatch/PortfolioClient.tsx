@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -99,12 +98,11 @@ export function PortfolioClient() {
     stockData.forEach(s => newStocksMap[s.ticker] = s);
     setStocksMap(newStocksMap);
 
-    // 1. Calculate Historical holdings from ALL CNC trades up to now
+    // 1. Calculate Historical holdings from ALL CNC trades up to yesterday
     const holdingsMap: { [ticker: string]: Holding } = {};
-    const cncOrders = executedOrders.filter(o => o.product === 'CNC' || o.isSellFromHolding);
+    const pastCncOrders = executedOrders.filter(o => (o.product === 'CNC' || o.isSellFromHolding) && !isToday(new Date(o.executedAt!)));
 
-    for (const order of cncOrders) {
-        const orderDate = new Date(order.executedAt!);
+    for (const order of pastCncOrders) {
         let holding = holdingsMap[order.ticker];
         
         if (order.type === 'BUY') {
@@ -127,7 +125,6 @@ export function PortfolioClient() {
         }
     }
 
-    // Only include holdings not created today
     const pastHoldings = Object.values(holdingsMap).filter(h => h.quantity > 0.001);
 
     
@@ -154,7 +151,14 @@ export function PortfolioClient() {
         const currentNetQuantity = p.quantity;
 
         // If it's a sell from holding, it should not be in positions
-        if(order.isSellFromHolding) continue;
+        if(order.isSellFromHolding) {
+            // But we need to account for the P&L from this sell for Day's P&L
+            const holding = pastHoldings.find(h => h.ticker === order.ticker);
+            if(holding) {
+                positionsDayPnl += (order.ltp - holding.avgPrice) * order.quantity;
+            }
+            continue;
+        };
 
         if (Math.sign(order.quantity * (order.type === 'BUY' ? 1 : -1)) === Math.sign(currentNetQuantity) || currentNetQuantity === 0) {
             // Same direction, so average out
@@ -164,13 +168,13 @@ export function PortfolioClient() {
             p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
         } else {
              // Opposite direction, square off
+             const qtyToSquareOff = Math.min(Math.abs(currentNetQuantity), order.quantity);
+             positionsDayPnl += (order.ltp - p.avgPrice) * qtyToSquareOff * Math.sign(currentNetQuantity) * -1;
              p.quantity += order.quantity * (order.type === 'BUY' ? 1 : -1);
-             // Avg price remains same for partial square off. if it flips, avgPrice is reset below.
-        }
-
-        // If position flips from long to short or vice-versa, the avg price for the new leg is the price of the flipping trade
-        if (Math.sign(p.quantity) !== Math.sign(currentNetQuantity) && currentNetQuantity !== 0) {
-            p.avgPrice = order.ltp;
+             // If position flips from long to short or vice-versa, the avg price for the new leg is the price of the flipping trade
+             if (Math.sign(p.quantity) !== Math.sign(currentNetQuantity)) {
+                p.avgPrice = order.ltp;
+            }
         }
     }
     
@@ -179,8 +183,7 @@ export function PortfolioClient() {
     updatedPositions.forEach(p => {
         p.type = p.quantity > 0 ? 'BUY' : (p.quantity < 0 ? 'SELL' : 'CLOSED');
         const pnl = (p.ltp - p.avgPrice) * p.quantity;
-        p.pnl = pnl;
-        if(Math.abs(p.quantity) > 0.001) positionsDayPnl += pnl;
+        p.pnl = pnl; // this is unrealized P&L for open positions
 
         const netQty = Math.abs(p.quantity);
         let investedValueForPos = p.avgPrice * netQty;
@@ -198,6 +201,10 @@ export function PortfolioClient() {
         p.dayChangePercent = liveData?.changePercent || 0;
         p.pnlPercent = p.investedValue > 0 && Math.abs(p.quantity) > 0.001 ? (pnl / p.investedValue) * 100 : 0;
     });
+    
+    // Add unrealized P&L from open positions to day's P&L
+    const openPositionsUnrealizedPnl = updatedPositions.reduce((acc, p) => acc + p.pnl, 0);
+
 
      // AUTO SQUARE OFF LOGIC
     if (isMarketClosedForAutoSquareOff()) {
@@ -253,10 +260,10 @@ export function PortfolioClient() {
     const totalHoldingsInvested = pastHoldings.reduce((acc, h) => acc + (h.avgPrice * h.quantity), 0);
     const totalHoldingsCurrentValue = pastHoldings.reduce((acc, h) => acc + ((newStocksMap[h.ticker]?.price || h.ltp) * h.quantity), 0);
     
-    const dayPnl = holdingsDayPnl + positionsDayPnl;
-    const totalInvested = totalHoldingsInvested;
-    const totalCurrentValue = totalHoldingsCurrentValue + positionsDayPnl;
-    const totalPnl = (totalHoldingsCurrentValue - totalHoldingsInvested) + positionsDayPnl;
+    const dayPnl = holdingsDayPnl + positionsDayPnl + openPositionsUnrealizedPnl;
+    const totalInvested = totalHoldingsInvested; // Only from holdings
+    const totalCurrentValue = totalHoldingsCurrentValue + positionsDayPnl + openPositionsUnrealizedPnl;
+    const totalPnl = (totalHoldingsCurrentValue - totalHoldingsInvested) + positionsDayPnl + openPositionsUnrealizedPnl;
     
     const finalHoldings = pastHoldings.map(h => {
         const liveData = newStocksMap[h.ticker];
@@ -531,6 +538,8 @@ export function PortfolioClient() {
 
 
 
+
+    
 
     
 

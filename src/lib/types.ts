@@ -54,6 +54,7 @@ export interface Order {
   price?: string;
   isSellFromHolding?: boolean;
   executedAt?: string; // ISO date string
+  realizedPnl?: number;
 }
 
 export interface Holding {
@@ -72,7 +73,7 @@ export interface Holding {
 
 export interface Position extends Holding {
     product: string;
-    type: 'BUY' | 'SELL';
+    type: 'BUY' | 'SELL' | 'CLOSED';
 }
 
 export interface Portfolio {
@@ -94,3 +95,5 @@ export interface User {
     referralCode?: string;
     usedReferralCode?: boolean;
 }
+
+    

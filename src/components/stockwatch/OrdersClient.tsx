@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Order, Portfolio, Stock } from "@/lib/types";
+import type { Order, Portfolio, Stock, Holding } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { getStockData } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 // Heuristic to check if market is open (9:15 AM to 3:30 PM India time on weekdays)
 function isMarketOpen() {
@@ -71,8 +72,35 @@ export function OrdersClient() {
         cancelOrder(orderToExecute, `Insufficient funds. Required: ₹${(finalTradeValue + totalCharges).toFixed(2)}`);
         return;
     }
+    
+    let realizedPnl: number | undefined = undefined;
+    if (orderToExecute.type === 'SELL') {
+      const allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
+      const portfolio: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || '{ "holdings": [] }');
+      
+      const relatedBuyOrders = allOrders
+        .filter(o => o.status === 'Executed' && o.type === 'BUY' && o.ticker === orderToExecute.ticker)
+        .sort((a, b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime());
+      
+      const holding = portfolio.holdings.find(h => h.ticker === orderToExecute.ticker);
 
-    const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString() };
+      let buyPrice = 0;
+      if (orderToExecute.isSellFromHolding && holding) {
+        buyPrice = holding.avgPrice;
+      } else if (relatedBuyOrders.length > 0) {
+        // Simple average of all buys for this ticker
+        const totalValue = relatedBuyOrders.reduce((acc, o) => acc + (o.ltp * o.quantity), 0);
+        const totalQty = relatedBuyOrders.reduce((acc, o) => acc + o.quantity, 0);
+        if(totalQty > 0) buyPrice = totalValue / totalQty;
+      }
+      
+      if (buyPrice > 0) {
+        realizedPnl = (ltp - buyPrice) * orderToExecute.quantity;
+      }
+    }
+
+
+    const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString(), realizedPnl };
 
     // Update orders in state and local storage
     let allOrders: Order[] = JSON.parse(localStorage.getItem('orders') || '[]');
@@ -96,18 +124,19 @@ export function OrdersClient() {
       localStorage.setItem('funds', JSON.stringify({ ...fundsData, balance: newBalance }));
     }
     
-    // Update portfolio only for CNC (delivery) orders
+    // Update portfolio for CNC orders - this logic is now primarily handled in PortfolioClient
+    // but we still need a way to trigger a re-fetch there. The storage event listener will do this.
     if (product === 'CNC' || orderToExecute.isSellFromHolding) {
-        const portfolioData: Portfolio = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
+        const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem('portfolioData') || JSON.stringify({ holdings: [] }));
         let newHoldings = [...(portfolioData.holdings || [])];
         const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
 
-        if (executedOrder.type === 'BUY') {
-            if (holdingIndex > -1) {
+        if (executedOrder.type === 'BUY' && !isToday(new Date(executedOrder.executedAt!))) {
+             if (holdingIndex > -1) {
                 const existingHolding = newHoldings[holdingIndex];
                 const totalQuantity = existingHolding.quantity + executedOrder.quantity;
                 const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (ltp * executedOrder.quantity)) / totalQuantity;
-                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice };
+                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice, investedValue: newAvgPrice * totalQuantity };
             } else {
                 newHoldings.push({
                     id: `holding-${Date.now()}`,
@@ -122,19 +151,18 @@ export function OrdersClient() {
                     investedValue: ltp * executedOrder.quantity,
                 });
             }
-        } else { // SELL
+        } else if (executedOrder.type === 'SELL') { // SELL
             if (holdingIndex > -1) {
                 const existingHolding = newHoldings[holdingIndex];
                 const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
-                if (updatedQuantity <= 0) {
+                if (updatedQuantity < 0.001) {
                     newHoldings.splice(holdingIndex, 1);
                 } else {
-                    newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity };
+                    newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity, investedValue: existingHolding.avgPrice * updatedQuantity };
                 }
             }
         }
-        const newPortfolioData = { ...portfolioData, holdings: newHoldings };
-        localStorage.setItem('portfolioData', JSON.stringify(newPortfolioData));
+        localStorage.setItem('portfolioData', JSON.stringify({ ...portfolioData, holdings: newHoldings }));
     }
     
     toast({
@@ -322,7 +350,7 @@ export function OrdersClient() {
                         <span className="ml-2 text-green-500">{order.filledQuantity}/{order.quantity}</span>
                     </div>
                     <div className="text-xs text-muted-foreground text-right">
-                        <span>{order.timestamp}</span>
+                        <span>{new Date(order.executedAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                          <span className="text-xs font-semibold text-green-600 ml-2">EXECUTED</span>
                     </div>
                   </div>
@@ -333,6 +361,11 @@ export function OrdersClient() {
                     </div>
                      <div className="text-right">
                         <p className="font-semibold">Avg. ₹{order.ltp.toFixed(2)}</p>
+                        {order.realizedPnl !== undefined && (
+                            <p className={cn("text-xs font-semibold", order.realizedPnl >= 0 ? "text-positive" : "text-destructive")}>
+                                P&L: {order.realizedPnl >= 0 ? '+' : ''}₹{order.realizedPnl.toFixed(2)}
+                            </p>
+                        )}
                     </div>
                   </div>
                 </CardContent>
@@ -377,5 +410,7 @@ export function OrdersClient() {
     </div>
   );
 }
+
+    
 
     
