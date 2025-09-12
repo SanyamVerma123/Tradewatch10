@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Stock } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -17,16 +17,19 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
   const [asks, setAsks] = useState<PriceEntry[]>([]);
   const lastBidRef = useRef<number | null>(null);
   const lastAskRef = useRef<number | null>(null);
+  const [totalBid, setTotalBid] = useState(0);
+  const [totalAsk, setTotalAsk] = useState(0);
 
   useEffect(() => {
     if (stock) {
-      // Use a timestamp that is slightly different for bids and asks to ensure unique keys
       const now = Date.now();
       if (stock.bid && stock.bid !== lastBidRef.current) {
         setBids((prev) =>
           [{ price: stock.bid!, id: now }, ...prev].slice(0, MAX_HISTORY)
         );
         lastBidRef.current = stock.bid;
+        // Simulate a fluctuating total volume for visual effect
+        setTotalBid(Math.floor(Math.random() * 5000) + (stock.volume / 1000));
       }
 
       if (stock.ask && stock.ask !== lastAskRef.current) {
@@ -34,14 +37,13 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
           [{ price: stock.ask!, id: now + 1 }, ...prev].slice(0, MAX_HISTORY)
         );
         lastAskRef.current = stock.ask;
+        // Simulate a fluctuating total volume for visual effect
+        setTotalAsk(Math.floor(Math.random() * 5000) + (stock.volume / 1000));
       }
     }
   }, [stock]);
 
   if (!stock) return null;
-  
-   const totalBidDisplay = useMemo(() => (Math.floor(Math.random() * 90000) + 10000).toLocaleString('en-IN'), [bids]);
-   const totalAskDisplay = useMemo(() => (Math.floor(Math.random() * 90000) + 10000).toLocaleString('en-IN'), [asks]);
 
   return (
     <div>
@@ -61,8 +63,8 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
                             className={cn(
                                 "absolute w-full py-1 text-blue-500 transition-all duration-500 ease-out",
                                 index > 0 && "opacity-70",
-                                index > 4 && "opacity-50",
-                                index > 6 && "opacity-30"
+                                index > 2 && "opacity-50",
+                                index > 5 && "opacity-30"
                             )}
                             style={{ transform: `translateY(${index * 1.75}rem)` }}
                         >
@@ -78,8 +80,8 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
                             className={cn(
                                 "absolute w-full py-1 text-red-500 transition-all duration-500 ease-out",
                                 index > 0 && "opacity-70",
-                                index > 4 && "opacity-50",
-                                index > 6 && "opacity-30"
+                                index > 2 && "opacity-50",
+                                index > 5 && "opacity-30"
                             )}
                             style={{ transform: `translateY(${index * 1.75}rem)` }}
                         >
@@ -90,8 +92,8 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
             </div>
         </div>
          <div className="grid grid-cols-2 text-center font-semibold text-xs text-muted-foreground border-t pt-2 mt-1">
-            <div>Total Bid: <span className="text-foreground">{totalBidDisplay}</span></div>
-            <div>Total Ask: <span className="text-foreground">{totalAskDisplay}</span></div>
+            <div>Total Bid: <span className="text-foreground">{Math.floor(totalBid).toLocaleString('en-IN')}</span></div>
+            <div>Total Ask: <span className="text-foreground">{Math.floor(totalAsk).toLocaleString('en-IN')}</span></div>
         </div>
       </div>
     </div>
