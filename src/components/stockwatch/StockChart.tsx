@@ -1,3 +1,4 @@
+
 "use client"
 
 import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis, ResponsiveContainer } from "recharts"
@@ -41,10 +42,10 @@ export function StockChart({ data, isPositive }: StockChartProps) {
                 formatter={(value: number) => [`₹${value.toFixed(2)}`, "Price"]}
                 labelFormatter={(label) => format(new Date(label), "MMM dd, yyyy")}
                 position={{ y: 0 }}
-                allowEscapeViewBox={{ x: false, y: true }}
                 isAnimationActive={false}
                 wrapperStyle={{ outline: 'none' }}
                 cursor={{ stroke: 'hsl(var(--foreground))', strokeWidth: 1, strokeDasharray: '3 3' }}
+                allowEscapeViewBox={{x: false, y: true}}
             />
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
             <XAxis dataKey={(payload) => format(new Date(payload.date), "MMM dd")} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} />
