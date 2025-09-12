@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { Stock } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -20,16 +20,18 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
 
   useEffect(() => {
     if (stock) {
+      // Use a timestamp that is slightly different for bids and asks to ensure unique keys
+      const now = Date.now();
       if (stock.bid && stock.bid !== lastBidRef.current) {
         setBids((prev) =>
-          [{ price: stock.bid!, id: Date.now() }, ...prev].slice(0, MAX_HISTORY)
+          [{ price: stock.bid!, id: now }, ...prev].slice(0, MAX_HISTORY)
         );
         lastBidRef.current = stock.bid;
       }
 
       if (stock.ask && stock.ask !== lastAskRef.current) {
         setAsks((prev) =>
-          [{ price: stock.ask!, id: Date.now() }, ...prev].slice(0, MAX_HISTORY)
+          [{ price: stock.ask!, id: now + 1 }, ...prev].slice(0, MAX_HISTORY)
         );
         lastAskRef.current = stock.ask;
       }
@@ -37,35 +39,9 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
   }, [stock]);
 
   if (!stock) return null;
-
-  const renderRow = (bid: PriceEntry | undefined, ask: PriceEntry | undefined, index: number) => {
-    const isNewest = index === 0;
-    const opacityClass = `opacity-${100 - (index * 10)}`;
-
-    return (
-        <div 
-            key={`depth-${bid?.id || ask?.id || index}`} 
-            className={cn(
-                "grid grid-cols-2 text-center text-sm py-1 items-center transition-all duration-300 ease-in-out",
-                isNewest ? "font-semibold" : "opacity-70",
-                index > 4 && "opacity-60", 
-                index > 6 && "opacity-40"
-            )}
-            style={{ transform: `translateY(${index * 100}%)` }}
-        >
-            <div className={cn("text-blue-500", !bid && "opacity-0")}>
-                {bid ? bid.price.toFixed(2) : "0.00"}
-            </div>
-            <div className={cn("text-red-500", !ask && "opacity-0")}>
-                {ask ? ask.price.toFixed(2) : "0.00"}
-            </div>
-        </div>
-    );
-  }
   
-   const totalBidDisplay = (Math.floor(Math.random() * 90000) + 10000).toLocaleString('en-IN');
-   const totalAskDisplay = (Math.floor(Math.random() * 90000) + 10000).toLocaleString('en-IN');
-
+   const totalBidDisplay = useMemo(() => (Math.floor(Math.random() * 90000) + 10000).toLocaleString('en-IN'), [bids]);
+   const totalAskDisplay = useMemo(() => (Math.floor(Math.random() * 90000) + 10000).toLocaleString('en-IN'), [asks]);
 
   return (
     <div>
@@ -75,23 +51,43 @@ export function MarketDepthHistory({ stock }: { stock: Stock | null }) {
           <div>BIDS</div>
           <div>ASKS</div>
         </div>
-        <div className="relative h-[224px] overflow-hidden">
-            {Array.from({ length: MAX_HISTORY }).map((_, i) => {
-              const bid = bids[i];
-              const ask = asks[i];
-              return (
-                 <div key={`depth-${bid?.id || ask?.id || i}`} className="absolute w-full transition-transform duration-500 ease-out" style={{transform: `translateY(${i * 100}%)`}}>
-                    <div className={cn("grid grid-cols-2 text-center text-sm py-1 items-center", i > 4 && "opacity-60", i > 6 && "opacity-40")}>
-                      <div className={cn("text-blue-500", !bid && "opacity-0")}>
-                        {bid ? bid.price.toFixed(2) : "-"}
-                      </div>
-                      <div className={cn("text-red-500", !ask && "opacity-0")}>
-                        {ask ? ask.price.toFixed(2) : "-"}
-                      </div>
-                    </div>
+        <div className="relative h-56 overflow-hidden">
+            <div className="grid grid-cols-2 text-center text-sm">
+                {/* Bids Column */}
+                <div className="relative h-full">
+                    {bids.map((bid, index) => (
+                        <div
+                            key={bid.id}
+                            className={cn(
+                                "absolute w-full py-1 text-blue-500 transition-all duration-500 ease-out",
+                                index > 0 && "opacity-70",
+                                index > 4 && "opacity-50",
+                                index > 6 && "opacity-30"
+                            )}
+                            style={{ transform: `translateY(${index * 1.75}rem)` }}
+                        >
+                            {bid.price.toFixed(2)}
+                        </div>
+                    ))}
                 </div>
-              )
-            })}
+                {/* Asks Column */}
+                <div className="relative h-full">
+                     {asks.map((ask, index) => (
+                        <div
+                            key={ask.id}
+                            className={cn(
+                                "absolute w-full py-1 text-red-500 transition-all duration-500 ease-out",
+                                index > 0 && "opacity-70",
+                                index > 4 && "opacity-50",
+                                index > 6 && "opacity-30"
+                            )}
+                            style={{ transform: `translateY(${index * 1.75}rem)` }}
+                        >
+                            {ask.price.toFixed(2)}
+                        </div>
+                    ))}
+                </div>
+            </div>
         </div>
          <div className="grid grid-cols-2 text-center font-semibold text-xs text-muted-foreground border-t pt-2 mt-1">
             <div>Total Bid: <span className="text-foreground">{totalBidDisplay}</span></div>
