@@ -13,7 +13,7 @@ export function StockChart({ data, isPositive }: StockChartProps) {
   if (!data) return <div className="flex justify-center items-center h-full text-muted-foreground">Loading chart...</div>;
 
   const chartData = data.map(item => ({
-    date: format(item.date, "MMM dd"),
+    date: item.date, // Pass the full date object
     price: item.close,
   }));
   
@@ -39,6 +39,7 @@ export function StockChart({ data, isPositive }: StockChartProps) {
                 }}
                 labelStyle={{ fontWeight: 'bold' }}
                 formatter={(value: number) => [`₹${value.toFixed(2)}`, "Price"]}
+                labelFormatter={(label) => format(new Date(label), "MMM dd, yyyy")}
                 position={{ y: 0 }}
                 allowEscapeViewBox={{ x: false, y: true }}
                 isAnimationActive={false}
@@ -46,7 +47,7 @@ export function StockChart({ data, isPositive }: StockChartProps) {
                 cursor={{ stroke: 'hsl(var(--foreground))', strokeWidth: 1, strokeDasharray: '3 3' }}
             />
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
-            <XAxis dataKey="date" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} />
+            <XAxis dataKey={(payload) => format(new Date(payload.date), "MMM dd")} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} />
             <YAxis domain={['dataMin', 'dataMax']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${Number(value).toFixed(0)}`} />
             <Area type="monotone" dataKey="price" stroke={strokeColor} fillOpacity={1} fill="url(#colorPrice)" strokeWidth={2} />
         </AreaChart>
