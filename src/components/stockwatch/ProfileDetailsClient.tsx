@@ -30,6 +30,7 @@ export function ProfileDetailsClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
+  const [referrerName, setReferrerName] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -45,6 +46,9 @@ export function ProfileDetailsClient() {
       setName(user.user_metadata.full_name || "");
       setEmail(user.email || "");
       setAppliedReferral(!!user.user_metadata.used_referral_code);
+      if (user.user_metadata.used_referral_code) {
+        setReferrerName(user.user_metadata.referred_by_name || "a friend");
+      }
       setIsLoading(false);
     };
 
@@ -87,19 +91,21 @@ export function ProfileDetailsClient() {
     // the code against a database to prevent abuse.
     
     // Simulate finding a referrer. In a real app, you'd find this user in your DB.
-    // We'll assume the code is valid if it's not the user's own code.
     if (referralCode.trim() === sbUser.user_metadata.referral_code) {
         toast({ variant: 'destructive', title: 'Invalid Code', description: "You can't use your own referral code." });
         setIsApplying(false);
         return;
     }
 
+    // In a real app, you'd look up the referrer's name from your database.
+    // Here, we'll just simulate it for the UI.
+    const simulatedReferrerName = "Your Friend";
+
     // 1. Update current user (referee) metadata to mark as used
     const { data: updatedUser, error: refereeUpdateError } = await supabase.auth.updateUser({
         data: { 
             used_referral_code: true,
-            // In a real app, you'd store the referrer's ID here
-            // referred_by: referrerProfile.id 
+            referred_by_name: simulatedReferrerName,
         }
     });
     
@@ -113,10 +119,10 @@ export function ProfileDetailsClient() {
     applyBonus(sbUser.id);
     
     // In a real app, you would also need to find the referrer and apply their bonus.
-    // Since we can't look up users securely on the client, we'll just show a success message.
     
-    toast({ title: 'Success!', description: 'You have received a ₹1,00,000 bonus! In a real app, your friend would get one too.' });
+    toast({ title: 'Success!', description: `You have received a ₹1,00,000 bonus from ${simulatedReferrerName}!` });
     setAppliedReferral(true);
+    setReferrerName(simulatedReferrerName);
     setIsApplying(false);
   };
 
@@ -188,7 +194,10 @@ export function ProfileDetailsClient() {
           </CardHeader>
           <CardContent>
             {appliedReferral ? (
-                 <p className="text-green-600 font-semibold">Referral bonus has been applied to your account!</p>
+                 <div className="text-green-600 font-semibold space-y-1">
+                    <p>Referral bonus has been applied to your account!</p>
+                    {referrerName && <p className="text-sm font-medium text-muted-foreground">Bonus from: {referrerName}</p>}
+                 </div>
             ) : (
                 <div className="flex gap-2">
                     <Input
