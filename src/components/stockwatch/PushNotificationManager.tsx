@@ -15,18 +15,21 @@ export function PushNotificationManager() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check current permission status
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'granted') {
-        setIsSubscribed(true);
+    const checkPermission = () => {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          setIsSubscribed(true);
+        }
       }
+      setIsLoading(false);
     }
-    setIsLoading(false);
+    // Delay check slightly to ensure messaging object is initialized
+    setTimeout(checkPermission, 500);
   }, []);
 
   const handleSubscribe = async () => {
     if (!messaging) {
-        toast({ variant: 'destructive', title: 'Unsupported Browser', description: 'Push notifications are not supported on this browser.' });
+        toast({ variant: 'destructive', title: 'Unsupported Browser', description: 'Push notifications are not supported on this browser, or the VAPID key is missing.' });
         return;
     }
     
@@ -36,7 +39,6 @@ export function PushNotificationManager() {
       const permission = await Notification.requestPermission();
 
       if (permission === 'granted') {
-        toast({ title: 'Notifications Enabled!', description: 'You will now receive push notifications.' });
         
         // Get the token
         const fcmToken = await getToken(messaging, { vapidKey: process.env.NEXT_PUBLIC_VAPID_KEY });
@@ -49,6 +51,7 @@ export function PushNotificationManager() {
             // In a real app, you would send this token to your backend to associate it with the user.
             // For example: await sendTokenToServer(user.id, fcmToken);
             console.log(`Token for user ${user.id} is ${fcmToken}`);
+            toast({ title: 'Notifications Enabled!', description: 'You will now receive push alerts.' });
           }
           
           setIsSubscribed(true);
@@ -60,7 +63,7 @@ export function PushNotificationManager() {
       }
     } catch (error) {
       console.error('Error getting permission or token', error);
-      toast({ variant: 'destructive', title: 'Subscription Error', description: 'An error occurred while enabling notifications.' });
+      toast({ variant: 'destructive', title: 'Subscription Error', description: 'An error occurred while enabling notifications. Ensure your VAPID key is correct.' });
     } finally {
         setIsLoading(false);
     }
