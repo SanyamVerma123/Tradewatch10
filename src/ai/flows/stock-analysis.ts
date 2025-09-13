@@ -69,24 +69,21 @@ export async function getStockAnalysis(input: GetStockAnalysisInput): Promise<Ge
 
 const analysisPrompt = ai.definePrompt({
   name: 'stockAnalysisPrompt',
-  input: { schema: z.object({
-    ticker: z.string(),
-    currentPrice: z.number(),
-    news: z.string(),
-  }) },
-  output: { schema: StockAnalysisObjectSchema },
-  prompt: `You are an expert stock market analyst. For the given stock, you will perform the following actions:
-1. Based on the provided news headlines and the current price, provide a brief, insightful analysis (2-3 sentences) of the stock's current situation.
-2. Summarize the key takeaways from the news headlines in a single paragraph.
-3. Suggest a price alert (either above or below the current price) and provide a clear, concise reason for your suggestion. Consider volatility, recent trends, and news sentiment.
+  tools: [getRecentNewsTool],
+  input: { schema: GetStockAnalysisInputSchema },
+  output: { schema: GetStockAnalysisOutputSchema },
+  prompt: `You are an expert stock market analyst. For each stock provided by the user, you will perform the following actions:
+1. Use the getRecentNewsTool to fetch the latest 5 news headlines for the stock's ticker symbol.
+2. Based on the provided news headlines and the current price, provide a brief, insightful analysis (2-3 sentences) of the stock's current situation.
+3. Summarize the key takeaways from the news headlines in a single paragraph.
+4. Suggest a price alert (either above or below the current price) and provide a clear, concise reason for your suggestion. Consider volatility, recent trends, and news sentiment.
 
-Analyze the following stock:
-- Ticker: {{ticker}}
-- Current Price: {{currentPrice}}
-- Recent News Headlines:
-{{{news}}}
+Analyze the following stocks:
+{{#each stocks}}
+- Ticker: {{ticker}}, Current Price: {{currentPrice}}
+{{/each}}
 
-Provide your output in the specified JSON format.
+Provide your output in the specified JSON format, returning a single array containing the analysis for each stock requested.
 `,
 });
 
@@ -98,19 +95,8 @@ const stockAnalysisFlow = ai.defineFlow(
     outputSchema: GetStockAnalysisOutputSchema,
   },
   async (input) => {
-     const analysisResults = await Promise.all(
-        input.stocks.map(async (stock) => {
-            const newsItems = await getRecentNewsTool({ ticker: stock.ticker });
-            const newsHeadlines = newsItems.map(item => `- ${item.title}`).join('\n');
-            
-            const { output } = await analysisPrompt({
-                ticker: stock.ticker,
-                currentPrice: stock.currentPrice,
-                news: newsHeadlines,
-            });
-            return output;
-        })
-    );
-    return analysisResults.filter((result): result is z.infer<typeof StockAnalysisObjectSchema> => result !== null);
+    const { output } = await analysisPrompt(input);
+    return output || [];
   }
 );
+
