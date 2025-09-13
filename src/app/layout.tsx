@@ -3,6 +3,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import BottomNav from '@/components/stockwatch/BottomNav';
 import { ThemeProvider } from '@/components/stockwatch/ThemeProvider';
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 export const metadata: Metadata = {
   title: 'StockWatch',
@@ -34,6 +35,7 @@ export default function RootLayout({
           </div>
           <Toaster />
         </ThemeProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
