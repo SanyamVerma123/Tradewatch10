@@ -13,6 +13,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import yahooFinance from 'yahoo-finance2';
 
+// Tool to get recent news for a stock
 const getRecentNewsTool = ai.defineTool(
     {
         name: 'getRecentNews',
@@ -30,14 +31,14 @@ const getRecentNewsTool = ai.defineTool(
         try {
             const results = await yahooFinance.search(ticker, { newsCount: 5 });
             return results.news;
-        } catch (error) {
+        } catch (error) => {
             console.error('Error fetching news:', error);
             return [];
         }
     }
 );
 
-
+// Input schema for the overall flow
 const GetStockAnalysisInputSchema = z.object({
   stocks: z.array(
     z.object({
@@ -48,6 +49,7 @@ const GetStockAnalysisInputSchema = z.object({
 });
 export type GetStockAnalysisInput = z.infer<typeof GetStockAnalysisInputSchema>;
 
+// Output schema for a single stock's analysis
 const StockAnalysisObjectSchema = z.object({
     ticker: z.string().describe('The ticker symbol of the stock.'),
     analysis: z.string().describe('A brief, insightful analysis of the stock based on recent news and price action. Should be 2-3 sentences.'),
@@ -58,45 +60,43 @@ const StockAnalysisObjectSchema = z.object({
     }).describe('A suggested price alert for the stock.'),
 });
 
+// Output schema for the overall flow (an array of analyses)
 const GetStockAnalysisOutputSchema = z.array(StockAnalysisObjectSchema);
 export type GetStockAnalysisOutput = z.infer<typeof GetStockAnalysisOutputSchema>;
 
 
+// Exported function that the application will call
 export async function getStockAnalysis(input: GetStockAnalysisInput): Promise<GetStockAnalysisOutput> {
   return stockAnalysisFlow(input);
 }
 
 
+// The main prompt that drives the analysis
 const analysisPrompt = ai.definePrompt({
   name: 'stockAnalysisPrompt',
   tools: [getRecentNewsTool],
-  input: { schema: z.object({
-    ticker: z.string(),
-    currentPrice: z.number(),
-    news: z.array(z.object({
-        title: z.string(),
-        publisher: z.string(),
-    })),
-  }) },
-  output: { schema: StockAnalysisObjectSchema },
-  prompt: `You are an expert stock market analyst. For the stock provided by the user, you will perform the following actions:
-1. Based on the provided news headlines and the current price, provide a brief, insightful analysis (2-3 sentences) of the stock's current situation.
-2. Summarize the key takeaways from the news headlines in a single paragraph.
-3. Suggest a price alert (either above or below the current price) and provide a clear, concise reason for your suggestion. Consider volatility, recent trends, and news sentiment.
+  input: { schema: GetStockAnalysisInputSchema },
+  output: { schema: GetStockAnalysisOutputSchema },
+  prompt: `
+You are an expert stock market analyst. Your task is to provide a detailed analysis for each stock provided by the user.
 
-Analyze the following stock:
-- Ticker: {{ticker}}
-- Current Price: {{currentPrice}}
-- Recent News:
-{{#each news}}
-  - {{title}} ({{publisher}})
+For each stock in the list, you MUST perform the following steps:
+1. Use the 'getRecentNews' tool to fetch the latest news headlines for the stock's ticker.
+2. Based on the fetched news and the provided current price, write a brief, insightful analysis (2-3 sentences) of the stock's current situation.
+3. Summarize the key takeaways from the news headlines in a single paragraph.
+4. Suggest a price alert (either above or below the current price) and provide a clear, concise reason for your suggestion. Consider volatility, recent trends, and news sentiment.
+
+Analyze the following stocks:
+{{#each stocks}}
+- Ticker: {{ticker}}, Current Price: {{currentPrice}}
 {{/each}}
 
-Provide your output in the specified JSON format.
+Provide your final output as a JSON array, with each object in the array conforming to the specified output schema for a single stock analysis.
 `,
 });
 
 
+// The main flow that orchestrates the process
 const stockAnalysisFlow = ai.defineFlow(
   {
     name: 'stockAnalysisFlow',
@@ -104,24 +104,8 @@ const stockAnalysisFlow = ai.defineFlow(
     outputSchema: GetStockAnalysisOutputSchema,
   },
   async (input) => {
-    const analysisResults: GetStockAnalysisOutput = [];
-
-    for (const stock of input.stocks) {
-        // 1. Fetch news for the individual stock.
-        const news = await getRecentNewsTool({ ticker: stock.ticker });
-
-        // 2. Call the prompt with the stock data and the fetched news.
-        const { output } = await analysisPrompt({
-            ticker: stock.ticker,
-            currentPrice: stock.currentPrice,
-            news: news.map(n => ({ title: n.title, publisher: n.publisher })),
-        });
-        
-        if (output) {
-            analysisResults.push(output);
-        }
-    }
-
-    return analysisResults;
+    // Call the prompt and let it use the tool to get the analysis.
+    const { output } = await analysisPrompt(input);
+    return output || [];
   }
 );
