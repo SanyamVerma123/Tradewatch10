@@ -25,6 +25,7 @@ interface TradeClientProps {
 }
 
 type OrderType = "BUY" | "SELL";
+type StopLossTargetMode = 'PERCENT' | 'PRICE';
 
 const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: () => void, orderType: OrderType, disabled?: boolean, buttonText: string }) => {
     const [swiping, setSwiping] = useState(false);
@@ -185,6 +186,14 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [isStoplossEnabled, setIsStoplossEnabled] = useState(false);
   const [isTargetEnabled, setIsTargetEnabled] = useState(false);
   const [isLoading, setIsLoading] = useState(!initialStock);
+  
+  const [stoplossMode, setStoplossMode] = useState<StopLossTargetMode>('PERCENT');
+  const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PERCENT');
+  const [stoplossPercent, setStoplossPercent] = useState("");
+  const [stoplossPrice, setStoplossPrice] = useState("");
+  const [targetPercent, setTargetPercent] = useState("");
+  const [targetPrice, setTargetPrice] = useState("");
+
 
   const fetchStock = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsLoading(true);
@@ -387,6 +396,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
   const isSLOrder = orderMethod === "SL" || orderMethod === "SL-M";
   const swipeText = `SWIPE TO ${isEditing ? 'MODIFY' : orderType}`;
+  
+  const entryPrice = getExecutionPrice();
 
   const PageLoader = () => (
     <div className="flex justify-center items-center h-64">
@@ -520,11 +531,22 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                           <Switch id="set-stoploss" checked={isStoplossEnabled} onCheckedChange={setIsStoplossEnabled} />
                       </div>
                       {isStoplossEnabled && (
-                          <div className="grid grid-cols-2 gap-4 items-center animate-in fade-in-50">
-                              <Label htmlFor="stoploss-percent">Stoploss %</Label>
+                          <div className="space-y-2 animate-in fade-in-50">
+                              <RadioGroup value={stoplossMode} onValueChange={(v) => setStoplossMode(v as StopLossTargetMode)} className="flex gap-2">
+                                <Label htmlFor="sl-percent" className={cn("text-xs", stoplossMode === 'PERCENT' && 'text-primary')}>%</Label>
+                                <RadioGroupItem value="PERCENT" id="sl-percent" className="sr-only"/>
+                                <Switch checked={stoplossMode === 'PRICE'} onCheckedChange={(c) => setStoplossMode(c ? 'PRICE' : 'PERCENT')} />
+                                <Label htmlFor="sl-price" className={cn("text-xs", stoplossMode === 'PRICE' && 'text-primary')}>Price</Label>
+                                <RadioGroupItem value="PRICE" id="sl-price" className="sr-only"/>
+                              </RadioGroup>
                               <div className="relative">
-                                  <Input id="stoploss-percent" type="number" placeholder="-5.0" />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                                <Input 
+                                    type="number" 
+                                    value={stoplossMode === 'PERCENT' ? stoplossPercent : stoplossPrice}
+                                    onChange={(e) => stoplossMode === 'PERCENT' ? setStoplossPercent(e.target.value) : setStoplossPrice(e.target.value)}
+                                    placeholder={stoplossMode === 'PERCENT' ? `-2.0 (i.e. ₹${(entryPrice * 0.98).toFixed(2)})` : `${(entryPrice * 0.98).toFixed(2)}`}
+                                />
+                                {stoplossMode === 'PERCENT' && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>}
                               </div>
                           </div>
                       )}
@@ -536,10 +558,22 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                           <Switch id="set-target" checked={isTargetEnabled} onCheckedChange={setIsTargetEnabled} />
                       </div>
                       {isTargetEnabled && (
-                          <div className="grid grid-cols-2 gap-4 items-center animate-in fade-in-50">
-                              <Label htmlFor="target-percent">Target %</Label>                              <div className="relative">
-                                  <Input id="target-percent" type="number" placeholder="5.0" />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">%</span>
+                           <div className="space-y-2 animate-in fade-in-50">
+                              <RadioGroup value={targetMode} onValueChange={(v) => setTargetMode(v as StopLossTargetMode)} className="flex gap-2">
+                                <Label htmlFor="target-percent" className={cn("text-xs", targetMode === 'PERCENT' && 'text-primary')}>%</Label>
+                                <RadioGroupItem value="PERCENT" id="target-percent" className="sr-only"/>
+                                <Switch checked={targetMode === 'PRICE'} onCheckedChange={(c) => setTargetMode(c ? 'PRICE' : 'PERCENT')} />
+                                <Label htmlFor="target-price" className={cn("text-xs", targetMode === 'PRICE' && 'text-primary')}>Price</Label>
+                                <RadioGroupItem value="PRICE" id="target-price" className="sr-only"/>
+                              </RadioGroup>
+                              <div className="relative">
+                                 <Input 
+                                    type="number" 
+                                    value={targetMode === 'PERCENT' ? targetPercent : targetPrice}
+                                    onChange={(e) => targetMode === 'PERCENT' ? setTargetPercent(e.target.value) : setTargetPrice(e.target.value)}
+                                    placeholder={targetMode === 'PERCENT' ? `4.0 (i.e. ₹${(entryPrice * 1.04).toFixed(2)})` : `${(entryPrice * 1.04).toFixed(2)}`}
+                                />
+                                {targetMode === 'PERCENT' && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>}
                               </div>
                           </div>
                       )}
@@ -570,3 +604,5 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
+
+    
