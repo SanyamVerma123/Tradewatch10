@@ -78,7 +78,7 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
   };
 
   return (
-      <Card className="w-full bg-background/80 backdrop-blur-sm border-border/20 shadow-lg shadow-primary/10">
+      <Card className="w-full bg-background/80 backdrop-blur-sm border-border/20 shadow-2xl shadow-primary/20">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
           <CardDescription>
