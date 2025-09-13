@@ -46,6 +46,7 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
             description: error.message,
         });
     } else if (data.user) {
+        localStorage.setItem(`postLoginFundNotification_${data.user.id}`, "true");
         toast({
             title: "Login Successful",
             description: `Welcome back!`,

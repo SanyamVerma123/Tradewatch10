@@ -53,9 +53,7 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
     } else if (user) {
       // Initialize app-specific data in local storage, namespaced by user ID
       const userId = user.id;
-      const initialFunds = { balance: 200000.00, canAddMore: true, lastProfitCheck: 0 };
-      
-      localStorage.setItem(`funds_${userId}`, JSON.stringify(initialFunds));
+      // Do not initialize funds here. It will be done post-login via notification.
       localStorage.setItem(`watchlists_${userId}`, JSON.stringify(initialWatchlistsData));
       localStorage.setItem(`orders_${userId}`, '[]');
       localStorage.setItem(`portfolioData_${userId}`, '{"holdings":[],"positions":[]}');
