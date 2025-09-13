@@ -145,6 +145,22 @@ function isMarketOpen() {
     return false;
 }
 
+async function showOrderNotification(ticker: string) {
+    if (!('serviceWorker' in navigator) || !window.Notification || Notification.permission !== 'granted') {
+      return;
+    }
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      registration.showNotification("Order Submitted", {
+        body: `Your order for ${ticker} has been submitted.`,
+        icon: "/icon-192x192.png",
+        badge: "/badge-72x72.png",
+      });
+    } catch (err) {
+      console.error('Error showing order notification:', err);
+    }
+}
+
 
 export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientProps) {
   const router = useRouter();
@@ -284,6 +300,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         description: `${order.type} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
     });
 
+    setTimeout(() => showOrderNotification(ticker), 60000); // 1 minute delay
+
     router.push('/orders');
   }
 
@@ -361,6 +379,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         title: `Order ${isEditing ? 'Modified' : 'Placed'} (${orderType})`,
         description: `${quantity} shares of ${ticker} at ${orderMethod.includes('MARKET') ? 'Market Price' : `₹${price}`}. ${!marketIsOpen ? '(AMO)' : ''}`,
     });
+
+    setTimeout(() => showOrderNotification(ticker), 60000); // 1 minute delay
     
     router.push('/orders');
   }
