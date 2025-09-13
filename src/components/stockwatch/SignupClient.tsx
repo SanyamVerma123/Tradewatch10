@@ -69,7 +69,7 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
   };
 
   return (
-    <Card className="w-full border-0 shadow-none sm:border sm:shadow-lg">
+    <Card className="w-full bg-background/80 backdrop-blur-sm border-border/20 shadow-lg shadow-primary/10">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl font-bold">Create an Account</CardTitle>
         <CardDescription>
