@@ -31,7 +31,7 @@ const getRecentNewsTool = ai.defineTool(
         try {
             const results = await yahooFinance.search(ticker, { newsCount: 5 });
             return results.news;
-        } catch (error) => {
+        } catch (error) {
             console.error('Error fetching news:', error);
             return [];
         }
