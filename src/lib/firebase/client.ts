@@ -2,7 +2,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getMessaging } from "firebase/messaging";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyD1I8B1nLBQFYqFGiXX5H6BkJbpgE9u-GE",
   authDomain: "stockwatch-618pq.firebaseapp.com",
@@ -11,6 +10,7 @@ const firebaseConfig = {
   messagingSenderId: "359207349124",
   appId: "1:359207349124:web:cb2cd702cffff150fa0bd1"
 };
+
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
