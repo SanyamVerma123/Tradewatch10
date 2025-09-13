@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/toaster';
 import BottomNav from '@/components/stockwatch/BottomNav';
 import { ThemeProvider } from '@/components/stockwatch/ThemeProvider';
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata: Metadata = {
   title: 'StockImage',
@@ -36,6 +37,7 @@ export default function RootLayout({
           <Toaster />
         </ThemeProvider>
         <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
