@@ -12,7 +12,7 @@ const Logo = () => (
       viewBox="0 0 48 48"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="text-primary"
+      className="text-primary drop-shadow-[0_0_8px_hsl(var(--primary))]"
     >
       <path
         d="M12 36L24 24L36 36"
@@ -40,7 +40,7 @@ export function AuthClient() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 antialiased">
         <div className="absolute inset-0 -z-10 h-full w-full bg-white bg-[linear-gradient(to_right,#f0f0f0_1px,transparent_1px),linear-gradient(to_bottom,#f0f0f0_1px,transparent_1px)] bg-[size:6rem_4rem] dark:bg-background dark:bg-[linear-gradient(to_right,theme(colors.border)_1px,transparent_1px),linear-gradient(to_bottom,theme(colors.border)_1px,transparent_1px)]">
-            <div className="absolute bottom-0 left-0 right-0 top-0 bg-[radial-gradient(circle_800px_at_50%_200px,theme(colors.primary/0.15),transparent)]"></div>
+            <div className="absolute bottom-0 left-0 right-0 top-0 bg-[radial-gradient(circle_800px_at_50%_200px,theme(colors.primary/0.25),transparent)]"></div>
         </div>
 
        <div className="w-full max-w-md">
