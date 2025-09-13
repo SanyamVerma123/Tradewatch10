@@ -76,7 +76,7 @@ export function SupportClient() {
             AI Support Assistant
           </CardTitle>
           <CardDescription>
-            Ask me anything about how to use the StockWatch app.
+            Ask me anything about how to use the StockImage app.
           </CardDescription>
         </CardHeader>
         <CardContent ref={scrollAreaRef} className="flex-1 overflow-y-auto space-y-4 pr-2">

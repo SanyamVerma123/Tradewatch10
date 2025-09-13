@@ -46,7 +46,7 @@ export function AuthClient() {
        <div className="w-full max-w-md">
         <div className="flex justify-center items-center gap-3 mb-8">
             <Logo />
-            <h1 className="text-4xl font-bold tracking-tight text-foreground">StockWatch</h1>
+            <h1 className="text-4xl font-bold tracking-tight text-foreground">StockImage</h1>
         </div>
         {isLoginView ? (
             <LoginClient onToggleView={toggleView} />

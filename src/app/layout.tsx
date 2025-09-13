@@ -6,7 +6,7 @@ import { ThemeProvider } from '@/components/stockwatch/ThemeProvider';
 import { SpeedInsights } from "@vercel/speed-insights/next"
 
 export const metadata: Metadata = {
-  title: 'StockWatch',
+  title: 'StockImage',
   description: 'Track your favorite stocks and get AI-powered insights.',
 };
 

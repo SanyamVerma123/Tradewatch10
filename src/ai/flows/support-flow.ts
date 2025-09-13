@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * @fileOverview An AI support agent for the StockWatch app.
+ * @fileOverview An AI support agent for the StockImage app.
  *
  * - getSupportResponse - A function that provides answers to user questions about the app.
  * - GetSupportResponseInput - The input type for the getSupportResponse function (string).
@@ -22,7 +22,7 @@ const prompt = ai.definePrompt({
   name: 'supportPrompt',
   input: { schema: z.string() },
   output: { schema: z.string() },
-  prompt: `You are a helpful AI assistant for a stock trading application called StockWatch.
+  prompt: `You are a helpful AI assistant for a stock trading application called StockImage.
 Your role is to answer user questions about how to use the app. Be friendly, concise, and clear.
 
 The app has the following features:
