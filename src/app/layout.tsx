@@ -22,6 +22,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <title>Next.js</title>
+      </head>
       <body className={inter.className}>
         <ThemeProvider
             attribute="class"
