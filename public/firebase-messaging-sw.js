@@ -1,9 +1,8 @@
+// This file must be in the public directory.
 
-// This file must be in the public directory
-
-// Scripts for Firebase v9 compatibility
-importScripts('https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.15.0/firebase-messaging-compat.js');
+// Scripts for Firebase
+importScripts("https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js");
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -15,14 +14,16 @@ const firebaseConfig = {
   appId: "1:359207349124:web:cb2cd702cffff150fa0bd1"
 };
 
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
 
-// Retrieve an instance of Firebase Messaging so that it can handle background messages.
+// Initialize Firebase
+const app = firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message ', payload);
+  console.log(
+    '[firebase-messaging-sw.js] Received background message ',
+    payload
+  );
   
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
