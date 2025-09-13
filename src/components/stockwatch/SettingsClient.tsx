@@ -151,7 +151,7 @@ export function SettingsClient() {
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This action cannot be undone. This will permanently delete all portfolios, orders, and watchlists from this device and reset them to default. Your account will not be deleted and you will remain logged in.
-                  </CADlertDialogDescription>
+                  </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
