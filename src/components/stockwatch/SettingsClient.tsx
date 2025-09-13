@@ -27,8 +27,6 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabase/client";
-import { watchlists as initialWatchlistsData } from "@/lib/data";
-import { PushNotificationManager } from "./PushNotificationManager";
 
 export function SettingsClient() {
   const router = useRouter();
@@ -40,32 +38,27 @@ export function SettingsClient() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // Specifically remove app-related data for the logged-in user
-        const fundsKey = `funds_${user.id}`;
-        const watchlistsKey = `watchlists_${user.id}`;
-        const ordersKey = `orders_${user.id}`;
-        const portfolioKey = `portfolioData_${user.id}`;
-
-        localStorage.removeItem(fundsKey);
-        localStorage.removeItem(watchlistsKey);
-        localStorage.removeItem(ordersKey);
-        localStorage.removeItem(portfolioKey);
-        
-        // Re-initialize data to default state
-        const initialFunds = { balance: 200000.00, canAddMore: true, lastProfitCheck: 0 };
-        localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
-        localStorage.setItem(watchlistsKey, JSON.stringify(initialWatchlistsData));
-        localStorage.setItem(ordersKey, '[]');
-        localStorage.setItem(portfolioKey, '{"holdings":[],"positions":[]}');
+        // Clear all app-related keys from localStorage
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith(`funds_${user.id}`) || 
+                key.startsWith(`watchlists_${user.id}`) ||
+                key.startsWith(`orders_${user.id}`) ||
+                key.startsWith(`portfolioData_${user.id}`)) {
+                localStorage.removeItem(key);
+            }
+        });
       }
+      
+      // Sign the user out
+      await supabase.auth.signOut();
 
       toast({
-        title: "App Data Cleared",
-        description: "Your local watchlists, orders, and portfolio have been reset.",
+        title: "Data Cleared & Logged Out",
+        description: "Your local application data has been cleared. Please log in again.",
       });
 
-      // Redirect to a main page to see the fresh state
-      router.push('/watchlist');
+      // Redirect to the auth page
+      router.push('/');
       
     } catch (e) {
       console.error("Error clearing app data:", e);
@@ -94,7 +87,7 @@ export function SettingsClient() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <PushNotificationManager />
+          {/* PushNotificationManager component would go here in a real app */}
           <div className="flex items-center justify-between rounded-lg border p-4">
             <Label htmlFor="email-notifications" className="flex flex-col space-y-1">
                 <span>Email Notifications</span>
@@ -135,7 +128,7 @@ export function SettingsClient() {
         <CardHeader>
           <CardTitle>Data Management</CardTitle>
           <CardDescription>
-            Clear your local application data (watchlists, portfolio, etc.) from this device. You will remain logged in.
+            Clear your local application data (watchlists, portfolio, etc.) from this device. You will be logged out.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -143,20 +136,20 @@ export function SettingsClient() {
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" className="w-full sm:w-auto">
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Clear App Data
+                  Clear App Data & Logout
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete all portfolios, orders, and watchlists from this device and reset them to default. Your account will not be deleted and you will remain logged in.
+                    This action cannot be undone. This will permanently delete all your portfolios, orders, and watchlists from this device and then log you out.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction onClick={handleClearData}>
-                    Yes, clear data
+                    Yes, clear data and logout
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
