@@ -72,11 +72,13 @@ export default function BottomNav() {
 
     checkSession();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
         const loggedIn = !!session;
         setIsLoggedIn(loggedIn);
-        if (!loggedIn && pathname !== '/') {
+        if (_event === 'SIGNED_OUT' && pathname !== '/') {
             router.replace('/');
+        } else if (_event === 'SIGNED_IN' && pathname === '/') {
+            router.replace('/watchlist');
         }
     });
 
@@ -86,7 +88,18 @@ export default function BottomNav() {
 
   }, [pathname, router]);
 
-  if (isLoading || !isLoggedIn || pathname === '/') {
+  // Don't render the nav on the auth page
+  if (pathname === '/') {
+    return null;
+  }
+  
+  // While loading session, don't show anything to prevent flicker
+  if (isLoading) {
+    return null;
+  }
+
+  // If not logged in after check, let the redirect handle it, don't render nav
+  if (!isLoggedIn) {
     return null;
   }
 
