@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabase/client";
 import { watchlists as initialWatchlistsData } from "@/lib/data";
+import { PushNotificationManager } from "./PushNotificationManager";
 
 export function SettingsClient() {
   const router = useRouter();
@@ -93,15 +94,7 @@ export function SettingsClient() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <Label htmlFor="push-notifications" className="flex flex-col space-y-1">
-                <span>Push Notifications</span>
-                <span className="font-normal leading-snug text-muted-foreground">
-                    Receive alerts on your device.
-                </span>
-            </Label>
-            <Switch id="push-notifications" defaultChecked />
-          </div>
+          <PushNotificationManager />
           <div className="flex items-center justify-between rounded-lg border p-4">
             <Label htmlFor="email-notifications" className="flex flex-col space-y-1">
                 <span>Email Notifications</span>
@@ -158,7 +151,7 @@ export function SettingsClient() {
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This action cannot be undone. This will permanently delete all portfolios, orders, and watchlists from this device and reset them to default. Your account will not be deleted and you will remain logged in.
-                  </AlertDialogDescription>
+                  </CADlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
