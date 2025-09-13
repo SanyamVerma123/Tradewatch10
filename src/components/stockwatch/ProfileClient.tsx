@@ -109,7 +109,7 @@ export function ProfileClient() {
       <footer className="mt-12 text-center text-xs text-muted-foreground space-y-2">
         <div className="flex items-center justify-center gap-2">
             <span>Made in India, for India</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 21 15"><path fill="#f93" d="M0 0h21v5H0z"/><path fill="#fff" d="M0 5h21v5H0z"/><path fill="#128807" d="M0 10h21v5H0z"/><g transform="translate(10.5 7.5)"><circle r="2" fill="#008"/><path stroke="#008" stroke-width=".2" d="m0 2l-.12-.3a.32.32 0 1 1 .24 0M.97.16l-.42-.2a.32.32 0 1 1 .48.33M.8.8l-.5-.04a.32.32 0 1 1 .16.48M.16.97l-.2-.42a.32.32: 0 1 1 .33.48M-.6.8l-.04-.5a.32.32 0 1 1 .48.16M-1 .16l-.42.2a.32.32 0 1 1 .33-.48M-.8-.6.04-.5a.32.32 0 1 1-.48-.16M-.16-.97l.2-.42a.32.32 0 1 1-.33.48"/></g></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 21 15"><path fill="#f93" d="M0 0h21v5H0z"/><path fill="#fff" d="M0 5h21v5H0z"/><path fill="#128807" d="M0 10h21v5H0z"/><g transform="translate(10.5 7.5)"><circle r="2" fill="#008"/><path stroke="#008" strokeWidth=".2" d="m0 2l-.12-.3a.32.32 0 1 1 .24 0M.97.16l-.42-.2a.32.32 0 1 1 .48.33M.8.8l-.5-.04a.32.32 0 1 1 .16.48M.16.97l-.2-.42a.32.32 0 1 1 .33.48M-.6.8l-.04-.5a.32.32 0 1 1 .48.16M-1 .16l-.42.2a.32.32 0 1 1 .33-.48M-.8-.6.04-.5a.32.32 0 1 1-.48-.16M-.16-.97l.2-.42a.32.32 0 1 1-.33.48"/></g></svg>
         </div>
         <p>© Powered by Sanyam</p>
       </footer>
