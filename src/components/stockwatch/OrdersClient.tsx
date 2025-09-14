@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -110,7 +109,7 @@ export function OrdersClient() {
       const portfolio: Portfolio = JSON.parse(localStorage.getItem(portfolioKey) || '{ "holdings": [] }');
       
       const relatedBuyOrders = allOrders
-        .filter(o => o.status === 'Executed' && o.type === 'BUY' && o.ticker === orderToExecute.ticker)
+        .filter(o => o.status === 'Executed' && o.type === 'BUY' && o.ticker === orderToExecute.ticker && o.executedAt && isToday(new Date(o.executedAt)))
         .sort((a, b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime());
       
       const holding = portfolio.holdings.find(h => h.ticker === orderToExecute.ticker);
