@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { Order, Stock, Portfolio, Holding } from "@/lib/types";
 import { getStockData } from "@/app/actions";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, MoreVertical, Info, RefreshCcw, Loader2, ChevronsRight } from "lucide-react";
+import { ArrowLeft, MoreVertical, Info, RefreshCcw, Loader2, ChevronsRight, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,23 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 
 interface TradeClientProps {
   ticker: string;
@@ -193,6 +210,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [stoplossPrice, setStoplossPrice] = useState("");
   const [targetPercent, setTargetPercent] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
+  const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
 
   const fetchStock = useCallback(async (isSilent = false) => {
@@ -394,6 +412,20 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     router.push('/orders');
   }
 
+  const handleCancelOrder = () => {
+    if (!user || !orderToEdit) return;
+    const ordersKey = `orders_${user.id}`;
+    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+    const updatedOrders = allOrders.map(o => o.id === orderToEdit.id ? { ...o, status: 'Cancelled' } : o);
+    localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
+    toast({
+        variant: "destructive",
+        title: "Order Cancelled",
+        description: `Your pending order for ${orderToEdit.ticker} has been cancelled.`,
+    });
+    router.push('/orders');
+  };
+
   const isSLOrder = orderMethod === "SL" || orderMethod === "SL-M";
   const swipeText = `SWIPE TO ${isEditing ? 'MODIFY' : orderType}`;
   
@@ -417,9 +449,42 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
               <p className="text-xs text-muted-foreground truncate max-w-xs">{stock?.name}</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon">
-            <MoreVertical />
-          </Button>
+            {isEditing && (
+                <AlertDialog open={isCancelAlertOpen} onOpenChange={setIsCancelAlertOpen}>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                            <MoreVertical />
+                        </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                        <AlertDialogTrigger asChild>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Cancel Order</span>
+                            </DropdownMenuItem>
+                        </AlertDialogTrigger>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will cancel your pending order for {quantity} shares of {ticker}. This action cannot be undone.
+                        </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel>Dismiss</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={handleCancelOrder}
+                        >
+                            Yes, Cancel Order
+                        </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
         </header>
 
         {isLoading ? <PageLoader /> : (
