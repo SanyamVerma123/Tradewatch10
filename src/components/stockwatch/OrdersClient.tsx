@@ -94,6 +94,7 @@ export function OrdersClient() {
     const isIntradayTrade = product === 'MIS';
     // For CNC Buy, STT is 0. For CNC Sell, it's 0.1%. For MIS Sell, it's 0.025%.
     const sttRate = (product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : (isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : 0);
+    const stt = finalTradeValue * sttRate;
     const brokerage = Math.min(20, finalTradeValue * 0.0003); // 0.03% or Rs 20
     const otherCharges = finalTradeValue * 0.000345; // Exchange txn, SEBI fees etc.
     const totalCharges = brokerage + stt + otherCharges;
@@ -507,4 +508,5 @@ export function OrdersClient() {
     
 
     
+
 
