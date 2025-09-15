@@ -371,8 +371,7 @@ export function PortfolioClient() {
             product = 'CNC';
         } else if (!isFromHolding && position) { // Selling from Positions tab
             quantity = Math.abs(position.quantity);
-            // If selling a CNC position on the same day, it's an MIS trade
-            product = position.product === 'CNC' ? 'MIS' : position.product;
+            product = position.product; // Enforce selling with the same product type
         }
      }
 

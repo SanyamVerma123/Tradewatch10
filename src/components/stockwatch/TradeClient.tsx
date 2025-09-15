@@ -276,6 +276,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   }, [stock, orderMethod, price]);
 
   const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
+  const isSellingPosition = orderToEdit?.type === 'SELL';
 
   const getExecutionPrice = () => {
     if (orderMethod.includes('MARKET')) {
@@ -288,7 +289,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
 
   const currentHolding = holdings.find(h => h.ticker === ticker);
-  const maxSellQuantity = isSellFromHolding ? (currentHolding?.quantity || 0) : 10000;
+  const maxSellQuantity = isSellFromHolding ? (currentHolding?.quantity || 0) : (orderToEdit?.quantity || 10000);
 
   const executeOrder = (order: Order) => {
     if(!stock || !user) return;
@@ -349,8 +350,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       return;
     }
     
-    if (orderType === 'SELL' && isSellFromHolding && (parseInt(quantity) || 0) > maxSellQuantity) {
-       toast({ variant: "destructive", title: "Insufficient Holdings", description: `You can sell a maximum of ${maxSellQuantity} shares.` });
+    if (orderType === 'SELL' && (parseInt(quantity) || 0) > maxSellQuantity) {
+       toast({ variant: "destructive", title: "Insufficient Holdings/Quantity", description: `You can sell a maximum of ${maxSellQuantity} shares.` });
        return;
     }
 
@@ -526,8 +527,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                   <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
-                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} max={orderType === 'SELL' && product === 'CNC' ? maxSellQuantity : undefined} />
-                          {orderType === 'SELL' && product === 'CNC' && <p className="text-xs text-muted-foreground">Holding: {maxSellQuantity}</p>}
+                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} max={orderType === 'SELL' ? maxSellQuantity : undefined} />
+                          {orderType === 'SELL' && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
                           {orderType === 'BUY' && <p className="text-xs text-muted-foreground">Lot size 1</p>}
                       </div>
                       <div className="space-y-1">
@@ -546,16 +547,16 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
                   <div className="space-y-2">
                       <Label>Product</Label>
-                      <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4">
+                      <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4" disabled={isSellingPosition}>
                           <Button asChild variant="outline" className={cn("flex-1", product === "MIS" && "border-primary text-primary")}>
-                              <Label className="flex-col items-center justify-center h-full gap-0 p-2 cursor-pointer">
-                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isSellFromHolding} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isSellingPosition ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
+                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isSellFromHolding || isSellingPosition} />
                                   Intraday <span className="text-xs text-muted-foreground">MIS</span>
                               </Label>
                           </Button>
                           <Button asChild variant="outline" className={cn("flex-1", product === "CNC" && "border-primary text-primary")}>
-                              <Label className="flex-col items-center justify-center h-full gap-0 p-2 cursor-pointer">
-                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={orderType === 'SELL' && !currentHolding && !isSellFromHolding} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isSellingPosition ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
+                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={(orderType === 'SELL' && !currentHolding && !isSellFromHolding) || isSellingPosition} />
                                   Longterm <span className="text-xs text-muted-foreground">CNC</span>
                               </Label>
                           </Button>
