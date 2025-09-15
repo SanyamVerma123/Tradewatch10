@@ -25,7 +25,7 @@ async function showDelayedFundNotification() {
     try {
       const registration = await navigator.serviceWorker.ready;
       registration.showNotification("Funds Credited!", {
-        body: "Your starting fund of ₹2,00,000 has been credited to your account.",
+        body: "Your starting fund of ₹5,00,000 has been credited to your account.",
         icon: "/icon-192x192.png",
         badge: "/badge-72x72.png",
       });
@@ -108,7 +108,7 @@ export default function BottomNav() {
                 const fundsKey = `funds_${session.user!.id}`;
                 const fundsData = localStorage.getItem(fundsKey);
                 if (!fundsData) {
-                    const initialFunds = { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
+                    const initialFunds = { balance: 500000, canAddMore: true, lastProfitCheck: 0 };
                     localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
                 }
                 showDelayedFundNotification();

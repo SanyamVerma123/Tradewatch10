@@ -48,7 +48,7 @@ export function FundsClient() {
       if (storedFunds) {
         setFunds(JSON.parse(storedFunds));
       } else {
-        const initialFunds = { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
+        const initialFunds = { balance: 500000, canAddMore: true, lastProfitCheck: 0 };
         setFunds(initialFunds);
         localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
       }
@@ -78,7 +78,7 @@ export function FundsClient() {
       if (user && funds && pnl - funds.lastProfitCheck >= 10000 && funds.canAddMore) {
           const newFunds = {
               ...funds,
-              balance: funds.balance + 200000,
+              balance: funds.balance + 500000,
               canAddMore: false, // One time bonus
               lastProfitCheck: pnl
           };
@@ -86,7 +86,7 @@ export function FundsClient() {
           localStorage.setItem(`funds_${user.id}`, JSON.stringify(newFunds));
           toast({
               title: "Congratulations!",
-              description: "You've earned a ₹10,000 profit! You can now add an additional ₹2,00,000 to your funds.",
+              description: "You've earned a ₹10,000 profit! You can now add an additional ₹5,00,000 to your funds.",
           });
       }
     }
@@ -192,7 +192,7 @@ export function FundsClient() {
         <CardContent className="space-y-4 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Opening Balance</span>
-            <span>₹2,00,000.00</span>
+            <span>₹5,00,000.00</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Payin/Payout</span>

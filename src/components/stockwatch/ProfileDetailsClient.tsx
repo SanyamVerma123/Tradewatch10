@@ -71,7 +71,7 @@ export function ProfileDetailsClient() {
   const applyBonus = (userId: string) => {
       const fundsKey = `funds_${userId}`;
       const fundsDataText = localStorage.getItem(fundsKey);
-      const fundsData = fundsDataText ? JSON.parse(fundsDataText) : { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
+      const fundsData = fundsDataText ? JSON.parse(fundsDataText) : { balance: 500000, canAddMore: true, lastProfitCheck: 0 };
       const newFunds = { ...fundsData, balance: (fundsData.balance || 0) + 100000 };
       localStorage.setItem(fundsKey, JSON.stringify(newFunds));
   };
