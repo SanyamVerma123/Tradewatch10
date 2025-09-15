@@ -199,7 +199,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const isExitingPosition = !!orderToEdit?.product;
   const isShortSell = !!orderToEdit?.isShortSell;
   
-  const initialProduct = orderToEdit?.product || "MIS";
+  const initialProduct = orderToEdit?.product || (isShortSell ? 'MIS' : (orderToEdit?.isLong ? 'CNC' : 'MIS'));
   const initialOrderMethod = orderToEdit?.orderMethod || "MARKET";
 
   const [product, setProduct] = useState(initialProduct.toUpperCase());
@@ -259,12 +259,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     if(orderToEdit) {
         setOrderType(orderToEdit.type || "BUY");
-        setProduct(orderToEdit.product?.toUpperCase() || "MIS");
+        setProduct(orderToEdit.product?.toUpperCase() || (isShortSell ? 'MIS' : (orderToEdit?.isLong ? 'CNC' : 'MIS')));
         setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "MARKET");
         setQuantity(orderToEdit.quantity?.toString() || "1");
         setPrice(orderToEdit.price?.toString() || "");
     }
-  }, [orderToEdit, router]);
+  }, [orderToEdit, router, isShortSell]);
 
   useEffect(() => {
     if (!initialStock) {
@@ -302,7 +302,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     if(!stock || !user) return;
     const ordersKey = `orders_${user.id}`;
     
-
     if (orderType === 'BUY' && requiredFunds > availableFunds) {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~₹${requiredFunds.toFixed(2)}. Available: ₹${availableFunds.toFixed(2)}.` });
       return;
@@ -335,6 +334,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         price: orderMethod.includes("MARKET") ? stock.price.toString() : price,
         isSellFromHolding: isSellFromHolding,
         isShortSell: isShortSell,
+        isLong: !isShortSell && !isExitingPosition,
         executedAt: '',
     }
 
@@ -351,17 +351,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         return;
     }
     
-    // This logic now correctly only submits the order on swipe.
-    if (!hasSwiped.current) {
-        if (isStoplossEnabled || isTargetEnabled) {
-             toast({
-                title: "Advanced Order Set",
-                description: `Swipe ${orderType} to place your order with stop-loss/target.`
-            });
-        }
-       return;
+    if (isStoplossEnabled || isTargetEnabled) {
+         toast({
+            title: "Advanced Order Set",
+            description: `Swipe ${orderType} to place your order with stop-loss/target.`
+        });
     }
-
 
     const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     let updatedOrders;
@@ -379,7 +374,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     router.push('/orders');
   }
-  const hasSwiped = useRef(false);
 
   const handleCancelOrder = () => {
     if (!user || !orderToEdit) return;
@@ -412,7 +406,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   )
   
-  const isProductDisabled = isExitingPosition || isShortSell;
+  const isProductDisabled = isExitingPosition || isShortSell || (isEditing && !!orderToEdit.product);
 
 
   return (
@@ -465,7 +459,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
             )}
         </header>
 
-        {(!stock || isLoading) ? <PageLoader /> : (
+        {(!stock || (isLoading && !stock)) ? <PageLoader /> : (
              <div className="px-4 my-4 flex items-baseline gap-x-2">
                 <p className="text-2xl font-bold">₹{stock?.price.toFixed(2)}</p>
                 <p className={cn("font-semibold text-base", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
@@ -647,4 +641,3 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
-

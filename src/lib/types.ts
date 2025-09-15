@@ -54,6 +54,7 @@ export interface Order {
   price?: string;
   isSellFromHolding?: boolean;
   isShortSell?: boolean;
+  isLong?: boolean;
   executedAt?: string; // ISO date string
   realizedPnl?: number;
 }
