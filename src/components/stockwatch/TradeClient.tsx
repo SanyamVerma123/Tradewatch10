@@ -276,7 +276,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   }, [stock, orderMethod, price]);
 
   const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
-  const isSellingPosition = orderToEdit?.type === 'SELL';
+  const isExitingPosition = !!orderToEdit?.id && (orderToEdit?.isSellFromHolding || orderToEdit?.product);
 
   const getExecutionPrice = () => {
     if (orderMethod.includes('MARKET')) {
@@ -433,7 +433,13 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   };
 
   const isSLOrder = orderMethod === "SL" || orderMethod === "SL-M";
-  const swipeText = `SWIPE TO ${isEditing ? 'MODIFY' : orderType}`;
+  
+  let swipeText = `SWIPE TO ${orderType}`;
+  if(isEditing) {
+    swipeText = `SWIPE TO MODIFY`;
+  } else if (isExitingPosition) {
+    swipeText = `SWIPE TO EXIT`;
+  }
   
   const entryPrice = getExecutionPrice();
 
@@ -547,16 +553,16 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
                   <div className="space-y-2">
                       <Label>Product</Label>
-                      <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4" disabled={isSellingPosition}>
+                      <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4" disabled={isExitingPosition}>
                           <Button asChild variant="outline" className={cn("flex-1", product === "MIS" && "border-primary text-primary")}>
-                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isSellingPosition ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
-                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isSellFromHolding || isSellingPosition} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isExitingPosition ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
+                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isExitingPosition} />
                                   Intraday <span className="text-xs text-muted-foreground">MIS</span>
                               </Label>
                           </Button>
                           <Button asChild variant="outline" className={cn("flex-1", product === "CNC" && "border-primary text-primary")}>
-                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isSellingPosition ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
-                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={(orderType === 'SELL' && !currentHolding && !isSellFromHolding) || isSellingPosition} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isExitingPosition ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
+                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={isExitingPosition} />
                                   Longterm <span className="text-xs text-muted-foreground">CNC</span>
                               </Label>
                           </Button>
@@ -675,5 +681,3 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
-
-    

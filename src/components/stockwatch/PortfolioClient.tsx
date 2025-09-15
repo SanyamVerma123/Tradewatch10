@@ -151,19 +151,22 @@ export function PortfolioClient() {
     // 2. Calculate Today's Positions & P&L
     let positionsDayPnl = 0;
     let misMarginUsed = 0;
-    const positionMap: { [ticker: string]: Position } = {};
+    const positionMap: { [compositeKey: string]: Position } = {};
     
     for (const order of todayExecutedOrders) {
         const ltp = newStocksMap[order.ticker]?.price || order.ltp;
-        let p = positionMap[order.ticker];
+        const product = order.product || 'MIS';
+        const compositeKey = `${order.ticker}-${product}`;
+        
+        let p = positionMap[compositeKey];
 
         if (!p) {
             p = {
-                id: `pos-${order.ticker}`, ticker: order.ticker, product: order.product || 'MIS',
+                id: `pos-${compositeKey}`, ticker: order.ticker, product: product,
                 quantity: 0, avgPrice: 0, ltp: ltp, pnl: 0, investedValue: 0, dayChange: newStocksMap[order.ticker]?.change || 0,
                 dayChangePercent: newStocksMap[order.ticker]?.changePercent || 0, pnlPercent: 0, type: 'BUY',
             };
-            positionMap[order.ticker] = p;
+            positionMap[compositeKey] = p;
         }
         
         p.ltp = ltp;
@@ -369,10 +372,9 @@ export function PortfolioClient() {
         if (isFromHolding && holding) { // Selling from Holdings tab
             quantity = holding.quantity;
             product = 'CNC';
-        } else if (!isFromHolding && position) { // Selling from Positions tab
+        } else if (!isFromHolding && position) { // Exiting from Positions tab
             quantity = Math.abs(position.quantity);
-            // If selling a CNC position on the same day, it's an intraday trade
-            product = position.product === 'CNC' ? 'MIS' : 'MIS';
+            product = position.product as 'CNC' | 'MIS';
         }
      }
 
