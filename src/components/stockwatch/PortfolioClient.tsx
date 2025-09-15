@@ -362,7 +362,7 @@ export function PortfolioClient() {
      const stock = stocksMap[ticker];
 
      let quantity = 1;
-     let product = 'MIS'; // Default to MIS for new trades
+     let product: "CNC" | "MIS" = 'MIS'; // Default to MIS for new trades
      let isSell = type === 'sell';
      
      if (isSell) {
@@ -371,7 +371,8 @@ export function PortfolioClient() {
             product = 'CNC';
         } else if (!isFromHolding && position) { // Selling from Positions tab
             quantity = Math.abs(position.quantity);
-            product = position.product; // Enforce selling with the same product type
+            // If selling a CNC position on the same day, it's an intraday trade
+            product = position.product === 'CNC' ? 'MIS' : 'MIS';
         }
      }
 
@@ -562,7 +563,7 @@ export function PortfolioClient() {
         isOpen={isActionSheetOpen} 
         onOpenChange={setIsActionSheetOpen} 
         onTrade={onActionSheetTrade}
-        tradeButtonVariant="buy-sell"
+        tradeButtonVariant="add-exit"
         isFromHolding={activeTab === 'Holdings'}
       />
     </div>

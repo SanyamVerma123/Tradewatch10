@@ -26,7 +26,7 @@ interface StockActionSheetProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onTrade?: (type: 'buy' | 'sell', ticker: string, isFromHolding: boolean) => void;
-  tradeButtonVariant?: 'long-short' | 'buy-sell';
+  tradeButtonVariant?: 'long-short' | 'buy-sell' | 'add-exit';
   isFromHolding?: boolean;
 }
 
@@ -103,8 +103,18 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
         }
     };
     
-    const buyText = isFromHolding ? 'Buy More' : (tradeButtonVariant === 'long-short' ? 'Long' : 'Buy');
-    const sellText = isFromHolding ? 'Sell' : (tradeButtonVariant === 'long-short' ? 'Short' : 'Sell');
+    let buyText = 'Buy';
+    let sellText = 'Sell';
+
+    if (tradeButtonVariant === 'add-exit') {
+        buyText = 'Add';
+        sellText = 'Exit';
+    } else if (tradeButtonVariant === 'long-short') {
+        buyText = 'Long';
+        sellText = 'Short';
+    } else if (isFromHolding) {
+        buyText = 'Buy More';
+    }
 
 
   return (
