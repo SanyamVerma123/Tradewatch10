@@ -70,29 +70,21 @@ const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: ()
         setPosition(newPosition);
 
         if (newPosition >= maxPosition - 5) { // Threshold for completion
-            hasSwiped.current = true;
-            onSwipe();
-            setTimeout(() => { hasSwiped.current = false; }, 1000); // Prevent multi-swipe
-            resetSwipe();
+            if (!hasSwiped.current) {
+                onSwipe();
+                hasSwiped.current = true;
+            }
+            setTimeout(() => { resetSwipe(); hasSwiped.current = false; }, 500);
         }
     };
 
     const handleInteractionEnd = () => {
-        if (!swiping) return;
+        if (!swiping || hasSwiped.current) return;
         // Snap back if not completed
         const containerRect = containerRef.current?.getBoundingClientRect();
         const maxPosition = (containerRect?.width || 0) - (swipeRef.current?.offsetWidth || 0) - 8;
         if (position < maxPosition - 5) {
-             const interval = setInterval(() => {
-                setPosition(p => {
-                    const newPos = p - 20;
-                    if(newPos <= 4) {
-                        clearInterval(interval);
-                        return 4;
-                    }
-                    return newPos;
-                });
-            }, 10)
+             resetSwipe();
         }
         setSwiping(false);
     };
@@ -207,21 +199,21 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   
   const [isStoplossEnabled, setIsStoplossEnabled] = useState(!!orderToEdit?.stopLossValue);
   const [isTargetEnabled, setIsTargetEnabled] = useState(!!orderToEdit?.targetValue);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isStockLoading, setIsStockLoading] = useState(false);
   
   const [stoplossMode, setStoplossMode] = useState<StopLossTargetMode>('PERCENT');
   const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PERCENT');
 
-  const [stoplossPercent, setStoplossPercent] = useState(orderToEdit?.stopLossValue?.toString() || "");
-  const [stoplossPrice, setStoplossPrice] = useState(orderToEdit?.stopLossValue?.toString() || "");
-  const [targetPercent, setTargetPercent] = useState(orderToEdit?.targetValue?.toString() || "");
-  const [targetPrice, setTargetPrice] = useState(orderToEdit?.targetValue?.toString() || "");
+  const [stoplossPercent, setStoplossPercent] = useState(orderToEdit?.stopLossValue && !orderToEdit?.price ? orderToEdit.stopLossValue.toString() : "");
+  const [stoplossPrice, setStoplossPrice] = useState(orderToEdit?.stopLossValue && orderToEdit?.price ? orderToEdit.stopLossValue.toString() : "");
+  const [targetPercent, setTargetPercent] = useState(orderToEdit?.targetValue && !orderToEdit?.price ? orderToEdit.targetValue.toString() : "");
+  const [targetPrice, setTargetPrice] = useState(orderToEdit?.targetValue && orderToEdit?.price ? orderToEdit.targetValue.toString() : "");
   
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
 
   const fetchStock = useCallback(async (isSilent = false) => {
-    if (!isSilent) setIsLoading(true);
+    if (!isSilent) setIsStockLoading(true);
     try {
       const data = await getStockData([ticker]);
       if (data && data.length > 0) {
@@ -237,7 +229,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       console.error(error);
       toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
     } finally {
-        if (!isSilent) setIsLoading(false);
+        if (!isSilent) setIsStockLoading(false);
     }
   }, [ticker, toast, price, orderMethod]);
 
@@ -282,7 +274,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     if (!initialStock) {
         fetchStock();
     }
-    const interval = setInterval(() => fetchStock(true), 5000);
+    const interval = setInterval(() => fetchStock(true), 2000);
     return () => clearInterval(interval);
   }, [fetchStock, initialStock]);
   
@@ -423,7 +415,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   )
   
-  const isProductDisabled = isExitingPosition || isShortSell || (isEditing && !!orderToEdit.product && !orderToEdit.id.startsWith('order-'));
+  const isProductDisabled = isExitingPosition || isShortSell;
 
 
   return (
@@ -476,7 +468,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
             )}
         </header>
 
-        {(!stock || (isLoading && !stock)) ? <PageLoader /> : (
+        {(!stock || (isStockLoading && !stock)) ? <PageLoader /> : (
              <div className="px-4 my-4 flex items-baseline gap-x-2">
                 <p className="text-2xl font-bold">₹{stock?.price.toFixed(2)}</p>
                 <p className={cn("font-semibold text-base", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
@@ -532,14 +524,14 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                       <Label>Product</Label>
                       <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4" disabled={isProductDisabled}>
                           <Button asChild variant="outline" className={cn("flex-1", product === "MIS" && "border-primary text-primary")}>
-                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isEditing ? "cursor-pointer" : (isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"))}>
-                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isProductDisabled && !isEditing} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
+                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isProductDisabled} />
                                   Intraday <span className="text-xs text-muted-foreground">MIS</span>
                               </Label>
                           </Button>
                           <Button asChild variant="outline" className={cn("flex-1", product === "CNC" && "border-primary text-primary")}>
-                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isEditing ? "cursor-pointer" : (isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"))}>
-                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={isProductDisabled && !isEditing} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
+                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={isProductDisabled} />
                                   Longterm <span className="text-xs text-muted-foreground">CNC</span>
                               </Label>
                           </Button>
@@ -651,7 +643,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                       <span className="font-semibold">₹{availableFunds.toFixed(2)}</span>
                   </div>
               </div>
-               <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={isLoading} buttonText={swipeText} />
+               <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={isStockLoading} buttonText={swipeText} />
           </div>
         </footer>
         )}
