@@ -199,7 +199,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   
   const isExitingPosition = !!orderToEdit?.product;
   
-  const initialProduct = orderToEdit?.product || (isSellFromHolding ? "CNC" : "MIS");
+  const initialProduct = orderToEdit?.product || (isSellFromHolding ? "CNC" : (isShortSell ? "MIS" : "MIS"));
   const initialOrderMethod = orderToEdit?.orderMethod || "MARKET";
 
   const [product, setProduct] = useState(initialProduct.toUpperCase());
@@ -259,12 +259,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     if(orderToEdit) {
         setOrderType(orderToEdit.type || "BUY");
-        setProduct(orderToEdit.product?.toUpperCase() || (isSellFromHolding ? "CNC" : "MIS"));
+        setProduct(orderToEdit.product?.toUpperCase() || (isSellFromHolding ? "CNC" : (isShortSell ? "MIS" : "MIS")));
         setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "MARKET");
         setQuantity(orderToEdit.quantity?.toString() || "1");
         setPrice(orderToEdit.price?.toString() || "");
     }
-  }, [orderToEdit, isSellFromHolding, router]);
+  }, [orderToEdit, isSellFromHolding, isShortSell, router]);
 
   useEffect(() => {
     if (!initialStock) {
@@ -645,5 +645,3 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
-
-    

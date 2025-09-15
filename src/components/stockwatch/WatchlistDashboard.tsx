@@ -264,13 +264,13 @@ export function WatchlistDashboard() {
 
   const handleTradeAction = (type: 'buy' | 'sell', ticker: string) => {
     const stock = stocks[ticker];
-    // Short selling is always MIS
     const isShortSell = type === 'sell';
+
     const orderData: Partial<Order> = {
         type: type === 'buy' ? 'BUY' : 'SELL',
         ticker: ticker,
         quantity: 1,
-        product: isShortSell ? 'MIS' : 'CNC', // Default to CNC for buy, enforce MIS for short
+        product: isShortSell ? 'MIS' : undefined, // Enforce MIS for short, leave undefined for long
         orderMethod: 'MARKET',
         ltp: stock?.price || 0,
         price: stock?.price?.toFixed(2) || '0',
@@ -520,5 +520,3 @@ export function WatchlistDashboard() {
     </div>
   );
 }
-
-    
