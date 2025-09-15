@@ -156,6 +156,8 @@ export function PortfolioClient() {
     for (const order of todayExecutedOrders) {
         const ltp = newStocksMap[order.ticker]?.price || order.ltp;
         const product = order.product || 'MIS';
+        
+        // Use composite key to separate MIS and CNC positions
         const compositeKey = `${order.ticker}-${product}`;
         
         let p = positionMap[compositeKey];
@@ -311,7 +313,7 @@ export function PortfolioClient() {
 
     const newPortfolio: Portfolio = {
       investedValue: totalInvested,
-      currentValue: totalCurrentValue,
+      currentValue: totalHoldingsCurrentValue + totalPnl,
       totalPnl: totalPnl,
       totalPnlPercent: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0,
       dayPnl: dayPnl,
@@ -361,7 +363,7 @@ export function PortfolioClient() {
 
   const onActionSheetTrade = (type: 'buy' | 'sell', ticker: string, isFromHolding: boolean) => {
      const holding = portfolio.holdings.find(h => h.ticker === ticker);
-     const position = portfolio.positions.find(p => p.ticker === ticker);
+     const position = portfolio.positions.find(p => p.ticker === ticker && p.product === (isFromHolding ? 'CNC' : p.product));
      const stock = stocksMap[ticker];
 
      let quantity = 1;
@@ -375,6 +377,12 @@ export function PortfolioClient() {
         } else if (!isFromHolding && position) { // Exiting from Positions tab
             quantity = Math.abs(position.quantity);
             product = position.product as 'CNC' | 'MIS';
+        }
+     } else { // It's a buy ('Add')
+        if (isFromHolding && holding) {
+             product = 'CNC'; // Buying more of a holding
+        } else if (!isFromHolding && position) {
+            product = position.product as 'CNC' | 'MIS'; // Buying more of a position
         }
      }
 
@@ -571,3 +579,5 @@ export function PortfolioClient() {
     </div>
   );
 }
+
+    

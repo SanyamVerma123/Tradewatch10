@@ -209,14 +209,14 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [stoplossMode, setStoplossMode] = useState<StopLossTargetMode>('PERCENT');
   const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PERCENT');
   const [stoplossPercent, setStoplossPercent] = useState("");
-  const [stoplossPrice, setStoplossPrice] = useState("");
+  const [stoplossPrice, setstoplossPrice] = useState("");
   const [targetPercent, setTargetPercent] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
 
   const fetchStock = useCallback(async (isSilent = false) => {
-    if (!isSilent) setIsLoading(true);
+    if (!isSilent && !stock) setIsLoading(true);
     try {
       const data = await getStockData([ticker]);
       if (data && data.length > 0) {
@@ -232,9 +232,9 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       console.error(error);
       toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
     } finally {
-        if (!isSilent) setIsLoading(false);
+        if (!isSilent && !stock) setIsLoading(false);
     }
-  }, [ticker, toast, price, orderMethod]);
+  }, [ticker, toast, price, orderMethod, stock]);
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -264,10 +264,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   }, [orderToEdit, isSellFromHolding, router]);
 
   useEffect(() => {
-    fetchStock();
+    if (!stock) {
+        fetchStock();
+    }
     const interval = setInterval(() => fetchStock(true), 5000);
     return () => clearInterval(interval);
-  }, [fetchStock]);
+  }, [fetchStock, stock]);
   
   useEffect(() => {
     if (stock && (price === "" || (orderMethod === "MARKET" && price !== stock.price.toFixed(2)))) {
@@ -290,54 +292,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
   const currentHolding = holdings.find(h => h.ticker === ticker);
   const maxSellQuantity = isSellFromHolding ? (currentHolding?.quantity || 0) : (orderToEdit?.quantity || 10000);
-
-  const executeOrder = (order: Order) => {
-    if(!stock || !user) return;
-    const ordersKey = `orders_${user.id}`;
-    const fundsKey = `funds_${user.id}`;
-
-    const executionPrice = getExecutionPrice();
-    const executedOrder: Order = { 
-        ...order, 
-        status: 'Executed', 
-        filledQuantity: order.quantity, 
-        ltp: executionPrice,
-        executedAt: new Date().toISOString()
-    };
-    
-    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-    const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
-
-    if (existingOrderIndex > -1) {
-        allOrders[existingOrderIndex] = executedOrder;
-    } else {
-        allOrders = [executedOrder, ...allOrders];
-    }
-    localStorage.setItem(ordersKey, JSON.stringify(allOrders));
-    
-    const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
-    
-    // Higher tax for intraday sell
-    const isIntradaySell = order.type === 'SELL' && product === 'MIS';
-    const stt = isIntradaySell ? finalTradeValue * 0.00025 : (order.type === 'SELL' ? finalTradeValue * 0.001 : 0);
-    const brokerage = Math.min(20, finalTradeValue * 0.0005);
-    const totalCharges = brokerage + stt + (finalTradeValue * 0.000345);
-    
-    const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-    const newBalance = order.type === 'BUY' ? fundsData.balance - finalTradeValue - totalCharges : fundsData.balance + finalTradeValue - totalCharges;
-    localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: Math.max(0, newBalance) }));
-    setAvailableFunds(Math.max(0, newBalance));
-    
-    toast({
-        title: `Order Executed!`,
-        description: `${order.type} ${executedOrder.quantity} ${ticker}. Est. charges: ₹${totalCharges.toFixed(2)}`
-    });
-
-    setTimeout(() => showOrderNotification(ticker), 60000); // 1 minute delay
-
-    router.push('/orders');
-  }
-
 
   const handlePlaceOrder = () => {
     if(isLoading || !stock || !user) return;
@@ -391,13 +345,17 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         toast({ variant: "destructive", title: "Invalid Trigger Price", description: "Trigger price is required for SL orders." });
         return;
     }
-
-    // For market orders during open market, simulate immediate execution
-    if (orderMethod.includes('MARKET') && marketIsOpen) {
-        toast({title: "Executing Market Order..."});
-        setTimeout(() => executeOrder(newOrder), 1500); // simulate network delay
-        return;
+    
+    // Logic for bracket orders (target/stoploss) should not trigger the main order
+    if (isStoplossEnabled || isTargetEnabled) {
+      // In a real app, this would create a bracket order.
+      // For this simulation, we'll just show a toast.
+      toast({
+        title: "Advanced Order Set",
+        description: "Your order with stop-loss/target has been placed."
+      });
     }
+
 
     const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     let updatedOrders;
@@ -413,8 +371,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         description: `${quantity} shares of ${ticker} at ${orderMethod.includes('MARKET') ? 'Market Price' : `₹${price}`}. ${!marketIsOpen ? '(AMO)' : ''}`,
     });
 
-    setTimeout(() => showOrderNotification(ticker), 60000); // 1 minute delay
-    
     router.push('/orders');
   }
 
@@ -516,8 +472,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                  </div>
               ) : (
                 <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="BUY" disabled={isEditing && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
-                    <TabsTrigger value="SELL" disabled={isEditing && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
+                    <TabsTrigger value="BUY" disabled={(isEditing || isExitingPosition) && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
+                    <TabsTrigger value="SELL" disabled={(isEditing || isExitingPosition) && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
                 </TabsList>
               )}
               <div className="p-4 space-y-6">
@@ -620,7 +576,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                                 <Input 
                                     type="number" 
                                     value={stoplossMode === 'PERCENT' ? stoplossPercent : stoplossPrice}
-                                    onChange={(e) => stoplossMode === 'PERCENT' ? setStoplossPercent(e.target.value) : setStoplossPrice(e.target.value)}
+                                    onChange={(e) => stoplossMode === 'PERCENT' ? setStoplossPercent(e.target.value) : setstoplossPrice(e.target.value)}
                                     placeholder={stoplossMode === 'PERCENT' ? `-2.0 (i.e. ₹${(entryPrice * 0.98).toFixed(2)})` : `${(entryPrice * 0.98).toFixed(2)}`}
                                 />
                                 {stoplossMode === 'PERCENT' && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>}
@@ -681,3 +637,5 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
+
+    

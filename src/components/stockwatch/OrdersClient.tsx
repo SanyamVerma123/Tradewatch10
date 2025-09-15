@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -85,17 +86,24 @@ export function OrdersClient() {
 
   const executeOrder = useCallback((orderToExecute: Order, ltp: number) => {
     if (!user) return;
-    // This is a simulation. In a real app, this would be handled by a backend.
     const product = orderToExecute.product || 'CNC';
     const finalTradeValue = orderToExecute.quantity * ltp;
+    
+    // Correct tax simulation
+    const isIntradayTrade = product === 'MIS' || (orderToExecute.type === 'SELL' && isToday(new Date(orderToExecute.executedAt!)));
+    const sttRate = isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : (orderToExecute.type === 'SELL' ? 0.001 : 0);
+    const stt = finalTradeValue * sttRate;
     const brokerage = Math.min(20, finalTradeValue * 0.0005);
-    const stt = orderToExecute.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
     const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
+
 
     const fundsKey = `funds_${user.id}`;
     const ordersKey = `orders_${user.id}`;
     const portfolioKey = `portfolioData_${user.id}`;
     
+    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+    let portfolio: Portfolio = JSON.parse(localStorage.getItem(portfolioKey) || '{ "holdings": [], "positions": [] }');
+
     // Final funds check before execution
     const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
     if (orderToExecute.type === 'BUY' && fundsData.balance < finalTradeValue + totalCharges) {
@@ -105,23 +113,25 @@ export function OrdersClient() {
     
     let realizedPnl: number | undefined = undefined;
     if (orderToExecute.type === 'SELL') {
-      let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-      const portfolio: Portfolio = JSON.parse(localStorage.getItem(portfolioKey) || '{ "holdings": [] }');
-      
-      const relatedBuyOrders = allOrders
-        .filter(o => o.status === 'Executed' && o.type === 'BUY' && o.ticker === orderToExecute.ticker && o.executedAt && isToday(new Date(o.executedAt)))
-        .sort((a, b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime());
-      
+      const compositeKey = `${orderToExecute.ticker}-${product}`;
+      const position = (portfolio.positions || []).find(p => p.id === `pos-${compositeKey}`);
       const holding = portfolio.holdings.find(h => h.ticker === orderToExecute.ticker);
 
       let buyPrice = 0;
       if (orderToExecute.isSellFromHolding && holding) {
         buyPrice = holding.avgPrice;
-      } else if (relatedBuyOrders.length > 0) {
-        // Simple average of all buys for this ticker
-        const totalValue = relatedBuyOrders.reduce((acc, o) => acc + (o.ltp * o.quantity), 0);
-        const totalQty = relatedBuyOrders.reduce((acc, o) => acc + o.quantity, 0);
-        if(totalQty > 0) buyPrice = totalValue / totalQty;
+      } else if (position) {
+        buyPrice = position.avgPrice;
+      } else {
+        // Fallback for older trades before positions were tracked this way
+        const relatedBuyOrders = allOrders
+            .filter(o => o.status === 'Executed' && o.type === 'BUY' && o.ticker === orderToExecute.ticker)
+            .sort((a, b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime());
+         if (relatedBuyOrders.length > 0) {
+            const totalValue = relatedBuyOrders.reduce((acc, o) => acc + (o.ltp * o.quantity), 0);
+            const totalQty = relatedBuyOrders.reduce((acc, o) => acc + o.quantity, 0);
+            if(totalQty > 0) buyPrice = totalValue / totalQty;
+         }
       }
       
       if (buyPrice > 0) {
@@ -133,12 +143,11 @@ export function OrdersClient() {
     const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString(), realizedPnl };
 
     // Update orders in state and local storage
-    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
     if (existingOrderIndex > -1) {
       allOrders[existingOrderIndex] = executedOrder;
     } else {
-      allOrders = [executedOrder, ...allOrders];
+      allOrders.unshift(executedOrder);
     }
     localStorage.setItem(ordersKey, JSON.stringify(allOrders));
     setOrders(allOrders);
@@ -146,20 +155,21 @@ export function OrdersClient() {
     // Simulate Tax & Fund deduction/addition
     if (fundsData.balance !== undefined) {
       let newBalance = executedOrder.type === 'BUY' 
-        ? fundsData.balance - finalTradeValue - totalCharges 
-        : fundsData.balance + finalTradeValue - totalCharges;
-      
+        ? fundsData.balance - finalTradeValue
+        : fundsData.balance + finalTradeValue;
+        
+      newBalance -= totalCharges; // Always deduct charges
       newBalance = Math.max(0, newBalance); // Ensure balance doesn't go below zero
 
       localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
     }
     
-    if (product === 'CNC' || orderToExecute.isSellFromHolding) {
-        const portfolioData: { holdings: Holding[] } = JSON.parse(localStorage.getItem(portfolioKey) || JSON.stringify({ holdings: [] }));
-        let newHoldings = [...(portfolioData.holdings || [])];
+    // Update holdings for non-today CNC trades
+    if (product === 'CNC' && !isToday(new Date(executedOrder.executedAt!))) {
+        let newHoldings = [...(portfolio.holdings || [])];
         const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
 
-        if (executedOrder.type === 'BUY' && !isToday(new Date(executedOrder.executedAt!))) {
+        if (executedOrder.type === 'BUY') {
              if (holdingIndex > -1) {
                 const existingHolding = newHoldings[holdingIndex];
                 const totalQuantity = existingHolding.quantity + executedOrder.quantity;
@@ -179,7 +189,7 @@ export function OrdersClient() {
                     investedValue: ltp * executedOrder.quantity,
                 });
             }
-        } else if (executedOrder.type === 'SELL') { // SELL
+        } else { // SELL
             if (holdingIndex > -1) {
                 const existingHolding = newHoldings[holdingIndex];
                 const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
@@ -190,7 +200,7 @@ export function OrdersClient() {
                 }
             }
         }
-        localStorage.setItem(portfolioKey, JSON.stringify({ ...portfolioData, holdings: newHoldings }));
+        localStorage.setItem(portfolioKey, JSON.stringify({ ...portfolio, holdings: newHoldings }));
     }
     
     toast({
@@ -428,8 +438,7 @@ export function OrdersClient() {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
                     </div>
                      <div className="text-right">
-                        <p className="font-semibold">₹{order.limitPrice.toFixed(2)}</p>
-                    </div>
+                        <p className="font-semibold">₹{order.limitPrice.toFixed(2)}</p>                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -445,3 +454,5 @@ export function OrdersClient() {
     </div>
   );
 }
+
+    
