@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -93,7 +94,6 @@ export function OrdersClient() {
     const isIntradayTrade = product === 'MIS';
     // For CNC Buy, STT is 0. For CNC Sell, it's 0.1%. For MIS Sell, it's 0.025%.
     const sttRate = (product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : (isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : 0);
-    const stt = finalTradeValue * sttRate;
     const brokerage = Math.min(20, finalTradeValue * 0.0003); // 0.03% or Rs 20
     const otherCharges = finalTradeValue * 0.000345; // Exchange txn, SEBI fees etc.
     const totalCharges = brokerage + stt + otherCharges;
@@ -109,7 +109,7 @@ export function OrdersClient() {
     // Final funds check before execution
     const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
     if (orderToExecute.type === 'BUY' && fundsData.balance < finalTradeValue + totalCharges) {
-        cancelOrder(orderToExecute, `Insufficient funds. Required: ₹${(finalTradeValue + totalCharges).toFixed(2)}`);
+        cancelOrder(orderToExecute, `Insufficient funds. Required: ~₹${(finalTradeValue + totalCharges).toFixed(2)}`);
         return;
     }
     
@@ -157,54 +157,90 @@ export function OrdersClient() {
     // Simulate Tax & Fund deduction/addition
     if (fundsData.balance !== undefined) {
       let newBalance = executedOrder.type === 'BUY' 
-        ? fundsData.balance - finalTradeValue
-        : fundsData.balance + finalTradeValue;
+        ? fundsData.balance - (finalTradeValue + totalCharges)
+        : fundsData.balance + (finalTradeValue - totalCharges);
         
-      newBalance -= totalCharges; // Always deduct charges
       newBalance = Math.max(0, newBalance); // Ensure balance doesn't go below zero
 
       localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
     }
     
-    // Update holdings for non-today CNC trades
-    if (product === 'CNC' && !isToday(new Date(executedOrder.executedAt!))) {
-        let newHoldings = [...(portfolio.holdings || [])];
-        const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
+    // Update portfolio (holdings for old CNC, positions for today's trades)
+    if (isToday(new Date(executedOrder.executedAt!))) {
+      // Logic for today's trades - always update positions
+      let newPositions = [...(portfolio.positions || [])];
+      const compositeKey = `${executedOrder.ticker}-${product}`;
+      const posIndex = newPositions.findIndex(p => p.id === `pos-${compositeKey}`);
+      
+      if (posIndex > -1) {
+          // Update existing position
+          const existingPos = newPositions[posIndex];
+          const tradeSign = executedOrder.type === 'BUY' ? 1 : -1;
+          const newTotalValue = (existingPos.avgPrice * Math.abs(existingPos.quantity)) + (ltp * executedOrder.quantity);
+          const newQuantity = existingPos.quantity + (executedOrder.quantity * tradeSign);
+          
+          if (Math.sign(newQuantity) === Math.sign(existingPos.quantity) || existingPos.quantity === 0) {
+            existingPos.avgPrice = Math.abs(newQuantity) > 0 ? newTotalValue / Math.abs(newQuantity) : 0;
+          }
+          existingPos.quantity = newQuantity;
 
-        if (executedOrder.type === 'BUY') {
-             if (holdingIndex > -1) {
-                const existingHolding = newHoldings[holdingIndex];
-                const totalQuantity = existingHolding.quantity + executedOrder.quantity;
-                const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (ltp * executedOrder.quantity)) / totalQuantity;
-                newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice, investedValue: newAvgPrice * totalQuantity };
-            } else {
-                newHoldings.push({
-                    id: `holding-${Date.now()}`,
-                    ticker: executedOrder.ticker,
-                    quantity: executedOrder.quantity,
-                    avgPrice: ltp,
-                    ltp: ltp,
-                    pnl: 0,
-                    pnlPercent: 0,
-                    dayChange: 0, 
-                    dayChangePercent: 0,
-                    investedValue: ltp * executedOrder.quantity,
-                });
-            }
-        } else { // SELL
+      } else if (executedOrder.type === 'BUY') {
+          // Add new position
+          newPositions.push({
+            id: `pos-${compositeKey}`,
+            ticker: executedOrder.ticker,
+            product: product,
+            quantity: executedOrder.quantity,
+            avgPrice: ltp,
+            ltp: ltp,
+            pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0,
+            investedValue: ltp * executedOrder.quantity,
+            type: 'BUY'
+          });
+      }
+      portfolio.positions = newPositions;
+    
+    } else if (product === 'CNC') {
+      // Logic for older CNC trades affecting holdings
+      let newHoldings = [...(portfolio.holdings || [])];
+      const holdingIndex = newHoldings.findIndex(h => h.ticker === executedOrder.ticker);
+
+      if (executedOrder.type === 'BUY') {
             if (holdingIndex > -1) {
-                const existingHolding = newHoldings[holdingIndex];
-                const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
-                if (updatedQuantity < 0.001) {
-                    newHoldings.splice(holdingIndex, 1);
-                } else {
-                    newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity, investedValue: existingHolding.avgPrice * updatedQuantity };
-                }
-            }
-        }
-        localStorage.setItem(portfolioKey, JSON.stringify({ ...portfolio, holdings: newHoldings }));
+              const existingHolding = newHoldings[holdingIndex];
+              const totalQuantity = existingHolding.quantity + executedOrder.quantity;
+              const newAvgPrice = ((existingHolding.avgPrice * existingHolding.quantity) + (ltp * executedOrder.quantity)) / totalQuantity;
+              newHoldings[holdingIndex] = { ...existingHolding, quantity: totalQuantity, avgPrice: newAvgPrice, investedValue: newAvgPrice * totalQuantity };
+          } else {
+              newHoldings.push({
+                  id: `holding-${Date.now()}`,
+                  ticker: executedOrder.ticker,
+                  quantity: executedOrder.quantity,
+                  avgPrice: ltp,
+                  ltp: ltp,
+                  pnl: 0,
+                  pnlPercent: 0,
+                  dayChange: 0, 
+                  dayChangePercent: 0,
+                  investedValue: ltp * executedOrder.quantity,
+              });
+          }
+      } else { // SELL
+          if (holdingIndex > -1) {
+              const existingHolding = newHoldings[holdingIndex];
+              const updatedQuantity = existingHolding.quantity - executedOrder.quantity;
+              if (updatedQuantity < 0.001) {
+                  newHoldings.splice(holdingIndex, 1);
+              } else {
+                  newHoldings[holdingIndex] = { ...existingHolding, quantity: updatedQuantity, investedValue: existingHolding.avgPrice * updatedQuantity };
+              }
+          }
+      }
+      portfolio.holdings = newHoldings;
     }
     
+    localStorage.setItem(portfolioKey, JSON.stringify(portfolio));
+
     toast({
         title: `Order Executed!`,
         description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}. Est. charges: ₹${totalCharges.toFixed(2)}`,
@@ -336,7 +372,11 @@ export function OrdersClient() {
   );
   
   const executedOrders = orders.filter(o => o.status === 'Executed');
-  const filteredExecutedOrders = executedOrders.filter(o => o.ticker.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredExecutedOrders = executedOrders.map(order => {
+        const ltp = order.status === 'Executed' ? order.ltp : (orders.find(o => o.ticker === order.ticker)?.ltp || order.ltp);
+        return { ...order, ltp };
+    }).filter(o => o.ticker.toLowerCase().includes(searchTerm.toLowerCase()));
+
   const filteredCancelledOrders = orders.filter(o => o.status === 'Cancelled' && (o.ticker.toLowerCase().includes(searchTerm.toLowerCase())));
 
   return (
@@ -467,3 +507,4 @@ export function OrdersClient() {
     
 
     
+
