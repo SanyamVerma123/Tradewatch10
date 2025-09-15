@@ -91,10 +91,12 @@ export function OrdersClient() {
     
     // Correct tax simulation
     const isIntradayTrade = product === 'MIS';
-    const sttRate = isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : ((orderToExecute.product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : 0);
+    // For CNC Buy, STT is 0. For CNC Sell, it's 0.1%. For MIS Sell, it's 0.025%.
+    const sttRate = (product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : (isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : 0);
     const stt = finalTradeValue * sttRate;
-    const brokerage = Math.min(20, finalTradeValue * 0.0003);
-    const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
+    const brokerage = Math.min(20, finalTradeValue * 0.0003); // 0.03% or Rs 20
+    const otherCharges = finalTradeValue * 0.000345; // Exchange txn, SEBI fees etc.
+    const totalCharges = brokerage + stt + otherCharges;
 
 
     const fundsKey = `funds_${user.id}`;
@@ -292,6 +294,7 @@ export function OrdersClient() {
             }
         });
         
+        // This check prevents an infinite loop on re-renders
         if (!ordersWereExecuted) {
             const ordersWithFreshLtp = storedOrders.map((o: Order) => {
                 if (o.status === 'Pending') {
@@ -312,7 +315,7 @@ export function OrdersClient() {
     const interval = setInterval(fetchOrdersDataAndCheckPending, 5000);
 
     return () => clearInterval(interval);
-  }, [executeOrder, orders, cancelOrder, user]);
+  }, [executeOrder, orders, user]);
 
   const handleEditClick = (order: Order) => {
     if (order.status === 'Pending') {
@@ -332,7 +335,8 @@ export function OrdersClient() {
        (order.exchange && order.exchange.toLowerCase().includes(searchTerm.toLowerCase())))
   );
   
-  const filteredExecutedOrders = orders.filter(o => o.status === 'Executed' && (o.ticker.toLowerCase().includes(searchTerm.toLowerCase())));
+  const executedOrders = orders.filter(o => o.status === 'Executed');
+  const filteredExecutedOrders = executedOrders.filter(o => o.ticker.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredCancelledOrders = orders.filter(o => o.status === 'Cancelled' && (o.ticker.toLowerCase().includes(searchTerm.toLowerCase())));
 
   return (
@@ -347,7 +351,7 @@ export function OrdersClient() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="Pending">Pending</TabsTrigger>
-          <TabsTrigger value="Executed">Executed</TabsTrigger>
+          <TabsTrigger value="Executed">Executed ({executedOrders.length})</TabsTrigger>
           <TabsTrigger value="GTT">GTT</TabsTrigger>
         </TabsList>
         <div className="relative my-4">

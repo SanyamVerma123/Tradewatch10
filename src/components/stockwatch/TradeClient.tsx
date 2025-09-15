@@ -189,7 +189,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [availableFunds, setAvailableFunds] = useState(0);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const isSellFromHolding = orderToEdit?.isSellFromHolding;
-  const isShortSell = orderToEdit?.isShortSell;
   const [user, setUser] = useState<User | null>(null);
 
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
@@ -198,8 +197,9 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
   
   const isExitingPosition = !!orderToEdit?.product;
+  const isShortSell = !!orderToEdit?.isShortSell;
   
-  const initialProduct = orderToEdit?.product || (isSellFromHolding ? "CNC" : (isShortSell ? "MIS" : "MIS"));
+  const initialProduct = orderToEdit?.product || "MIS";
   const initialOrderMethod = orderToEdit?.orderMethod || "MARKET";
 
   const [product, setProduct] = useState(initialProduct.toUpperCase());
@@ -259,12 +259,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     if(orderToEdit) {
         setOrderType(orderToEdit.type || "BUY");
-        setProduct(orderToEdit.product?.toUpperCase() || (isSellFromHolding ? "CNC" : (isShortSell ? "MIS" : "MIS")));
+        setProduct(orderToEdit.product?.toUpperCase() || "MIS");
         setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "MARKET");
         setQuantity(orderToEdit.quantity?.toString() || "1");
         setPrice(orderToEdit.price?.toString() || "");
     }
-  }, [orderToEdit, isSellFromHolding, isShortSell, router]);
+  }, [orderToEdit, router]);
 
   useEffect(() => {
     if (!initialStock) {
@@ -290,7 +290,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   }
 
   const tradeValue = (parseInt(quantity) || 0) * getExecutionPrice();
+  const brokerage = Math.min(20, tradeValue * 0.0003);
+  const totalCharges = brokerage + (tradeValue * 0.000345); // Simplified charges
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
+  const requiredFunds = approxMargin + totalCharges;
 
   const currentHolding = holdings.find(h => h.ticker === ticker);
   const maxSellQuantity = isSellFromHolding ? (currentHolding?.quantity || 0) : (orderToEdit?.quantity || 10000);
@@ -299,7 +302,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     if(!stock || !user) return;
     const ordersKey = `orders_${user.id}`;
     
-    const requiredFunds = approxMargin;
 
     if (orderType === 'BUY' && requiredFunds > availableFunds) {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~₹${requiredFunds.toFixed(2)}. Available: ₹${availableFunds.toFixed(2)}.` });
@@ -349,15 +351,15 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         return;
     }
     
-    // In a real app, this would create a bracket order.
-    // This check prevents the main order from being placed if only SL/Target is being set.
-    // The main swipe action handles the actual order placement.
-    if ((isStoplossEnabled || isTargetEnabled) && !hasSwiped.current) {
-      toast({
-        title: "Advanced Order Set",
-        description: `Swipe ${orderType} to place your order with stop-loss/target.`
-      });
-       return; // Do not place order yet, wait for swipe
+    // This logic now correctly only submits the order on swipe.
+    if (!hasSwiped.current) {
+        if (isStoplossEnabled || isTargetEnabled) {
+             toast({
+                title: "Advanced Order Set",
+                description: `Swipe ${orderType} to place your order with stop-loss/target.`
+            });
+        }
+       return;
     }
 
 
@@ -645,3 +647,4 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
+
