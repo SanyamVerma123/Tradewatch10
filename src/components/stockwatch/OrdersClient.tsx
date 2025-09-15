@@ -110,7 +110,11 @@ export function OrdersClient() {
     // Final funds check before execution
     const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
     if (orderToExecute.type === 'BUY' && fundsData.balance < finalTradeValue + totalCharges) {
-        cancelOrder(orderToExecute, `Insufficient funds. Required: ~₹${(finalTradeValue + totalCharges).toFixed(2)}`);
+        toast({
+            variant: "destructive",
+            title: "Insufficient Funds on Execution",
+            description: `Required: ~₹${(finalTradeValue + totalCharges).toFixed(2)}. Available: ₹${fundsData.balance.toFixed(2)}.`,
+        });
         return;
     }
     
@@ -508,5 +512,6 @@ export function OrdersClient() {
     
 
     
+
 
 
