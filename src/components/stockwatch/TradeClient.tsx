@@ -415,7 +415,9 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   )
   
-  const isProductDisabled = isExitingPosition || isShortSell;
+  // If exiting from portfolio or short-selling a new stock, product is locked.
+  // If modifying a PENDING order, product should be selectable.
+  const isProductDisabled = (isExitingPosition || isShortSell) && !isEditing;
 
 
   return (

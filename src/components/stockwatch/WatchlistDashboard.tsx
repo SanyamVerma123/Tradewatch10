@@ -18,6 +18,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 
@@ -66,6 +70,7 @@ export function WatchlistDashboard() {
   const [searchResults, setSearchResults] = useState<{ticker: string, name: string}[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isAnalysisDialogOpen, setIsAnalysisDialogOpen] = useState(false);
+  const [isSeeMoreNewsOpen, setIsSeeMoreNewsOpen] = useState(false);
 
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
@@ -74,30 +79,42 @@ export function WatchlistDashboard() {
   const [editingWatchlistName, setEditingWatchlistName] = useState("");
   const [news, setNews] = useState<NewsArticle[]>([]);
   
+  const activeWatchlist = useMemo(() => {
+    return watchlists.find((w) => w.id === activeTab);
+  }, [activeTab, watchlists]);
+
   const fetchNews = useCallback(async () => {
-    const cachedNewsData = localStorage.getItem('newsCache');
-    const now = new Date().getTime();
+    if (!user || !activeWatchlist) return;
+
+    const newsCacheKey = `newsCache_${user.id}`;
+    const cachedNewsData = localStorage.getItem(newsCacheKey);
+    const now = new Date();
+    const today = now.toDateString(); // Use date string to check if cache is from today
 
     if (cachedNewsData) {
-        const { timestamp, articles } = JSON.parse(cachedNewsData);
-        // Cache is valid for 1 hour
-        if (now - timestamp < 1000 * 60 * 60) {
-            setNews(articles);
-            return;
+        const { date, articles } = JSON.parse(cachedNewsData);
+        if (date === today) {
+            setNews(articles); // Use today's cached news
+        } else {
+             localStorage.removeItem(newsCacheKey); // Clear yesterday's cache
         }
     }
 
-    const liveNews = await getNewsFromGNews();
+    const liveNews = await getNewsFromGNews(activeWatchlist.stocks);
     if (liveNews && liveNews.length > 0) {
-        setNews(liveNews);
-        localStorage.setItem('newsCache', JSON.stringify({ timestamp: now, articles: liveNews }));
-    } else {
-        // Fallback to static news if API fails and clear cache
-        localStorage.removeItem('newsCache');
+        // Add new articles to the top, avoiding duplicates
+        setNews(prevNews => {
+            const existingUrls = new Set(prevNews.map(n => n.url));
+            const newArticles = liveNews.filter(n => !existingUrls.has(n.url));
+            const updatedNews = [...newArticles, ...prevNews];
+            localStorage.setItem(newsCacheKey, JSON.stringify({ date: today, articles: updatedNews }));
+            return updatedNews;
+        });
+    } else if (news.length === 0) { // Only use fallback if no news at all
         const shuffled = [...fallbackNewsData].sort(() => 0.5 - Math.random());
         setNews(shuffled.slice(0, 3));
     }
-  }, []);
+  }, [user, activeWatchlist, news.length]);
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -117,15 +134,16 @@ export function WatchlistDashboard() {
     };
     
     fetchUserAndData();
-    fetchNews();
-    const newsInterval = setInterval(fetchNews, 1000 * 60 * 60); // Refresh every hour
-    
-    return () => clearInterval(newsInterval);
-  }, [router, fetchNews, activeTab]);
+  }, [router, activeTab]);
 
-  const activeWatchlist = useMemo(() => {
-    return watchlists.find((w) => w.id === activeTab);
-  }, [activeTab, watchlists]);
+  useEffect(() => {
+    if (user && activeWatchlist) {
+      fetchNews(); // Fetch on component mount/watchlist change
+      const newsInterval = setInterval(fetchNews, 1000 * 60 * 60); // Refresh every hour
+      return () => clearInterval(newsInterval);
+    }
+  }, [user, activeWatchlist, fetchNews]);
+
 
   const fetchStockData = useCallback(async (isSilent = false) => {
     if (!activeWatchlist) return;
@@ -515,12 +533,44 @@ export function WatchlistDashboard() {
           </div>
 
           <section className="mt-8">
-            <h2 className="text-xl font-bold mb-4">Related News</h2>
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">Related News</h2>
+                {news.length > 6 && (
+                    <Dialog open={isSeeMoreNewsOpen} onOpenChange={setIsSeeMoreNewsOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="link">See More</Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-h-[90vh]">
+                            <DialogHeader>
+                                <DialogTitle>All News</DialogTitle>
+                                <DialogDescription>Showing all articles fetched today.</DialogDescription>
+                            </DialogHeader>
+                            <ScrollArea className="h-[60vh] pr-4">
+                               <div className="space-y-4">
+                                {news.map(article => (
+                                    <a href={article.url} target="_blank" rel="noopener noreferrer" key={article.id} className="block">
+                                        <Card className="overflow-hidden hover:shadow-lg transition-shadow">
+                                            <div className="flex gap-4">
+                                                <img data-ai-hint="stock market business" src={article.image} alt={article.headline} width={120} height={80} className="w-24 h-24 object-cover" />
+                                                <CardContent className="p-2 flex flex-col justify-center">
+                                                    <h3 className="font-semibold leading-tight text-sm mb-1">{article.headline}</h3>
+                                                    <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>
+                                                </CardContent>
+                                            </div>
+                                        </Card>
+                                    </a>
+                                ))}
+                               </div>
+                            </ScrollArea>
+                        </DialogContent>
+                    </Dialog>
+                )}
+            </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {news.map(article => (
+                {news.slice(0, 6).map(article => (
                     <a href={article.url} target="_blank" rel="noopener noreferrer" key={article.id}>
                         <Card className="overflow-hidden hover:shadow-lg transition-shadow h-full">
-                            <img src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover bg-muted" />
+                            <img data-ai-hint="stock market business" src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover bg-muted" />
                             <CardContent className="p-4">
                                 <h3 className="font-semibold leading-tight mb-2 text-sm">{article.headline}</h3>
                                 <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>

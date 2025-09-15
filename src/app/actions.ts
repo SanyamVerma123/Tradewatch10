@@ -125,14 +125,19 @@ export async function searchStocks(query: string) {
     }
 }
 
-export async function getNewsFromGNews() {
+export async function getNewsFromGNews(tickers: string[] = []) {
     const apiKey = process.env.GNEWS_API_KEY;
     if (!apiKey) {
         console.error("GNews API key is not configured.");
         return null;
     }
     
-    const url = `https://gnews.io/api/v4/top-headlines?category=business&lang=en&country=in&max=10&apikey=${apiKey}`;
+    // Create a query string from tickers, removing .NS and .BO suffixes
+    const query = tickers.length > 0 
+        ? tickers.map(t => t.replace(/\.(NS|BO)$/, '')).join(' OR ')
+        : 'business'; // Fallback query
+
+    const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&country=in&max=10&sortby=publishedAt&apikey=${apiKey}`;
 
     try {
         const response = await fetch(url);
@@ -147,7 +152,7 @@ export async function getNewsFromGNews() {
             id: article.url,
             headline: article.title,
             source: article.source.name,
-            time: new Date(article.publishedAt).toLocaleDateString(),
+            time: new Date(article.publishedAt).toLocaleString(),
             image: article.image || 'https://picsum.photos/seed/news_fallback/400/200',
             url: article.url,
         }));
