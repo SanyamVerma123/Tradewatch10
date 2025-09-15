@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -357,17 +358,33 @@ export function PortfolioClient() {
 
   const onActionSheetTrade = (type: 'buy' | 'sell', ticker: string, isFromHolding: boolean) => {
      const holding = portfolio.holdings.find(h => h.ticker === ticker);
+     const position = portfolio.positions.find(p => p.ticker === ticker);
      const stock = stocksMap[ticker];
+
+     let quantity = 1;
+     let product = 'MIS'; // Default to MIS for new trades
+     let isSell = type === 'sell';
+     
+     if (isSell) {
+        if (isFromHolding && holding) { // Selling from Holdings tab
+            quantity = holding.quantity;
+            product = 'CNC';
+        } else if (!isFromHolding && position) { // Selling from Positions tab
+            quantity = Math.abs(position.quantity);
+            // If selling a CNC position on the same day, it's an MIS trade
+            product = position.product === 'CNC' ? 'MIS' : position.product;
+        }
+     }
 
      const orderData: Partial<Order> = {
         type: type.toUpperCase() as 'BUY' | 'SELL',
         ticker: ticker,
-        quantity: (type === 'sell' && isFromHolding) ? (holding?.quantity || 1) : 1,
-        product: isFromHolding ? 'CNC' : 'MIS',
+        quantity: quantity,
+        product: product,
         orderMethod: 'MARKET',
         ltp: stock?.price || 0,
         price: stock?.price?.toFixed(2) || '0',
-        isSellFromHolding: isFromHolding && type === 'sell'
+        isSellFromHolding: isFromHolding && isSell,
      };
      
      router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);

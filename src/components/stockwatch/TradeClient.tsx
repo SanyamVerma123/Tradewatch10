@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -314,8 +315,11 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     localStorage.setItem(ordersKey, JSON.stringify(allOrders));
     
     const finalTradeValue = executedOrder.quantity * executedOrder.ltp;
+    
+    // Higher tax for intraday sell
+    const isIntradaySell = order.type === 'SELL' && product === 'MIS';
+    const stt = isIntradaySell ? finalTradeValue * 0.00025 : (order.type === 'SELL' ? finalTradeValue * 0.001 : 0);
     const brokerage = Math.min(20, finalTradeValue * 0.0005);
-    const stt = order.type === 'BUY' ? 0 : product === 'MIS' ? finalTradeValue * 0.00025 : finalTradeValue * 0.001;
     const totalCharges = brokerage + stt + (finalTradeValue * 0.000345);
     
     const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
