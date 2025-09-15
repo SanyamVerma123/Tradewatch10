@@ -132,7 +132,7 @@ export async function getNewsFromGNews() {
         return null;
     }
     
-    const url = `https://gnews.io/api/v4/top-headlines?category=business&lang=en&country=in&max=5&apikey=${apiKey}`;
+    const url = `https://gnews.io/api/v4/top-headlines?category=business&lang=en&country=in&max=10&apikey=${apiKey}`;
 
     try {
         const response = await fetch(url);

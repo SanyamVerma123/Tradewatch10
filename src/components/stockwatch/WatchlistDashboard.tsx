@@ -28,7 +28,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
-import Image from "next/image";
 import { Search, Sparkles, Settings, Loader2, PlusCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -76,11 +75,25 @@ export function WatchlistDashboard() {
   const [news, setNews] = useState<NewsArticle[]>([]);
   
   const fetchNews = useCallback(async () => {
+    const cachedNewsData = localStorage.getItem('newsCache');
+    const now = new Date().getTime();
+
+    if (cachedNewsData) {
+        const { timestamp, articles } = JSON.parse(cachedNewsData);
+        // Cache is valid for 1 hour
+        if (now - timestamp < 1000 * 60 * 60) {
+            setNews(articles);
+            return;
+        }
+    }
+
     const liveNews = await getNewsFromGNews();
     if (liveNews && liveNews.length > 0) {
         setNews(liveNews);
+        localStorage.setItem('newsCache', JSON.stringify({ timestamp: now, articles: liveNews }));
     } else {
-        // Fallback to static news if API fails
+        // Fallback to static news if API fails and clear cache
+        localStorage.removeItem('newsCache');
         const shuffled = [...fallbackNewsData].sort(() => 0.5 - Math.random());
         setNews(shuffled.slice(0, 3));
     }
@@ -507,7 +520,7 @@ export function WatchlistDashboard() {
                 {news.map(article => (
                     <a href={article.url} target="_blank" rel="noopener noreferrer" key={article.id}>
                         <Card className="overflow-hidden hover:shadow-lg transition-shadow h-full">
-                            <Image data-ai-hint="stock market business" src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover" />
+                            <img src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover bg-muted" />
                             <CardContent className="p-4">
                                 <h3 className="font-semibold leading-tight mb-2 text-sm">{article.headline}</h3>
                                 <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>
