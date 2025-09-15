@@ -264,14 +264,17 @@ export function WatchlistDashboard() {
 
   const handleTradeAction = (type: 'buy' | 'sell', ticker: string) => {
     const stock = stocks[ticker];
+    // Short selling is always MIS
+    const isShortSell = type === 'sell';
     const orderData: Partial<Order> = {
         type: type === 'buy' ? 'BUY' : 'SELL',
         ticker: ticker,
         quantity: 1,
-        product: 'MIS',
+        product: isShortSell ? 'MIS' : 'CNC', // Default to CNC for buy, enforce MIS for short
         orderMethod: 'MARKET',
         ltp: stock?.price || 0,
         price: stock?.price?.toFixed(2) || '0',
+        isShortSell: isShortSell,
     };
     router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);
     setIsActionSheetOpen(false);

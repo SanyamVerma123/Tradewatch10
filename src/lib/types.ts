@@ -53,6 +53,7 @@ export interface Order {
   orderMethod?: string;
   price?: string;
   isSellFromHolding?: boolean;
+  isShortSell?: boolean;
   executedAt?: string; // ISO date string
   realizedPnl?: number;
 }
@@ -95,5 +96,7 @@ export interface User {
     usedReferralCode?: boolean;
     referredByNames?: string[];
 }
+
+    
 
     
