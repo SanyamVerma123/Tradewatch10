@@ -196,6 +196,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [price, setPrice] = useState(orderToEdit?.price?.toString() || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
   
+  const isExitingPosition = !!orderToEdit?.product;
+  
   const initialProduct = orderToEdit?.product || (isSellFromHolding ? "CNC" : "MIS");
   const initialOrderMethod = orderToEdit?.orderMethod || "MARKET";
 
@@ -216,7 +218,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
 
   const fetchStock = useCallback(async (isSilent = false) => {
-    if (!isSilent && !stock) setIsLoading(true);
+    if (!isSilent) setIsLoading(true);
     try {
       const data = await getStockData([ticker]);
       if (data && data.length > 0) {
@@ -232,9 +234,9 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       console.error(error);
       toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
     } finally {
-        if (!isSilent && !stock) setIsLoading(false);
+        if (!isSilent) setIsLoading(false);
     }
-  }, [ticker, toast, price, orderMethod, stock]);
+  }, [ticker, toast, price, orderMethod]);
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -278,8 +280,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   }, [stock, orderMethod, price]);
 
   const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
-  const isExitingPosition = !!orderToEdit?.id && (orderToEdit?.isSellFromHolding || orderToEdit?.product);
-
+  
   const getExecutionPrice = () => {
     if (orderMethod.includes('MARKET')) {
         return stock?.price || 0;
@@ -297,14 +298,14 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     if(isLoading || !stock || !user) return;
     const ordersKey = `orders_${user.id}`;
     
-    const requiredFunds = approxMargin + 50; // Add buffer for charges
+    const requiredFunds = approxMargin;
 
     if (orderType === 'BUY' && requiredFunds > availableFunds) {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~₹${requiredFunds.toFixed(2)}. Available: ₹${availableFunds.toFixed(2)}.` });
       return;
     }
     
-    if (orderType === 'SELL' && (parseInt(quantity) || 0) > maxSellQuantity) {
+    if (orderType === 'SELL' && !isSellFromHolding && (parseInt(quantity) || 0) > maxSellQuantity) {
        toast({ variant: "destructive", title: "Insufficient Holdings/Quantity", description: `You can sell a maximum of ${maxSellQuantity} shares.` });
        return;
     }
@@ -637,5 +638,3 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
-
-    

@@ -362,40 +362,33 @@ export function PortfolioClient() {
   }
 
   const onActionSheetTrade = (type: 'buy' | 'sell', ticker: string, isFromHolding: boolean) => {
-     const holding = portfolio.holdings.find(h => h.ticker === ticker);
-     const position = portfolio.positions.find(p => p.ticker === ticker && p.product === (isFromHolding ? 'CNC' : p.product));
      const stock = stocksMap[ticker];
+     let orderData: Partial<Order>;
 
-     let quantity = 1;
-     let product: "CNC" | "MIS" = 'MIS'; // Default to MIS for new trades
-     let isSell = type === 'sell';
-     
-     if (isSell) {
-        if (isFromHolding && holding) { // Selling from Holdings tab
-            quantity = holding.quantity;
-            product = 'CNC';
-        } else if (!isFromHolding && position) { // Exiting from Positions tab
-            quantity = Math.abs(position.quantity);
-            product = position.product as 'CNC' | 'MIS';
-        }
-     } else { // It's a buy ('Add')
-        if (isFromHolding && holding) {
-             product = 'CNC'; // Buying more of a holding
-        } else if (!isFromHolding && position) {
-            product = position.product as 'CNC' | 'MIS'; // Buying more of a position
-        }
+     if (isFromHolding) { // Action is on a holding
+        const holding = portfolio.holdings.find(h => h.ticker === ticker);
+        orderData = {
+            type: type.toUpperCase() as 'BUY' | 'SELL',
+            ticker: ticker,
+            quantity: type === 'sell' ? holding?.quantity : 1,
+            product: 'CNC', // Holdings are always CNC
+            orderMethod: 'MARKET',
+            ltp: stock?.price || 0,
+            price: stock?.price?.toFixed(2) || '0',
+            isSellFromHolding: type === 'sell',
+        };
+     } else { // Action is on a position
+        const position = portfolio.positions.find(p => p.ticker === ticker && p.id.endsWith(`-${p.product}`));
+        orderData = {
+            type: type.toUpperCase() as 'BUY' | 'SELL',
+            ticker: ticker,
+            quantity: type === 'sell' ? Math.abs(position?.quantity || 0) : 1,
+            product: position?.product as 'CNC' | 'MIS', // Match the position's product type
+            orderMethod: 'MARKET',
+            ltp: stock?.price || 0,
+            price: stock?.price?.toFixed(2) || '0',
+        };
      }
-
-     const orderData: Partial<Order> = {
-        type: type.toUpperCase() as 'BUY' | 'SELL',
-        ticker: ticker,
-        quantity: quantity,
-        product: product,
-        orderMethod: 'MARKET',
-        ltp: stock?.price || 0,
-        price: stock?.price?.toFixed(2) || '0',
-        isSellFromHolding: isFromHolding && isSell,
-     };
      
      router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);
      setIsActionSheetOpen(false);
@@ -540,7 +533,7 @@ export function PortfolioClient() {
                  <CardContent className="p-3">
                   <div className="text-xs text-muted-foreground flex justify-between">
                     <div>
-                        <span>{pos.product}</span>
+                        <span className="font-bold text-foreground">{pos.product}</span>
                         <span className="mx-1">&bull;</span>
                         <span>{Math.abs(pos.quantity)} Qty.</span>
                         <span className="mx-1">&bull;</span>
@@ -579,5 +572,3 @@ export function PortfolioClient() {
     </div>
   );
 }
-
-    
