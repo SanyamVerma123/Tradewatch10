@@ -90,10 +90,10 @@ export function OrdersClient() {
     const finalTradeValue = orderToExecute.quantity * ltp;
     
     // Correct tax simulation
-    const isIntradayTrade = product === 'MIS' || (orderToExecute.type === 'SELL' && isToday(new Date(orderToExecute.executedAt!)));
-    const sttRate = isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : (orderToExecute.type === 'SELL' ? 0.001 : 0);
+    const isIntradayTrade = product === 'MIS';
+    const sttRate = isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : ((orderToExecute.product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : 0);
     const stt = finalTradeValue * sttRate;
-    const brokerage = Math.min(20, finalTradeValue * 0.0005);
+    const brokerage = Math.min(20, finalTradeValue * 0.0003);
     const totalCharges = brokerage + stt + (finalTradeValue * 0.000345); // Other minor charges
 
 
@@ -293,10 +293,15 @@ export function OrdersClient() {
         });
         
         if (!ordersWereExecuted) {
-            const ordersWithFreshLtp = storedOrders.map((o: Order) => ({
-                ...o,
-                ltp: stockPriceMap.get(o.ticker) || o.ltp,
-            }));
+            const ordersWithFreshLtp = storedOrders.map((o: Order) => {
+                if (o.status === 'Pending') {
+                    return {
+                        ...o,
+                        ltp: stockPriceMap.get(o.ticker) || o.ltp,
+                    }
+                }
+                return o;
+            });
             if (JSON.stringify(orders) !== JSON.stringify(ordersWithFreshLtp)) {
                 setOrders(ordersWithFreshLtp);
             }
@@ -454,5 +459,7 @@ export function OrdersClient() {
     </div>
   );
 }
+
+    
 
     
