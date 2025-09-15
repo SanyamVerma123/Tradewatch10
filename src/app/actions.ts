@@ -125,19 +125,14 @@ export async function searchStocks(query: string) {
     }
 }
 
-export async function getNewsFromGNews(tickers: string[] = []) {
+export async function getNewsFromGNews(topic: string = "business OR finance OR stock market") {
     const apiKey = process.env.GNEWS_API_KEY;
     if (!apiKey) {
         console.error("GNews API key is not configured.");
         return null;
     }
-    
-    // Create a query string from tickers, removing .NS and .BO suffixes
-    const query = tickers.length > 0 
-        ? tickers.map(t => t.replace(/\.(NS|BO)$/, '')).join(' OR ')
-        : 'business'; // Fallback query
 
-    const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(query)}&lang=en&country=in&max=10&sortby=publishedAt&apikey=${apiKey}`;
+    const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(topic)}&lang=en&country=in&max=10&sortby=publishedAt&apikey=${apiKey}`;
 
     try {
         const response = await fetch(url);

@@ -5,9 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGrid, ShoppingBag, PieChart, User } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { getNewsFromGNews } from "@/app/actions";
+import type { NewsArticle } from "@/lib/types";
 
 const navItems = [
   { href: "/watchlist", label: "Watchlist", icon: LayoutGrid },
@@ -38,6 +40,49 @@ export default function BottomNav() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const fetchAndCacheNews = useCallback(async (userId: string) => {
+    const newsCacheKey = `newsCache_${userId}`;
+    const cachedNewsData = localStorage.getItem(newsCacheKey);
+    let shouldFetch = true;
+
+    if (cachedNewsData) {
+        const { timestamp } = JSON.parse(cachedNewsData);
+        const lastFetch = new Date(timestamp);
+        const now = new Date();
+        const oneHour = 60 * 60 * 1000;
+        if (now.getTime() - lastFetch.getTime() < oneHour) {
+            shouldFetch = false;
+        }
+    }
+
+    if (shouldFetch) {
+        const liveNews = await getNewsFromGNews();
+        if (liveNews) {
+            const articles: NewsArticle[] = liveNews.map((article: any) => ({
+                id: article.url,
+                headline: article.title,
+                source: article.source.name,
+                time: new Date(article.publishedAt).toLocaleString(),
+                image: article.image || `https://picsum.photos/seed/${Math.random()}/400/200`,
+                url: article.url,
+            }));
+
+            const today = new Date().toDateString();
+            const newsCache = {
+                timestamp: new Date().toISOString(),
+                date: today,
+                articles: articles,
+            };
+            localStorage.setItem(newsCacheKey, JSON.stringify(newsCache));
+            // Manually trigger a storage event so other tabs get the new data
+            window.dispatchEvent(new StorageEvent('storage', {
+                key: newsCacheKey,
+                newValue: JSON.stringify(newsCache),
+            }));
+        }
+    }
+  }, []);
+
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -50,22 +95,24 @@ export default function BottomNav() {
         return;
       }
       
-      // Check for post-login fund notification
       if (loggedIn && session.user) {
+        // Fetch news on initial load
+        fetchAndCacheNews(session.user.id);
+        
+        // Check for post-login fund notification
         const notifFlag = `postLoginFundNotification_${session.user.id}`;
         if (localStorage.getItem(notifFlag) === 'true') {
-            localStorage.removeItem(notifFlag); // Remove flag to prevent re-triggering
+            localStorage.removeItem(notifFlag);
             
             setTimeout(() => {
                 const fundsKey = `funds_${session.user!.id}`;
                 const fundsData = localStorage.getItem(fundsKey);
-                // Only add funds if they don't already exist
                 if (!fundsData) {
                     const initialFunds = { balance: 200000, canAddMore: true, lastProfitCheck: 0 };
                     localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
                 }
                 showDelayedFundNotification();
-            }, 60000); // 1 minute delay
+            }, 60000);
         }
       }
     };
@@ -81,25 +128,24 @@ export default function BottomNav() {
             router.replace('/watchlist');
         }
     });
+    
+    // Set up hourly news fetch
+    const newsInterval = setInterval(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user) {
+                fetchAndCacheNews(session.user.id);
+            }
+        });
+    }, 60 * 60 * 1000); // 1 hour
 
     return () => {
       authListener.subscription.unsubscribe();
+      clearInterval(newsInterval);
     };
 
-  }, [pathname, router]);
+  }, [pathname, router, fetchAndCacheNews]);
 
-  // Don't render the nav on the auth page
-  if (pathname === '/') {
-    return null;
-  }
-  
-  // While loading session, don't show anything to prevent flicker
-  if (isLoading) {
-    return null;
-  }
-
-  // If not logged in after check, let the redirect handle it, don't render nav
-  if (!isLoggedIn) {
+  if (pathname === '/' || isLoading || !isLoggedIn) {
     return null;
   }
 

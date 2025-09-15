@@ -25,7 +25,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import { getStockData, searchStocks, getNewsFromGNews } from "@/app/actions";
+import { getStockData, searchStocks } from "@/app/actions";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,38 +83,6 @@ export function WatchlistDashboard() {
     return watchlists.find((w) => w.id === activeTab);
   }, [activeTab, watchlists]);
 
-  const fetchNews = useCallback(async () => {
-    if (!user || !activeWatchlist) return;
-
-    const newsCacheKey = `newsCache_${user.id}`;
-    const cachedNewsData = localStorage.getItem(newsCacheKey);
-    const now = new Date();
-    const today = now.toDateString(); // Use date string to check if cache is from today
-
-    if (cachedNewsData) {
-        const { date, articles } = JSON.parse(cachedNewsData);
-        if (date === today) {
-            setNews(articles); // Use today's cached news
-        } else {
-             localStorage.removeItem(newsCacheKey); // Clear yesterday's cache
-        }
-    }
-
-    const liveNews = await getNewsFromGNews(activeWatchlist.stocks);
-    if (liveNews && liveNews.length > 0) {
-        // Add new articles to the top, avoiding duplicates
-        setNews(prevNews => {
-            const existingUrls = new Set(prevNews.map(n => n.url));
-            const newArticles = liveNews.filter(n => !existingUrls.has(n.url));
-            const updatedNews = [...newArticles, ...prevNews];
-            localStorage.setItem(newsCacheKey, JSON.stringify({ date: today, articles: updatedNews }));
-            return updatedNews;
-        });
-    } else if (news.length === 0) { // Only use fallback if no news at all
-        const shuffled = [...fallbackNewsData].sort(() => 0.5 - Math.random());
-        setNews(shuffled.slice(0, 3));
-    }
-  }, [user, activeWatchlist, news.length]);
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -136,13 +104,38 @@ export function WatchlistDashboard() {
     fetchUserAndData();
   }, [router, activeTab]);
 
-  useEffect(() => {
-    if (user && activeWatchlist) {
-      fetchNews(); // Fetch on component mount/watchlist change
-      const newsInterval = setInterval(fetchNews, 1000 * 60 * 60); // Refresh every hour
-      return () => clearInterval(newsInterval);
+  const loadNewsFromCache = useCallback(() => {
+    if (!user) return;
+    const newsCacheKey = `newsCache_${user.id}`;
+    const cachedNewsData = localStorage.getItem(newsCacheKey);
+    
+    if (cachedNewsData) {
+        const { date, articles } = JSON.parse(cachedNewsData);
+        const today = new Date().toDateString();
+        // Clear cache if it's from a previous day
+        if (date !== today) {
+            localStorage.removeItem(newsCacheKey);
+            setNews([]);
+        } else {
+            setNews(articles);
+        }
+    } else {
+        setNews([]);
     }
-  }, [user, activeWatchlist, fetchNews]);
+  }, [user]);
+
+  useEffect(() => {
+    loadNewsFromCache();
+
+    const handleStorageChange = (event: StorageEvent) => {
+        if (user && event.key === `newsCache_${user.id}`) {
+            loadNewsFromCache();
+        }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [user, loadNewsFromCache]);
 
 
   const fetchStockData = useCallback(async (isSilent = false) => {
