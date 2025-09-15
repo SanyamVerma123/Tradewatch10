@@ -28,11 +28,12 @@ export interface Watchlist {
 
 export interface NewsArticle {
   id: string;
-  ticker: string;
+  ticker?: string;
   headline: string;
   source: string;
   time: string;
   image: string;
+  url?: string;
 }
 
 export interface Order {
@@ -57,6 +58,8 @@ export interface Order {
   isLong?: boolean;
   executedAt?: string; // ISO date string
   realizedPnl?: number;
+  stopLossValue?: number;
+  targetValue?: number;
 }
 
 export interface Holding {
@@ -101,3 +104,4 @@ export interface User {
     
 
     
+

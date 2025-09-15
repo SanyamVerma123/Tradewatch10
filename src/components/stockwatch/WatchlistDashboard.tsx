@@ -21,7 +21,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import { getStockData, searchStocks } from "@/app/actions";
+import { getStockData, searchStocks, getNewsFromGNews } from "@/app/actions";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ import { Search, Sparkles, Settings, Loader2, PlusCircle, X } from "lucide-react
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { watchlists as initialWatchlistsData, news as allNewsData } from "@/lib/data";
+import { watchlists as initialWatchlistsData, news as fallbackNewsData } from "@/lib/data";
 import { StockActionSheet } from "./StockActionSheet";
 import { AIAnalysisDialog } from "./AIAnalysisDialog";
 import { supabase } from "@/lib/supabase/client";
@@ -75,9 +75,15 @@ export function WatchlistDashboard() {
   const [editingWatchlistName, setEditingWatchlistName] = useState("");
   const [news, setNews] = useState<NewsArticle[]>([]);
   
-  const shuffleNews = useCallback(() => {
-    const shuffled = [...allNewsData].sort(() => 0.5 - Math.random());
-    setNews(shuffled.slice(0, 3));
+  const fetchNews = useCallback(async () => {
+    const liveNews = await getNewsFromGNews();
+    if (liveNews && liveNews.length > 0) {
+        setNews(liveNews);
+    } else {
+        // Fallback to static news if API fails
+        const shuffled = [...fallbackNewsData].sort(() => 0.5 - Math.random());
+        setNews(shuffled.slice(0, 3));
+    }
   }, []);
 
   useEffect(() => {
@@ -98,11 +104,11 @@ export function WatchlistDashboard() {
     };
     
     fetchUserAndData();
-    shuffleNews();
-    const newsInterval = setInterval(shuffleNews, 1000 * 60 * 60); // Refresh every hour
+    fetchNews();
+    const newsInterval = setInterval(fetchNews, 1000 * 60 * 60); // Refresh every hour
     
     return () => clearInterval(newsInterval);
-  }, [router, shuffleNews, activeTab]);
+  }, [router, fetchNews, activeTab]);
 
   const activeWatchlist = useMemo(() => {
     return watchlists.find((w) => w.id === activeTab);
@@ -275,6 +281,7 @@ export function WatchlistDashboard() {
         ltp: stock?.price || 0,
         price: stock?.price?.toFixed(2) || '0',
         isShortSell: isShortSell,
+        isLong: !isShortSell,
     };
     router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);
     setIsActionSheetOpen(false);
@@ -498,13 +505,15 @@ export function WatchlistDashboard() {
             <h2 className="text-xl font-bold mb-4">Related News</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {news.map(article => (
-                    <Card key={article.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                        <Image data-ai-hint="stock market news" src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover" />
-                        <CardContent className="p-4">
-                            <h3 className="font-semibold leading-tight mb-2">{article.headline}</h3>
-                            <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>
-                        </CardContent>
-                    </Card>
+                    <a href={article.url} target="_blank" rel="noopener noreferrer" key={article.id}>
+                        <Card className="overflow-hidden hover:shadow-lg transition-shadow h-full">
+                            <Image data-ai-hint="stock market business" src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover" />
+                            <CardContent className="p-4">
+                                <h3 className="font-semibold leading-tight mb-2 text-sm">{article.headline}</h3>
+                                <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>
+                            </CardContent>
+                        </Card>
+                    </a>
                 ))}
             </div>
           </section>

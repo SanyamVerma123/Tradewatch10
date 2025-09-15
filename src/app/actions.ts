@@ -124,3 +124,35 @@ export async function searchStocks(query: string) {
         return [];
     }
 }
+
+export async function getNewsFromGNews() {
+    const apiKey = process.env.GNEWS_API_KEY;
+    if (!apiKey) {
+        console.error("GNews API key is not configured.");
+        return null;
+    }
+    
+    const url = `https://gnews.io/api/v4/top-headlines?category=business&lang=en&country=in&max=5&apikey=${apiKey}`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            console.error(`GNews API error: ${response.status} ${response.statusText}`);
+            const errorBody = await response.json();
+            console.error("GNews error details:", errorBody);
+            return null;
+        }
+        const data = await response.json();
+        return data.articles.map((article: any) => ({
+            id: article.url,
+            headline: article.title,
+            source: article.source.name,
+            time: new Date(article.publishedAt).toLocaleDateString(),
+            image: article.image || 'https://picsum.photos/seed/news_fallback/400/200',
+            url: article.url,
+        }));
+    } catch (error) {
+        console.error("Error fetching news from GNews:", error);
+        return null;
+    }
+}

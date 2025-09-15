@@ -205,16 +205,18 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [product, setProduct] = useState(initialProduct.toUpperCase());
   const [orderMethod, setOrderMethod] = useState(initialOrderMethod.toUpperCase());
   
-  const [isStoplossEnabled, setIsStoplossEnabled] = useState(false);
-  const [isTargetEnabled, setIsTargetEnabled] = useState(false);
+  const [isStoplossEnabled, setIsStoplossEnabled] = useState(!!orderToEdit?.stopLossValue);
+  const [isTargetEnabled, setIsTargetEnabled] = useState(!!orderToEdit?.targetValue);
   const [isLoading, setIsLoading] = useState(false);
   
   const [stoplossMode, setStoplossMode] = useState<StopLossTargetMode>('PERCENT');
   const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PERCENT');
-  const [stoplossPercent, setStoplossPercent] = useState("");
-  const [stoplossPrice, setstoplossPrice] = useState("");
-  const [targetPercent, setTargetPercent] = useState("");
-  const [targetPrice, setTargetPrice] = useState("");
+
+  const [stoplossPercent, setStoplossPercent] = useState(orderToEdit?.stopLossValue?.toString() || "");
+  const [stoplossPrice, setStoplossPrice] = useState(orderToEdit?.stopLossValue?.toString() || "");
+  const [targetPercent, setTargetPercent] = useState(orderToEdit?.targetValue?.toString() || "");
+  const [targetPrice, setTargetPrice] = useState(orderToEdit?.targetValue?.toString() || "");
+  
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
 
@@ -263,6 +265,16 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "MARKET");
         setQuantity(orderToEdit.quantity?.toString() || "1");
         setPrice(orderToEdit.price?.toString() || "");
+        if (orderToEdit.stopLossValue) {
+            setIsStoplossEnabled(true);
+            setStoplossPrice(orderToEdit.stopLossValue.toString());
+            setStoplossMode('PRICE');
+        }
+        if (orderToEdit.targetValue) {
+            setIsTargetEnabled(true);
+            setTargetPrice(orderToEdit.targetValue.toString());
+            setTargetMode('PRICE');
+        }
     }
   }, [orderToEdit, router, isShortSell]);
 
@@ -314,6 +326,16 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
     const marketIsOpen = isMarketOpen();
     const limitPrice = orderMethod.includes('MARKET') ? stock.price : parseFloat(price) || 0;
+    
+    let slValue: number | undefined;
+    if (isStoplossEnabled) {
+        slValue = stoplossMode === 'PRICE' ? parseFloat(stoplossPrice) : (getExecutionPrice() * (1 - (parseFloat(stoplossPercent) / 100)));
+    }
+    let targetValue: number | undefined;
+    if (isTargetEnabled) {
+        targetValue = targetMode === 'PRICE' ? parseFloat(targetPrice) : (getExecutionPrice() * (1 + (parseFloat(targetPercent) / 100)));
+    }
+
 
     const newOrder: Order = {
         id: (isEditing && orderToEdit?.id) ? orderToEdit.id : `order-${Date.now()}`,
@@ -336,6 +358,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         isShortSell: isShortSell,
         isLong: !isShortSell && !isExitingPosition,
         executedAt: '',
+        stopLossValue: slValue,
+        targetValue: targetValue,
     }
 
     if (newOrder.quantity <= 0) {
@@ -349,13 +373,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
      if ((orderMethod === 'SL' || orderMethod === 'SL-M') && (!newOrder.triggerPrice || newOrder.triggerPrice <= 0)) {
         toast({ variant: "destructive", title: "Invalid Trigger Price", description: "Trigger price is required for SL orders." });
         return;
-    }
-    
-    if (isStoplossEnabled || isTargetEnabled) {
-         toast({
-            title: "Advanced Order Set",
-            description: `Swipe ${orderType} to place your order with stop-loss/target.`
-        });
     }
 
     const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
@@ -406,7 +423,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   )
   
-  const isProductDisabled = isExitingPosition || isShortSell || (isEditing && !!orderToEdit.product);
+  const isProductDisabled = isExitingPosition || isShortSell || (isEditing && !!orderToEdit.product && !orderToEdit.id.startsWith('order-'));
 
 
   return (
@@ -515,14 +532,14 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                       <Label>Product</Label>
                       <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4" disabled={isProductDisabled}>
                           <Button asChild variant="outline" className={cn("flex-1", product === "MIS" && "border-primary text-primary")}>
-                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
-                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isProductDisabled} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isEditing ? "cursor-pointer" : (isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"))}>
+                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isProductDisabled && !isEditing} />
                                   Intraday <span className="text-xs text-muted-foreground">MIS</span>
                               </Label>
                           </Button>
                           <Button asChild variant="outline" className={cn("flex-1", product === "CNC" && "border-primary text-primary")}>
-                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
-                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={isProductDisabled} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isEditing ? "cursor-pointer" : (isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"))}>
+                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={isProductDisabled && !isEditing} />
                                   Longterm <span className="text-xs text-muted-foreground">CNC</span>
                               </Label>
                           </Button>
@@ -580,7 +597,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                                 <Input 
                                     type="number" 
                                     value={stoplossMode === 'PERCENT' ? stoplossPercent : stoplossPrice}
-                                    onChange={(e) => stoplossMode === 'PERCENT' ? setStoplossPercent(e.target.value) : setstoplossPrice(e.target.value)}
+                                    onChange={(e) => stoplossMode === 'PERCENT' ? setStoplossPercent(e.target.value) : setStoplossPrice(e.target.value)}
                                     placeholder={stoplossMode === 'PERCENT' ? `-2.0 (i.e. ₹${(entryPrice * 0.98).toFixed(2)})` : `${(entryPrice * 0.98).toFixed(2)}`}
                                 />
                                 {stoplossMode === 'PERCENT' && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>}
