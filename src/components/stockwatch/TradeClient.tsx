@@ -185,14 +185,14 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
   const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
-  const [price, setPrice] = useState(orderToEdit?.price?.toString() || initialStock?.price?.toFixed(2) || "");
+  const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || initialStock?.price?.toFixed(2) || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
   
   const isExitingPosition = !!orderToEdit?.product;
   const isShortSell = !!orderToEdit?.isShortSell;
   
   const initialProduct = orderToEdit?.product || (isShortSell ? 'MIS' : (orderToEdit?.isLong ? 'CNC' : 'MIS'));
-  const initialOrderMethod = orderToEdit?.orderMethod || "MARKET";
+  const initialOrderMethod = orderToEdit?.orderMethod || "LIMIT";
 
   const [product, setProduct] = useState(initialProduct.toUpperCase());
   const [orderMethod, setOrderMethod] = useState(initialOrderMethod.toUpperCase());
@@ -219,7 +219,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       if (data && data.length > 0) {
         const newStock = data[0];
         setStock(newStock);
-        if (price === "" && orderMethod === "MARKET") { 
+        if (orderMethod === "MARKET") { 
             setPrice(newStock.price.toFixed(2));
         }
       } else {
@@ -231,7 +231,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     } finally {
         if (!isSilent) setIsStockLoading(false);
     }
-  }, [ticker, toast, price, orderMethod]);
+  }, [ticker, toast, orderMethod]);
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -254,9 +254,9 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     if(orderToEdit) {
         setOrderType(orderToEdit.type || "BUY");
         setProduct(orderToEdit.product?.toUpperCase() || (isShortSell ? 'MIS' : (orderToEdit?.isLong ? 'CNC' : 'MIS')));
-        setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "MARKET");
+        setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
         setQuantity(orderToEdit.quantity?.toString() || "1");
-        setPrice(orderToEdit.price?.toString() || "");
+        setPrice(orderToEdit.limitPrice?.toString() || "");
         if (orderToEdit.stopLossValue) {
             setIsStoplossEnabled(true);
             setStoplossPrice(orderToEdit.stopLossValue.toString());
@@ -273,12 +273,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   useEffect(() => {
     if (!initialStock) {
         fetchStock();
-    } else if (orderMethod === "MARKET") {
+    } else if (orderMethod === "MARKET" && !price) {
         setPrice(initialStock.price.toFixed(2));
     }
     const interval = setInterval(() => fetchStock(true), 2000);
     return () => clearInterval(interval);
-  }, [fetchStock, initialStock, orderMethod]);
+  }, [fetchStock, initialStock, orderMethod, price]);
   
   const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
   
@@ -313,15 +313,15 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     }
 
     const marketIsOpen = isMarketOpen();
-    const limitPrice = orderMethod.includes('MARKET') ? stock.price : parseFloat(price) || 0;
+    const executionPrice = getExecutionPrice();
     
     let slValue: number | undefined;
     if (isStoplossEnabled) {
-        slValue = stoplossMode === 'PRICE' ? parseFloat(stoplossPrice) : (getExecutionPrice() * (1 - (parseFloat(stoplossPercent) / 100)));
+        slValue = stoplossMode === 'PRICE' ? parseFloat(stoplossPrice) : (executionPrice * (1 - (parseFloat(stoplossPercent) / 100)));
     }
     let targetValue: number | undefined;
     if (isTargetEnabled) {
-        targetValue = targetMode === 'PRICE' ? parseFloat(targetPrice) : (getExecutionPrice() * (1 + (parseFloat(targetPercent) / 100)));
+        targetValue = targetMode === 'PRICE' ? parseFloat(targetPrice) : (executionPrice * (1 + (parseFloat(targetPercent) / 100)));
     }
 
 
@@ -331,7 +331,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         ticker,
         quantity: parseInt(quantity) || 0,
         filledQuantity: 0,
-        limitPrice: limitPrice,
+        limitPrice: executionPrice,
         triggerPrice: parseFloat(triggerPrice) || undefined,
         status: 'Pending',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -411,7 +411,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   )
   
-  const isProductDisabled = (isExitingPosition || isShortSell) && !isEditing;
+  const isProductDisabled = (isExitingPosition || isShortSell);
 
 
   return (
@@ -481,8 +481,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                  </div>
               ) : (
                 <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="BUY" disabled={(isEditing || isExitingPosition) && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
-                    <TabsTrigger value="SELL" disabled={(isEditing || isExitingPosition) && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
+                    <TabsTrigger value="BUY" disabled={(isExitingPosition) && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
+                    <TabsTrigger value="SELL" disabled={(isExitingPosition) && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
                 </TabsList>
               )}
               <div className="p-4 space-y-6">
@@ -518,7 +518,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
                   <div className="space-y-2">
                       <Label>Product</Label>
-                      <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4" disabled={isProductDisabled}>
+                      <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4">
                           <Button asChild variant="outline" className={cn("flex-1", product === "MIS" && "border-primary text-primary")}>
                               <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
                                   <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isProductDisabled} />

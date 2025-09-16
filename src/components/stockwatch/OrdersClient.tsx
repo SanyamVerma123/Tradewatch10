@@ -61,7 +61,8 @@ export function OrdersClient() {
     const fetchUser = async () => {
       const { data: { user: sbUser }, error } = await supabase.auth.getUser();
       if (error || !sbUser) {
-        router.replace('/');
+        // This will be caught by the redirect in BottomNav, but as a fallback:
+        // router.replace('/');
       } else {
         setUser(sbUser);
       }
@@ -72,6 +73,25 @@ export function OrdersClient() {
 
   const cancelOrder = useCallback((orderToCancel: Order, reason: string) => {
     if (!user) return;
+
+    // Refund logic for cancelled BUY orders
+    if (orderToCancel.type === 'BUY' && orderToCancel.status === 'Pending') {
+        const fundsKey = `funds_${user.id}`;
+        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
+        
+        if (fundsData.balance !== undefined) {
+            const finalTradeValue = orderToCancel.quantity * orderToCancel.ltp; // Use ltp at time of order
+            const brokerage = Math.min(20, finalTradeValue * 0.0003);
+            const totalCharges = brokerage + (finalTradeValue * 0.000345);
+            const approxMargin = orderToCancel.product === 'MIS' ? finalTradeValue / 5 : finalTradeValue;
+            const blockedFunds = approxMargin + totalCharges;
+
+            const newBalance = fundsData.balance + blockedFunds;
+            localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+        }
+    }
+
+
     setOrders(prevOrders => {
         const updatedOrders = prevOrders.map(o => 
             o.id === orderToCancel.id ? { ...o, status: 'Cancelled' } : o
