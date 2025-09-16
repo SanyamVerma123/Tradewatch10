@@ -72,21 +72,24 @@ export function OrdersClient() {
 
   const cancelOrder = useCallback((orderToCancel: Order, reason: string) => {
     if (!user) return;
-    const ordersKey = `orders_${user.id}`;
-    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-    const updatedOrders = allOrders.map(o => o.id === orderToCancel.id ? { ...o, status: 'Cancelled' } : o);
-    localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
-    setOrders(updatedOrders);
-    toast({
-        variant: "destructive",
-        title: "Order Cancelled",
-        description: `${orderToCancel.ticker}: ${reason}`,
+    setOrders(prevOrders => {
+        const updatedOrders = prevOrders.map(o => 
+            o.id === orderToCancel.id ? { ...o, status: 'Cancelled' } : o
+        );
+        const ordersKey = `orders_${user.id}`;
+        localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
+        toast({
+            variant: "destructive",
+            title: "Order Cancelled",
+            description: `${orderToCancel.ticker}: ${reason}`,
+        });
+        return updatedOrders;
     });
   }, [toast, user]);
 
 
   const executeOrder = useCallback((orderToExecute: Order, ltp: number) => {
-    if (!user) return;
+    if (!user) return false;
     const product = orderToExecute.product || 'CNC';
     const finalTradeValue = orderToExecute.quantity * ltp;
     
@@ -107,11 +110,13 @@ export function OrdersClient() {
 
     // Final funds check before execution
     const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-    const requiredMargin = isIntradayTrade ? finalTradeValue / 5 : finalTradeValue;
+    const approxMargin = product === 'MIS' ? finalTradeValue / 5 : finalTradeValue;
+    const requiredMargin = approxMargin + totalCharges;
 
-    if (orderToExecute.type === 'BUY' && fundsData.balance < requiredMargin + totalCharges) {
-        cancelOrder(orderToExecute, `Insufficient funds. Required: ~₹${(requiredMargin + totalCharges).toFixed(2)}, Available: ₹${fundsData.balance.toFixed(2)}`);
-        return;
+
+    if (orderToExecute.type === 'BUY' && fundsData.balance < requiredMargin) {
+        cancelOrder(orderToExecute, `Insufficient funds. Required: ~₹${(requiredMargin).toFixed(2)}, Available: ₹${fundsData.balance.toFixed(2)}`);
+        return false;
     }
     
     let realizedPnl: number | undefined = undefined;
@@ -146,14 +151,11 @@ export function OrdersClient() {
     const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString(), realizedPnl };
 
     // Update orders in state and local storage
-    const existingOrderIndex = allOrders.findIndex(o => o.id === executedOrder.id);
-    if (existingOrderIndex > -1) {
-      allOrders[existingOrderIndex] = executedOrder;
-    } else {
-      allOrders.unshift(executedOrder);
-    }
-    localStorage.setItem(ordersKey, JSON.stringify(allOrders));
-    setOrders(allOrders);
+    setOrders(prevOrders => {
+        const updatedOrders = prevOrders.map(o => o.id === executedOrder.id ? executedOrder : o);
+        localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
+        return updatedOrders;
+    });
 
     // Simulate Tax & Fund deduction/addition
     if (fundsData.balance !== undefined) {
@@ -246,6 +248,7 @@ export function OrdersClient() {
         title: `Order Executed!`,
         description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}. Est. charges: ₹${totalCharges.toFixed(2)}`,
     });
+    return true;
 
   }, [toast, cancelOrder, user]);
 
@@ -254,29 +257,27 @@ export function OrdersClient() {
     if (!user) return;
     const ordersKey = `orders_${user.id}`;
 
-    const fetchOrdersDataAndCheckPending = async () => {
-        const storedOrdersText = localStorage.getItem(ordersKey) || '[]';
-        let storedOrders: Order[];
-        try {
-            storedOrders = JSON.parse(storedOrdersText);
-        } catch {
-            storedOrders = [];
-        }
-        
-        const pendingOrders = storedOrders.filter((o:Order) => o.status === 'Pending');
+    // Load initial orders
+    const storedOrdersText = localStorage.getItem(ordersKey) || '[]';
+    let storedOrders: Order[];
+    try {
+        storedOrders = JSON.parse(storedOrdersText);
+    } catch {
+        storedOrders = [];
+    }
+    setOrders(storedOrders);
+
+
+    const checkPendingOrders = async () => {
+        // Use the state `orders` which is the single source of truth now
+        const pendingOrders = orders.filter((o:Order) => o.status === 'Pending');
 
         if (pendingOrders.length === 0) {
-             if(JSON.stringify(orders) !== storedOrdersText) {
-                setOrders(storedOrders);
-            }
             return;
         }
 
         const marketIsOpen = isMarketOpen();
         if (!marketIsOpen) {
-            if(JSON.stringify(orders) !== storedOrdersText) {
-                setOrders(storedOrders);
-            }
             return;
         }
 
@@ -284,13 +285,11 @@ export function OrdersClient() {
         const stockData = await getStockData(tickers);
         const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
 
-        let ordersWereExecuted = false;
-        pendingOrders.forEach((order: Order) => {
+        for (const order of pendingOrders) {
             const ltp = stockPriceMap.get(order.ticker);
-            if (ltp === undefined) return;
+            if (ltp === undefined) continue;
 
             let shouldExecute = false;
-            // Default execution price is LTP, which is correct for MARKET, SL-M, and triggered SL orders.
             let executionPrice = ltp; 
 
             if (order.isAMO) {
@@ -298,15 +297,13 @@ export function OrdersClient() {
             } else if (order.orderMethod === "LIMIT") {
                 if (order.type === 'BUY' && ltp <= order.limitPrice) {
                     shouldExecute = true;
-                    executionPrice = Math.min(order.limitPrice, ltp); // Get the best price
+                    executionPrice = Math.min(order.limitPrice, ltp);
                 } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
                     shouldExecute = true;
-                    executionPrice = Math.max(order.limitPrice, ltp); // Get the best price
+                    executionPrice = Math.max(order.limitPrice, ltp);
                 }
             } else if(order.orderMethod === "SL") {
-                 // Stop-Loss Limit: trigger activates a limit order
                  if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
-                    // SL order becomes a limit order once triggered
                     if (order.type === 'BUY' && ltp <= order.limitPrice) {
                         shouldExecute = true;
                         executionPrice = Math.min(order.limitPrice, ltp);
@@ -316,24 +313,24 @@ export function OrdersClient() {
                     }
                  }
             } else if(order.orderMethod === "SL-M") {
-                 // Stop-Loss Market: trigger activates a market order
                 if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
                     shouldExecute = true;
-                    // executionPrice is already LTP
                 }
             } else if (order.orderMethod === "MARKET") {
-                shouldExecute = true; // Market orders execute at LTP
+                shouldExecute = true;
             }
             
             if (shouldExecute) {
+                // executeOrder now returns false if it fails (e.g. funds)
+                // if it fails, the order status is already updated to 'Cancelled' inside executeOrder
+                // so the loop will not pick it up again.
                 executeOrder(order, executionPrice);
-                ordersWereExecuted = true;
             }
-        });
+        }
         
-        // This check prevents an infinite loop on re-renders
-        if (!ordersWereExecuted) {
-            const ordersWithFreshLtp = storedOrders.map((o: Order) => {
+        // Update LTP for pending orders without executing
+        setOrders(prevOrders => {
+             const ordersWithFreshLtp = prevOrders.map((o: Order) => {
                 if (o.status === 'Pending') {
                     return {
                         ...o,
@@ -342,14 +339,15 @@ export function OrdersClient() {
                 }
                 return o;
             });
-            if (JSON.stringify(orders) !== JSON.stringify(ordersWithFreshLtp)) {
-                setOrders(ordersWithFreshLtp);
+            // Only update state if there's a change to prevent re-renders
+            if (JSON.stringify(prevOrders) !== JSON.stringify(ordersWithFreshLtp)) {
+               return ordersWithFreshLtp;
             }
-        }
+            return prevOrders;
+        });
     };
 
-    fetchOrdersDataAndCheckPending();
-    const interval = setInterval(fetchOrdersDataAndCheckPending, 5000);
+    const interval = setInterval(checkPendingOrders, 5000);
 
     return () => clearInterval(interval);
   }, [executeOrder, orders, user]);
@@ -508,6 +506,7 @@ export function OrdersClient() {
     
 
     
+
 
 
 

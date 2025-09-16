@@ -185,7 +185,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
   const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
-  const [price, setPrice] = useState(orderToEdit?.price?.toString() || "");
+  const [price, setPrice] = useState(orderToEdit?.price?.toString() || initialStock?.price?.toFixed(2) || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
   
   const isExitingPosition = !!orderToEdit?.product;
@@ -219,7 +219,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       if (data && data.length > 0) {
         const newStock = data[0];
         setStock(newStock);
-        if (price === "" || orderMethod === "MARKET") { 
+        if (price === "" && orderMethod === "MARKET") { 
             setPrice(newStock.price.toFixed(2));
         }
       } else {
@@ -273,17 +273,13 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   useEffect(() => {
     if (!initialStock) {
         fetchStock();
+    } else if (orderMethod === "MARKET") {
+        setPrice(initialStock.price.toFixed(2));
     }
     const interval = setInterval(() => fetchStock(true), 2000);
     return () => clearInterval(interval);
-  }, [fetchStock, initialStock]);
+  }, [fetchStock, initialStock, orderMethod]);
   
-  useEffect(() => {
-    if (stock && (price === "" || (orderMethod === "MARKET" && price !== stock.price.toFixed(2)))) {
-        setPrice(stock.price.toFixed(2));
-    }
-  }, [stock, orderMethod, price]);
-
   const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
   
   const getExecutionPrice = () => {
@@ -415,8 +411,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   )
   
-  // If exiting from portfolio or short-selling a new stock, product is locked.
-  // If modifying a PENDING order, product should be selectable.
   const isProductDisabled = (isExitingPosition || isShortSell) && !isEditing;
 
 
