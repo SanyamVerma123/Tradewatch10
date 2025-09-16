@@ -291,10 +291,15 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const isShortSell = useMemo(() => orderType === 'SELL' && !isSellFromHolding && !currentPosition && !currentHolding, [orderType, isSellFromHolding, currentPosition, currentHolding]);
 
   const maxSellQuantity = useMemo(() => {
+    // If we are editing an order to sell, the available quantity is just that order's quantity.
+    if (orderToEdit?.quantity) {
+      return orderToEdit.quantity;
+    }
+    // Otherwise, calculate the total available from holdings and positions.
     const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
     const positionQty = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
     return holdingQty + positionQty;
-  }, [portfolio.holdings, portfolio.positions, ticker]);
+  }, [portfolio.holdings, portfolio.positions, ticker, orderToEdit]);
 
 
   const handlePlaceOrder = () => {
