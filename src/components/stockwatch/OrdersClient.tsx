@@ -99,6 +99,7 @@ export function OrdersClient() {
     const brokerage = Math.min(20, finalTradeValue * 0.0003); // 0.03% or Rs 20
     const otherCharges = finalTradeValue * 0.000345; // Exchange txn, SEBI fees etc.
     const totalCharges = brokerage + stt + otherCharges;
+    const approxMargin = product === 'MIS' ? finalTradeValue / 5 : finalTradeValue;
 
 
     const fundsKey = `funds_${user.id}`;
@@ -110,7 +111,6 @@ export function OrdersClient() {
 
     // Final funds check before execution
     const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-    const approxMargin = product === 'MIS' ? finalTradeValue / 5 : finalTradeValue;
     const requiredMargin = approxMargin + totalCharges;
 
 
