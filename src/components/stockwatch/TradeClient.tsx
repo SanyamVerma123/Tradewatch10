@@ -233,8 +233,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
       const portfolioDataText = localStorage.getItem(`portfolioData_${sbUser.id}`);
       if(portfolioDataText){
-          const portfolioData: Portfolio = JSON.parse(portfolioDataText);
-          setPortfolio(portfolioData);
+          try {
+            const portfolioData: Portfolio = JSON.parse(portfolioDataText);
+            setPortfolio(portfolioData);
+          } catch(e) {
+            console.error("Failed to parse portfolio data", e)
+          }
       }
     }
     
@@ -273,8 +277,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const totalCharges = useMemo(() => brokerage + (tradeValue * 0.000345), [brokerage, tradeValue]); // Simplified charges
   const requiredFunds = useMemo(() => approxMargin + totalCharges, [approxMargin, totalCharges]);
 
-  const currentPosition = useMemo(() => portfolio.positions.find(p => p.ticker === ticker && p.product === product), [portfolio.positions, ticker, product]);
-  const currentHolding = useMemo(() => portfolio.holdings.find(h => h.ticker === ticker), [portfolio.holdings, ticker]);
+  const currentPosition = useMemo(() => (portfolio.positions || []).find(p => p.ticker === ticker && p.product === product), [portfolio.positions, ticker, product]);
+  const currentHolding = useMemo(() => (portfolio.holdings || []).find(h => h.ticker === ticker), [portfolio.holdings, ticker]);
   
   const isExitingPosition = useMemo(() => {
       if (orderToEdit) return !!orderToEdit.product;
