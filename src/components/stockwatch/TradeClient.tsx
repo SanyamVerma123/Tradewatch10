@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -77,7 +78,6 @@ const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: ()
 
     const handleInteractionEnd = () => {
         if (!swiping || hasSwiped.current) return;
-        // Snap back if not completed
         const containerRect = containerRef.current?.getBoundingClientRect();
         const maxPosition = (containerRect?.width || 0) - (swipeRef.current?.offsetWidth || 0) - 8;
         if (position < maxPosition - 5) {
@@ -195,7 +195,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
 
 
   const isSellFromHolding = useMemo(() => orderToEdit?.isSellFromHolding, [orderToEdit]);
-  const initialProduct = useMemo(() => orderToEdit?.product || (orderToEdit?.isShortSell ? 'MIS' : (orderToEdit?.isLong ? 'CNC' : 'MIS')), [orderToEdit]);
+  const initialProduct = useMemo(() => orderToEdit?.product || (isSellFromHolding ? 'CNC' : 'MIS'), [orderToEdit, isSellFromHolding]);
   const initialOrderMethod = useMemo(() => orderToEdit?.orderMethod || "LIMIT", [orderToEdit]);
 
   const [product, setProduct] = useState(initialProduct.toUpperCase());
@@ -244,10 +244,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
       if(portfolioDataText){
           try {
             const storedPortfolio: Portfolio = JSON.parse(portfolioDataText);
-            if (!storedPortfolio.positions) {
-                storedPortfolio.positions = [];
-            }
-            setPortfolio(storedPortfolio);
+            setPortfolio(storedPortfolio || { holdings: [], positions: [] });
           } catch(e) {
             console.error("Failed to parse portfolio data", e)
           }
@@ -258,13 +255,13 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
 
     if(orderToEdit) {
         setOrderType(orderToEdit.type || "BUY");
-        setProduct(orderToEdit.product?.toUpperCase() || (orderToEdit.isShortSell ? 'MIS' : (orderToEdit.isLong ? 'CNC' : 'MIS')));
+        setProduct(orderToEdit.product?.toUpperCase() || (isSellFromHolding ? 'CNC' : 'MIS'));
         setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
         setQuantity(orderToEdit.quantity?.toString() || "1");
         setPrice(orderToEdit.limitPrice?.toString() || stock?.price?.toFixed(2) || "");
         setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
     }
-  }, [orderToEdit, router, stock?.price]);
+  }, [orderToEdit, router, stock?.price, isSellFromHolding]);
 
   useEffect(() => {
     fetchStock();
@@ -291,11 +288,12 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const currentHolding = useMemo(() => (portfolio.holdings || []).find(h => h.ticker === ticker), [portfolio.holdings, ticker]);
   
   const isExitingPosition = useMemo(() => {
-      if (orderToEdit) return !!orderToEdit.product;
+      if (orderToEdit) return !!orderToEdit.product || isSellFromHolding;
       if (orderType === 'BUY' && currentPosition && currentPosition.quantity < 0) return true; // Buying to close a short
       if (orderType === 'SELL' && currentPosition && currentPosition.quantity > 0) return true; // Selling to close a long
+      if (orderType === 'SELL' && currentHolding) return true;
       return false;
-  }, [orderToEdit, orderType, currentPosition]);
+  }, [orderToEdit, orderType, currentPosition, currentHolding, isSellFromHolding]);
 
   const isShortSell = useMemo(() => orderType === 'SELL' && !isSellFromHolding && !currentPosition && !currentHolding, [orderType, isSellFromHolding, currentPosition, currentHolding]);
 
@@ -306,7 +304,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
     const positionQty = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
     return holdingQty + positionQty;
-}, [portfolio, ticker, orderToEdit]);
+}, [portfolio.holdings, portfolio.positions, ticker, orderToEdit]);
 
 
   const handlePlaceOrder = () => {
@@ -379,6 +377,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         updatedOrders = [newOrder, ...storedOrders];
     }
     localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
+    showOrderNotification(ticker);
 
     toast({
         title: `Order ${isEditing ? 'Modified' : 'Placed'} (${orderType})`,
@@ -393,8 +392,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     const ordersKey = `orders_${user.id}`;
     let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
 
-    // Refund if it was a BUY order
-    if (orderToEdit.type === 'BUY') {
+    if (orderToEdit.type === 'BUY' && orderToEdit.status === 'Pending') {
         const fundsKey = `funds_${user.id}`;
         const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         if (fundsData.balance !== undefined) {
@@ -436,13 +434,12 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   )
   
   const isProductDisabled = useMemo(() => {
-    if (isSellFromHolding) return true; // Always CNC if selling from holding
-    if (isExitingPosition) return true; // Product is determined by existing position
-    if (orderType === 'SELL' && !isExitingPosition && !currentHolding) return true; // Short sell must be MIS
+    if (isSellFromHolding) return true;
+    if (isExitingPosition) return true;
+    if (isShortSell) return true;
     return false;
-  }, [isSellFromHolding, isExitingPosition, orderType, currentHolding]);
+  }, [isSellFromHolding, isExitingPosition, isShortSell]);
 
-  // Effect to manage product type constraints
   useEffect(() => {
     if (isSellFromHolding) {
       setProduct('CNC');
@@ -601,7 +598,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                       </RadioGroup>
                   </div>
                     <div className="space-y-4 rounded-lg border p-4">
-                        <div className="space-y-4">
+                        <div className="space-y-2">
                              <div className="flex items-center justify-between">
                                  <Label htmlFor="stoploss-switch" className="font-medium">Stoploss</Label>
                                  <Switch id="stoploss-switch" checked={useStopLoss} onCheckedChange={setUseStopLoss} />
@@ -620,7 +617,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                                 </div>
                             )}
                         </div>
-                         <div className="space-y-4">
+                         <div className="space-y-2">
                              <div className="flex items-center justify-between">
                                 <Label htmlFor="target-switch" className="font-medium">Target</Label>
                                  <Switch id="target-switch" checked={useTarget} onCheckedChange={setUseTarget} />
@@ -666,5 +663,3 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     </div>
   );
 }
-
-    
