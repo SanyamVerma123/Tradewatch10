@@ -2,8 +2,8 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { Order, Stock, Portfolio, Holding } from "@/lib/types";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import type { Order, Stock, Portfolio, Holding, Position } from "@/lib/types";
 import { getStockData } from "@/app/actions";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, MoreVertical, Info, RefreshCcw, Loader2, ChevronsRight, Trash2 } from "lucide-react";
@@ -33,7 +33,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 
@@ -179,38 +178,25 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const { toast } = useToast();
   const [stock, setStock] = useState<Stock | null>(initialStock);
   const [availableFunds, setAvailableFunds] = useState(0);
-  const [holdings, setHoldings] = useState<Holding[]>([]);
-  const isSellFromHolding = orderToEdit?.isSellFromHolding;
   const [user, setUser] = useState<User | null>(null);
 
   const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
   const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
-  const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || initialStock?.price?.toFixed(2) || "");
+  const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
   
-  const isExitingPosition = !!orderToEdit?.product;
-  const isShortSell = !!orderToEdit?.isShortSell;
-  
-  const initialProduct = orderToEdit?.product || (isShortSell ? 'MIS' : (orderToEdit?.isLong ? 'CNC' : 'MIS'));
-  const initialOrderMethod = orderToEdit?.orderMethod || "LIMIT";
+  const isSellFromHolding = useMemo(() => orderToEdit?.isSellFromHolding, [orderToEdit]);
+  const initialProduct = useMemo(() => orderToEdit?.product || (orderToEdit?.isShortSell ? 'MIS' : (orderToEdit?.isLong ? 'CNC' : 'MIS')), [orderToEdit]);
+  const initialOrderMethod = useMemo(() => orderToEdit?.orderMethod || "LIMIT", [orderToEdit]);
 
   const [product, setProduct] = useState(initialProduct.toUpperCase());
   const [orderMethod, setOrderMethod] = useState(initialOrderMethod.toUpperCase());
   
-  const [isStoplossEnabled, setIsStoplossEnabled] = useState(!!orderToEdit?.stopLossValue);
-  const [isTargetEnabled, setIsTargetEnabled] = useState(!!orderToEdit?.targetValue);
   const [isStockLoading, setIsStockLoading] = useState(false);
-  
-  const [stoplossMode, setStoplossMode] = useState<StopLossTargetMode>('PERCENT');
-  const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PERCENT');
-
-  const [stoplossPercent, setStoplossPercent] = useState(orderToEdit?.stopLossValue && !orderToEdit?.price ? orderToEdit.stopLossValue.toString() : "");
-  const [stoplossPrice, setStoplossPrice] = useState(orderToEdit?.stopLossValue && orderToEdit?.price ? orderToEdit.stopLossValue.toString() : "");
-  const [targetPercent, setTargetPercent] = useState(orderToEdit?.targetValue && !orderToEdit?.price ? orderToEdit.targetValue.toString() : "");
-  const [targetPrice, setTargetPrice] = useState(orderToEdit?.targetValue && orderToEdit?.price ? orderToEdit.targetValue.toString() : "");
   
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
+  const [portfolio, setPortfolio] = useState<Portfolio>({ holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 });
 
   const fetchStock = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsStockLoading(true);
@@ -219,7 +205,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       if (data && data.length > 0) {
         const newStock = data[0];
         setStock(newStock);
-        if (orderMethod === "MARKET") { 
+        if (orderMethod === "MARKET" || !price) { 
             setPrice(newStock.price.toFixed(2));
         }
       } else {
@@ -231,7 +217,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     } finally {
         if (!isSilent) setIsStockLoading(false);
     }
-  }, [ticker, toast, orderMethod]);
+  }, [ticker, toast, orderMethod, price]);
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -245,91 +231,113 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       const fundsData = JSON.parse(localStorage.getItem(`funds_${sbUser.id}`) || '{}');
       setAvailableFunds(fundsData.balance || 0);
 
-      const portfolioData = JSON.parse(localStorage.getItem(`portfolioData_${sbUser.id}`) || '{}');
-      setHoldings(portfolioData.holdings || []);
+      const portfolioDataText = localStorage.getItem(`portfolioData_${sbUser.id}`);
+      if(portfolioDataText){
+          const portfolioData: Portfolio = JSON.parse(portfolioDataText);
+          setPortfolio(portfolioData);
+      }
     }
     
     fetchUserAndData();
 
     if(orderToEdit) {
         setOrderType(orderToEdit.type || "BUY");
-        setProduct(orderToEdit.product?.toUpperCase() || (isShortSell ? 'MIS' : (orderToEdit?.isLong ? 'CNC' : 'MIS')));
+        setProduct(orderToEdit.product?.toUpperCase() || (orderToEdit.isShortSell ? 'MIS' : (orderToEdit.isLong ? 'CNC' : 'MIS')));
         setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
         setQuantity(orderToEdit.quantity?.toString() || "1");
-        setPrice(orderToEdit.limitPrice?.toString() || "");
-        if (orderToEdit.stopLossValue) {
-            setIsStoplossEnabled(true);
-            setStoplossPrice(orderToEdit.stopLossValue.toString());
-            setStoplossMode('PRICE');
-        }
-        if (orderToEdit.targetValue) {
-            setIsTargetEnabled(true);
-            setTargetPrice(orderToEdit.targetValue.toString());
-            setTargetMode('PRICE');
-        }
+        setPrice(orderToEdit.limitPrice?.toString() || initialStock?.price?.toFixed(2) || "");
+        setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
     }
-  }, [orderToEdit, router, isShortSell]);
+  }, [orderToEdit, router, initialStock?.price]);
 
   useEffect(() => {
     if (!initialStock) {
         fetchStock();
-    } else if (orderMethod === "MARKET" && !price) {
-        setPrice(initialStock.price.toFixed(2));
     }
     const interval = setInterval(() => fetchStock(true), 2000);
     return () => clearInterval(interval);
-  }, [fetchStock, initialStock, orderMethod, price]);
+  }, [fetchStock, initialStock]);
   
   const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
   
-  const getExecutionPrice = () => {
+  const getExecutionPrice = useCallback(() => {
     if (orderMethod.includes('MARKET')) {
         return stock?.price || 0;
     }
     return parseFloat(price) || stock?.price || 0;
-  }
+  }, [orderMethod, price, stock?.price]);
 
-  const tradeValue = (parseInt(quantity) || 0) * getExecutionPrice();
-  const brokerage = Math.min(20, tradeValue * 0.0003);
-  const totalCharges = brokerage + (tradeValue * 0.000345); // Simplified charges
-  const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
-  const requiredFunds = approxMargin + totalCharges;
+  const tradeValue = useMemo(() => (parseInt(quantity) || 0) * getExecutionPrice(), [quantity, getExecutionPrice]);
+  const approxMargin = useMemo(() => product === 'MIS' ? tradeValue / 5 : tradeValue, [product, tradeValue]);
+  const brokerage = useMemo(() => Math.min(20, tradeValue * 0.0003), [tradeValue]);
+  const totalCharges = useMemo(() => brokerage + (tradeValue * 0.000345), [brokerage, tradeValue]); // Simplified charges
+  const requiredFunds = useMemo(() => approxMargin + totalCharges, [approxMargin, totalCharges]);
 
-  const currentHolding = holdings.find(h => h.ticker === ticker);
-  const maxSellQuantity = isSellFromHolding ? (currentHolding?.quantity || 0) : (orderToEdit?.quantity || 10000);
+  const currentPosition = useMemo(() => portfolio.positions.find(p => p.ticker === ticker && p.product === product), [portfolio.positions, ticker, product]);
+  const currentHolding = useMemo(() => portfolio.holdings.find(h => h.ticker === ticker), [portfolio.holdings, ticker]);
+  
+  const isExitingPosition = useMemo(() => {
+      if (orderToEdit) return !!orderToEdit.product;
+      if (orderType === 'BUY' && currentPosition && currentPosition.quantity < 0) return true; // Buying to close a short
+      if (orderType === 'SELL' && currentPosition && currentPosition.quantity > 0) return true; // Selling to close a long
+      return false;
+  }, [orderToEdit, orderType, currentPosition]);
+
+  const isShortSell = useMemo(() => orderType === 'SELL' && !isSellFromHolding && !currentPosition && !currentHolding, [orderType, isSellFromHolding, currentPosition, currentHolding]);
+
+  const maxSellQuantity = useMemo(() => {
+      if(isSellFromHolding) return currentHolding?.quantity || 0;
+      if(isExitingPosition && currentPosition) return Math.abs(currentPosition.quantity);
+      return 10000;
+  }, [isSellFromHolding, isExitingPosition, currentHolding, currentPosition]);
+
 
   const handlePlaceOrder = () => {
     if(!stock || !user) return;
     const ordersKey = `orders_${user.id}`;
     
+    const qty = parseInt(quantity) || 0;
+    if (qty <= 0) {
+        toast({ variant: "destructive", title: "Invalid Quantity", description: "Quantity must be greater than zero." });
+        return;
+    }
+
     if (orderType === 'BUY' && requiredFunds > availableFunds) {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~₹${requiredFunds.toFixed(2)}. Available: ₹${availableFunds.toFixed(2)}.` });
       return;
     }
     
-    if (orderType === 'SELL' && !isSellFromHolding && !isShortSell && (parseInt(quantity) || 0) > maxSellQuantity) {
-       toast({ variant: "destructive", title: "Insufficient Holdings/Quantity", description: `You can sell a maximum of ${maxSellQuantity} shares.` });
+    if (orderType === 'SELL' && product === 'CNC' && qty > (currentHolding?.quantity || 0)) {
+       toast({ variant: "destructive", title: "Insufficient Holdings", description: `You only have ${currentHolding?.quantity || 0} shares to sell.` });
        return;
     }
 
     const marketIsOpen = isMarketOpen();
     const executionPrice = getExecutionPrice();
     
-    let slValue: number | undefined;
-    if (isStoplossEnabled) {
-        slValue = stoplossMode === 'PRICE' ? parseFloat(stoplossPrice) : (executionPrice * (1 - (parseFloat(stoplossPercent) / 100)));
+    if ((orderMethod === 'LIMIT' || orderMethod === 'SL') && executionPrice <= 0) {
+        toast({ variant: "destructive", title: "Invalid Price", description: "Price must be greater than zero for Limit/SL orders." });
+        return;
     }
-    let targetValue: number | undefined;
-    if (isTargetEnabled) {
-        targetValue = targetMode === 'PRICE' ? parseFloat(targetPrice) : (executionPrice * (1 + (parseFloat(targetPercent) / 100)));
+     if ((orderMethod === 'SL' || orderMethod === 'SL-M') && (!triggerPrice || parseFloat(triggerPrice) <= 0)) {
+        toast({ variant: "destructive", title: "Invalid Trigger Price", description: "Trigger price is required for SL orders." });
+        return;
     }
-
+    
+    // Block funds for BUY orders immediately
+    if (orderType === 'BUY') {
+        const fundsKey = `funds_${user.id}`;
+        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
+        const newBalance = (fundsData.balance || 0) - requiredFunds;
+        localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+        setAvailableFunds(newBalance);
+    }
 
     const newOrder: Order = {
         id: (isEditing && orderToEdit?.id) ? orderToEdit.id : `order-${Date.now()}`,
         type: orderType,
         ticker,
-        quantity: parseInt(quantity) || 0,
+        quantity: qty,
         filledQuantity: 0,
         limitPrice: executionPrice,
         triggerPrice: parseFloat(triggerPrice) || undefined,
@@ -341,27 +349,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         isAMO: !marketIsOpen,
         product: product,
         orderMethod: orderMethod,
-        price: orderMethod.includes("MARKET") ? stock.price.toString() : price,
         isSellFromHolding: isSellFromHolding,
-        isShortSell: isShortSell,
-        isLong: !isShortSell && !isExitingPosition,
-        executedAt: '',
-        stopLossValue: slValue,
-        targetValue: targetValue,
-    }
-
-    if (newOrder.quantity <= 0) {
-        toast({ variant: "destructive", title: "Invalid Quantity", description: "Quantity must be greater than zero." });
-        return;
-    }
-    if ((orderMethod === 'LIMIT' || orderMethod === 'SL') && newOrder.limitPrice <= 0) {
-        toast({ variant: "destructive", title: "Invalid Price", description: "Price must be greater than zero for Limit/SL orders." });
-        return;
-    }
-     if ((orderMethod === 'SL' || orderMethod === 'SL-M') && (!newOrder.triggerPrice || newOrder.triggerPrice <= 0)) {
-        toast({ variant: "destructive", title: "Invalid Trigger Price", description: "Trigger price is required for SL orders." });
-        return;
-    }
+    };
 
     const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     let updatedOrders;
@@ -384,6 +373,24 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     if (!user || !orderToEdit) return;
     const ordersKey = `orders_${user.id}`;
     let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+
+    // Refund if it was a BUY order
+    if (orderToEdit.type === 'BUY') {
+        const fundsKey = `funds_${user.id}`;
+        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
+        if (fundsData.balance !== undefined) {
+             const orderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
+             const orderMargin = orderToEdit.product === 'MIS' ? orderValue / 5 : orderValue;
+             const orderBrokerage = Math.min(20, orderValue * 0.0003);
+             const orderCharges = orderBrokerage + (orderValue * 0.000345);
+             const fundsToRefund = orderMargin + orderCharges;
+
+            const newBalance = fundsData.balance + fundsToRefund;
+            localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+            setAvailableFunds(newBalance);
+        }
+    }
+
     const updatedOrders = allOrders.map(o => o.id === orderToEdit.id ? { ...o, status: 'Cancelled' } : o);
     localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
     toast({
@@ -403,16 +410,27 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     swipeText = `SWIPE TO EXIT`;
   }
   
-  const entryPrice = getExecutionPrice();
-
   const PageLoader = () => (
     <div className="flex justify-center items-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
     </div>
   )
   
-  const isProductDisabled = (isExitingPosition || isShortSell);
+  const isProductDisabled = useMemo(() => {
+    if (isSellFromHolding) return true; // Always CNC if selling from holding
+    if (isExitingPosition) return true; // Product is determined by existing position
+    if (orderType === 'SELL' && !isExitingPosition && !currentHolding) return true; // Short sell must be MIS
+    return false;
+  }, [isSellFromHolding, isExitingPosition, orderType, currentHolding]);
 
+  // Effect to manage product type constraints
+  useEffect(() => {
+    if (isSellFromHolding) {
+      setProduct('CNC');
+    } else if (isShortSell) {
+      setProduct('MIS');
+    }
+  }, [isSellFromHolding, isShortSell]);
 
   return (
     <div className="flex flex-col h-screen">
@@ -481,8 +499,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                  </div>
               ) : (
                 <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="BUY" disabled={(isExitingPosition) && orderToEdit?.type === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
-                    <TabsTrigger value="SELL" disabled={(isExitingPosition) && orderToEdit?.type === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
+                    <TabsTrigger value="BUY" disabled={isExitingPosition && orderType === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
+                    <TabsTrigger value="SELL" disabled={isExitingPosition && orderType === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
                 </TabsList>
               )}
               <div className="p-4 space-y-6">
@@ -564,62 +582,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                       </RadioGroup>
                   </div>
 
-                  <div className="space-y-4 rounded-lg border p-4">
-                      <div className="flex items-center justify-between">
-                          <Label htmlFor="set-stoploss" className="flex items-center gap-2 cursor-pointer">
-                              <span>Set stoploss</span>
-                              <Info className="h-3 w-3 text-muted-foreground" />
-                          </Label>
-                          <Switch id="set-stoploss" checked={isStoplossEnabled} onCheckedChange={setIsStoplossEnabled} />
-                      </div>
-                      {isStoplossEnabled && (
-                          <div className="space-y-2 animate-in fade-in-50">
-                              <RadioGroup value={stoplossMode} onValueChange={(v) => setStoplossMode(v as StopLossTargetMode)} className="flex gap-2">
-                                <Label htmlFor="sl-percent" className={cn("text-xs", stoplossMode === 'PERCENT' && 'text-primary')}>%</Label>
-                                <RadioGroupItem value="PERCENT" id="sl-percent" className="sr-only"/>
-                                <Switch checked={stoplossMode === 'PRICE'} onCheckedChange={(c) => setStoplossMode(c ? 'PRICE' : 'PERCENT')} />
-                                <Label htmlFor="sl-price" className={cn("text-xs", stoplossMode === 'PRICE' && 'text-primary')}>Price</Label>
-                                <RadioGroupItem value="PRICE" id="sl-price" className="sr-only"/>
-                              </RadioGroup>
-                              <div className="relative">
-                                <Input 
-                                    type="number" 
-                                    value={stoplossMode === 'PERCENT' ? stoplossPercent : stoplossPrice}
-                                    onChange={(e) => stoplossMode === 'PERCENT' ? setStoplossPercent(e.target.value) : setStoplossPrice(e.target.value)}
-                                    placeholder={stoplossMode === 'PERCENT' ? `-2.0 (i.e. ₹${(entryPrice * 0.98).toFixed(2)})` : `${(entryPrice * 0.98).toFixed(2)}`}
-                                />
-                                {stoplossMode === 'PERCENT' && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>}
-                              </div>
-                          </div>
-                      )}
-                      <div className="flex items-center justify-between">
-                          <Label htmlFor="set-target" className="flex items-center gap-2 cursor-pointer">
-                              <span>Set target</span>
-                              <Info className="h-3 w-3 text-muted-foreground" />
-                          </Label>
-                          <Switch id="set-target" checked={isTargetEnabled} onCheckedChange={setIsTargetEnabled} />
-                      </div>
-                      {isTargetEnabled && (
-                           <div className="space-y-2 animate-in fade-in-50">
-                              <RadioGroup value={targetMode} onValueChange={(v) => setTargetMode(v as StopLossTargetMode)} className="flex gap-2">
-                                <Label htmlFor="target-percent" className={cn("text-xs", targetMode === 'PERCENT' && 'text-primary')}>%</Label>
-                                <RadioGroupItem value="PERCENT" id="target-percent" className="sr-only"/>
-                                <Switch checked={targetMode === 'PRICE'} onCheckedChange={(c) => setTargetMode(c ? 'PRICE' : 'PERCENT')} />
-                                <Label htmlFor="target-price" className={cn("text-xs", targetMode === 'PRICE' && 'text-primary')}>Price</Label>
-                                <RadioGroupItem value="PRICE" id="target-price" className="sr-only"/>
-                              </RadioGroup>
-                              <div className="relative">
-                                 <Input 
-                                    type="number" 
-                                    value={targetMode === 'PERCENT' ? targetPercent : targetPrice}
-                                    onChange={(e) => targetMode === 'PERCENT' ? setTargetPercent(e.target.value) : setTargetPrice(e.target.value)}
-                                    placeholder={targetMode === 'PERCENT' ? `4.0 (i.e. ₹${(entryPrice * 1.04).toFixed(2)})` : `${(entryPrice * 1.04).toFixed(2)}`}
-                                />
-                                {targetMode === 'PERCENT' && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">%</span>}
-                              </div>
-                          </div>
-                      )}
-                  </div>
               </div>
           </Tabs>
         </main>

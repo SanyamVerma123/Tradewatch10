@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Order, Portfolio, Stock, Holding } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import {
@@ -69,21 +69,21 @@ export function OrdersClient() {
       setIsLoading(false);
     };
     fetchUser();
-  }, [router]);
+  }, []);
 
   const cancelOrder = useCallback((orderToCancel: Order, reason: string) => {
     if (!user) return;
 
-    // Refund logic for cancelled BUY orders
+    // Refund logic for cancelled BUY orders that were pending
     if (orderToCancel.type === 'BUY' && orderToCancel.status === 'Pending') {
         const fundsKey = `funds_${user.id}`;
         const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         
         if (fundsData.balance !== undefined) {
-            const finalTradeValue = orderToCancel.quantity * orderToCancel.ltp; // Use ltp at time of order
-            const brokerage = Math.min(20, finalTradeValue * 0.0003);
-            const totalCharges = brokerage + (finalTradeValue * 0.000345);
-            const approxMargin = orderToCancel.product === 'MIS' ? finalTradeValue / 5 : finalTradeValue;
+            const tradeValue = orderToCancel.quantity * (orderToCancel.orderMethod === "MARKET" ? orderToCancel.ltp : orderToCancel.limitPrice);
+            const brokerage = Math.min(20, tradeValue * 0.0003);
+            const totalCharges = brokerage + (tradeValue * 0.000345);
+            const approxMargin = orderToCancel.product === 'MIS' ? tradeValue / 5 : tradeValue;
             const blockedFunds = approxMargin + totalCharges;
 
             const newBalance = fundsData.balance + blockedFunds;
@@ -103,41 +103,40 @@ export function OrdersClient() {
             title: "Order Cancelled",
             description: `${orderToCancel.ticker}: ${reason}`,
         });
-        return updatedOrders;
+        return updatedOrders.filter(o => o.id !== orderToCancel.id || o.status !== 'Cancelled');
     });
   }, [toast, user]);
 
 
   const executeOrder = useCallback((orderToExecute: Order, ltp: number) => {
     if (!user) return false;
-    const product = orderToExecute.product || 'CNC';
-    const finalTradeValue = orderToExecute.quantity * ltp;
-    
-    const isIntradayTrade = product === 'MIS';
-    const sttRate = (product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : (isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : 0);
-    const stt = finalTradeValue * sttRate;
-    const brokerage = Math.min(20, finalTradeValue * 0.0003); // 0.03% or Rs 20
-    const otherCharges = finalTradeValue * 0.000345; // Exchange txn, SEBI fees etc.
-    const totalCharges = brokerage + stt + otherCharges;
-    const approxMargin = product === 'MIS' ? finalTradeValue / 5 : finalTradeValue;
-
 
     const fundsKey = `funds_${user.id}`;
     const ordersKey = `orders_${user.id}`;
     const portfolioKey = `portfolioData_${user.id}`;
+
+    const product = orderToExecute.product || 'CNC';
+    const finalTradeValue = orderToExecute.quantity * ltp;
+    const isIntradayTrade = product === 'MIS';
+    
+    // Final funds check before execution
+    const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
+    const approxMargin = isIntradayTrade ? finalTradeValue / 5 : finalTradeValue;
+
+    // This is the crucial pre-execution check.
+    if (orderToExecute.type === 'BUY' && fundsData.balance < 0) { // Balance check after blocking funds
+        cancelOrder(orderToExecute, `Insufficient funds. Required margin: ~₹${approxMargin.toFixed(2)}`);
+        return false;
+    }
+    
+    const sttRate = (product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : (isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : 0);
+    const stt = finalTradeValue * sttRate;
+    const brokerage = Math.min(20, finalTradeValue * 0.0003);
+    const otherCharges = finalTradeValue * 0.000345;
+    const totalCharges = brokerage + stt + otherCharges;
     
     let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     let portfolio: Portfolio = JSON.parse(localStorage.getItem(portfolioKey) || '{ "holdings": [], "positions": [] }');
-
-    // Final funds check before execution
-    const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-    const requiredMargin = approxMargin + totalCharges;
-
-
-    if (orderToExecute.type === 'BUY' && fundsData.balance < requiredMargin) {
-        cancelOrder(orderToExecute, `Insufficient funds. Required: ~₹${(requiredMargin).toFixed(2)}, Available: ₹${fundsData.balance.toFixed(2)}`);
-        return false;
-    }
     
     let realizedPnl: number | undefined = undefined;
     if (orderToExecute.type === 'SELL') {
@@ -151,7 +150,6 @@ export function OrdersClient() {
       } else if (position) {
         buyPrice = position.avgPrice;
       } else {
-        // Fallback for older trades before positions were tracked this way
         const relatedBuyOrders = allOrders
             .filter(o => o.status === 'Executed' && o.type === 'BUY' && o.ticker === orderToExecute.ticker)
             .sort((a, b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime());
@@ -177,13 +175,10 @@ export function OrdersClient() {
         return updatedOrders;
     });
 
-    // Simulate Tax & Fund deduction/addition
-    if (fundsData.balance !== undefined) {
-      let newBalance = executedOrder.type === 'BUY' 
-        ? fundsData.balance - (finalTradeValue + totalCharges)
-        : fundsData.balance + (finalTradeValue - totalCharges);
-        
-      newBalance = Math.max(0, newBalance); // Ensure balance doesn't go below zero
+    // For SELL orders, we add the proceeds to balance. For BUY, it was already deducted on placement.
+    if (fundsData.balance !== undefined && executedOrder.type === 'SELL') {
+      let newBalance = fundsData.balance + (finalTradeValue - totalCharges);
+      newBalance = Math.max(0, newBalance);
 
       localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
     }
