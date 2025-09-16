@@ -332,13 +332,14 @@ export function OrdersClient() {
         setOrders(prevOrders => {
              const ordersWithFreshLtp = prevOrders.map((o: Order) => {
                 if (o.status === 'Pending') {
-                    return {
-                        ...o,
-                        ltp: stockPriceMap.get(o.ticker) || o.ltp,
+                    const newLtp = stockPriceMap.get(o.ticker);
+                    if (newLtp && newLtp !== o.ltp) {
+                      return { ...o, ltp: newLtp };
                     }
                 }
                 return o;
             });
+
             // Only update state if there's a change to prevent re-renders
             if (JSON.stringify(prevOrders) !== JSON.stringify(ordersWithFreshLtp)) {
                return ordersWithFreshLtp;
@@ -506,6 +507,7 @@ export function OrdersClient() {
     
 
     
+
 
 
 
