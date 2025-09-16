@@ -186,9 +186,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
   const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
   
+  const [useStopLoss, setUseStopLoss] = useState(!!orderToEdit?.stopLossValue);
   const [stopLossValue, setStopLossValue] = useState(orderToEdit?.stopLossValue?.toString() || "");
-  const [targetValue, setTargetValue] = useState(orderToEdit?.targetValue?.toString() || "");
   const [stopLossMode, setStopLossMode] = useState<StopLossTargetMode>('PERCENT');
+
+  const [useTarget, setUseTarget] = useState(!!orderToEdit?.targetValue);
+  const [targetValue, setTargetValue] = useState(orderToEdit?.targetValue?.toString() || "");
   const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PERCENT');
 
 
@@ -242,7 +245,6 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       if(portfolioDataText){
           try {
             const storedPortfolio: Portfolio = JSON.parse(portfolioDataText);
-            // Ensure positions is always an array
             if (!storedPortfolio.positions) {
                 storedPortfolio.positions = [];
             }
@@ -368,8 +370,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         product: product,
         orderMethod: orderMethod,
         isSellFromHolding: isSellFromHolding,
-        stopLossValue: parseFloat(stopLossValue) || undefined,
-        targetValue: parseFloat(targetValue) || undefined,
+        stopLossValue: useStopLoss ? (parseFloat(stopLossValue) || undefined) : undefined,
+        targetValue: useTarget ? (parseFloat(targetValue) || undefined) : undefined,
     };
 
     const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
@@ -602,32 +604,43 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                       </RadioGroup>
                   </div>
                     <div className="space-y-4 rounded-lg border p-4">
-                        <h3 className="text-base font-medium">Stoploss &amp; Target</h3>
                         <div className="space-y-4">
-                             <div className="grid grid-cols-2 gap-2 items-end">
-                                <div className="space-y-1">
-                                    <Label htmlFor="stoploss">Stoploss</Label>
-                                    <Input id="stoploss" type="number" placeholder="Optional" value={stopLossValue} onChange={e => setStopLossValue(e.target.value)} />
+                             <div className="flex items-center justify-between">
+                                 <Label htmlFor="stoploss-switch" className="font-medium">Stoploss</Label>
+                                 <Switch id="stoploss-switch" checked={useStopLoss} onCheckedChange={setUseStopLoss} />
+                             </div>
+                            {useStopLoss && (
+                                <div className="grid grid-cols-2 gap-2 items-end animate-in fade-in-50">
+                                    <div className="space-y-1">
+                                        <Input id="stoploss" type="number" placeholder="Set SL" value={stopLossValue} onChange={e => setStopLossValue(e.target.value)} />
+                                    </div>
+                                    <RadioGroup value={stopLossMode} onValueChange={(v) => setStopLossMode(v as StopLossTargetMode)} className="flex h-10 rounded-md border bg-muted p-1">
+                                        <RadioGroupItem value="PRICE" id="sl-price" className="sr-only" />
+                                        <Label htmlFor="sl-price" className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossMode === 'PRICE' && "bg-background shadow-sm")}>₹</Label>
+                                        <RadioGroupItem value="PERCENT" id="sl-percent" className="sr-only" />
+                                        <Label htmlFor="sl-percent" className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossMode === 'PERCENT' && "bg-background shadow-sm")}>%</Label>
+                                    </RadioGroup>
                                 </div>
-                                <RadioGroup value={stopLossMode} onValueChange={(v) => setStopLossMode(v as StopLossTargetMode)} className="flex h-10 rounded-md border bg-muted p-1">
-                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossMode === 'PRICE' && "bg-background shadow-sm")}>₹</Label>
-                                    <RadioGroupItem value="PRICE" id="sl-price" className="sr-only" />
-                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossMode === 'PERCENT' && "bg-background shadow-sm")}>%</Label>
-                                    <RadioGroupItem value="PERCENT" id="sl-percent" className="sr-only" />
-                                </RadioGroup>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 items-end">
-                                <div className="space-y-1">
-                                    <Label htmlFor="target">Target</Label>
-                                    <Input id="target" type="number" placeholder="Optional" value={targetValue} onChange={e => setTargetValue(e.target.value)}/>
+                            )}
+                        </div>
+                         <div className="space-y-4">
+                             <div className="flex items-center justify-between">
+                                <Label htmlFor="target-switch" className="font-medium">Target</Label>
+                                 <Switch id="target-switch" checked={useTarget} onCheckedChange={setUseTarget} />
+                             </div>
+                            {useTarget && (
+                                <div className="grid grid-cols-2 gap-2 items-end animate-in fade-in-50">
+                                    <div className="space-y-1">
+                                        <Input id="target" type="number" placeholder="Set Target" value={targetValue} onChange={e => setTargetValue(e.target.value)}/>
+                                    </div>
+                                    <RadioGroup value={targetMode} onValueChange={(v) => setTargetMode(v as StopLossTargetMode)} className="flex h-10 rounded-md border bg-muted p-1">
+                                        <RadioGroupItem value="PRICE" id="target-price" className="sr-only" />
+                                        <Label htmlFor="target-price" className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", targetMode === 'PRICE' && "bg-background shadow-sm")}>₹</Label>
+                                        <RadioGroupItem value="PERCENT" id="target-percent" className="sr-only" />
+                                        <Label htmlFor="target-percent" className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", targetMode === 'PERCENT' && "bg-background shadow-sm")}>%</Label>
+                                    </RadioGroup>
                                 </div>
-                                 <RadioGroup value={targetMode} onValueChange={(v) => setTargetMode(v as StopLossTargetMode)} className="flex h-10 rounded-md border bg-muted p-1">
-                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", targetMode === 'PRICE' && "bg-background shadow-sm")}>₹</Label>
-                                    <RadioGroupItem value="PRICE" id="target-price" className="sr-only" />
-                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", targetMode === 'PERCENT' && "bg-background shadow-sm")}>%</Label>
-                                    <RadioGroupItem value="PERCENT" id="target-percent" className="sr-only" />
-                                </RadioGroup>
-                            </div>
+                            )}
                         </div>
                     </div>
               </div>
@@ -656,3 +669,5 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
+
+    
