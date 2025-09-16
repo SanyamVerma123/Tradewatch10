@@ -13,6 +13,10 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import yahooFinance from 'yahoo-finance2';
 
+const yahooFinanceOptions = {
+    validateResult: false
+};
+
 // Tool to get recent news for a stock
 const getRecentNewsTool = ai.defineTool(
     {
@@ -29,7 +33,7 @@ const getRecentNewsTool = ai.defineTool(
     },
     async ({ ticker }) => {
         try {
-            const results = await yahooFinance.search(ticker, { newsCount: 5 });
+            const results = await yahooFinance.search(ticker, { newsCount: 5 }, yahooFinanceOptions);
             return results.news;
         } catch (error) {
             console.error('Error fetching news:', error);

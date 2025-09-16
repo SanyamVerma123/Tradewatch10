@@ -6,6 +6,10 @@ import { getStockAnalysis, GetStockAnalysisInput } from "@/ai/flows/stock-analys
 import yahooFinance from 'yahoo-finance2';
 import type { HistoricalHistoryResult } from 'yahoo-finance2/dist/esm/src/modules/historical';
 
+const yahooFinanceOptions = {
+    validateResult: false
+};
+
 export async function getPriceAlertSuggestions(watchlist: { ticker: string; currentPrice: number }[]) {
   try {
     const input: SuggestPriceAlertsInput = { watchlist };
@@ -35,7 +39,7 @@ export async function getStockData(tickers: string[]) {
         return [];
     }
     try {
-        const results = await yahooFinance.quote(tickers);
+        const results = await yahooFinance.quote(tickers, {}, yahooFinanceOptions);
         return results.map(stock => ({
             ticker: stock.symbol,
             name: stock.longName || stock.shortName || 'N/A',
@@ -100,7 +104,7 @@ export async function getHistoricalData(ticker: string, period: '5d' | '1mo' | '
       period1: startDate.toISOString().split('T')[0],
       period2: today.toISOString().split('T')[0],
       interval: interval,
-    });
+    }, yahooFinanceOptions);
     return result;
   } catch (error) {
     console.error(`Error fetching historical data for ${ticker} (${period}):`, error);
@@ -113,7 +117,7 @@ export async function searchStocks(query: string) {
         return [];
     }
     try {
-        const searchResult = await yahooFinance.search(query, { newsCount: 0 });
+        const searchResult = await yahooFinance.search(query, { newsCount: 0 }, yahooFinanceOptions);
         return searchResult.quotes.filter(q => q.symbol && (q.exchange.includes('NMS') || q.exchange.includes('NYQ') || q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO'))).map(stock => ({
             ticker: stock.symbol,
             name: stock.longname || stock.shortname || stock.symbol,
