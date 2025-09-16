@@ -505,14 +505,3 @@ export function OrdersClient() {
     </div>
   );
 }
-
-    
-
-    
-
-
-
-
-
-
-
