@@ -291,10 +291,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const isShortSell = useMemo(() => orderType === 'SELL' && !isSellFromHolding && !currentPosition && !currentHolding, [orderType, isSellFromHolding, currentPosition, currentHolding]);
 
   const maxSellQuantity = useMemo(() => {
-      if(isSellFromHolding) return currentHolding?.quantity || 0;
-      if(isExitingPosition && currentPosition) return Math.abs(currentPosition.quantity);
-      return 10000;
-  }, [isSellFromHolding, isExitingPosition, currentHolding, currentPosition]);
+    const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
+    const positionQty = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
+    return holdingQty + positionQty;
+  }, [portfolio.holdings, portfolio.positions, ticker]);
 
 
   const handlePlaceOrder = () => {
@@ -312,8 +312,8 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       return;
     }
     
-    if (orderType === 'SELL' && product === 'CNC' && qty > (currentHolding?.quantity || 0)) {
-       toast({ variant: "destructive", title: "Insufficient Holdings", description: `You only have ${currentHolding?.quantity || 0} shares to sell.` });
+    if (orderType === 'SELL' && qty > maxSellQuantity && !isShortSell) {
+       toast({ variant: "destructive", title: "Insufficient Holdings", description: `You only have ${maxSellQuantity} shares to sell.` });
        return;
     }
 
@@ -521,7 +521,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                   <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
-                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} max={orderType === 'SELL' ? maxSellQuantity : undefined} />
+                          <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
                           {orderType === 'SELL' && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
                           {orderType === 'BUY' && <p className="text-xs text-muted-foreground">Lot size 1</p>}
                       </div>
