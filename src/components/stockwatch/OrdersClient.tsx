@@ -269,41 +269,33 @@ export function OrdersClient() {
 
 
     const checkPendingOrders = async () => {
-        // Use the state `orders` which is the single source of truth now
-        const pendingOrders = orders.filter((o:Order) => o.status === 'Pending');
+      setOrders(currentOrders => {
+        const pendingOrders = currentOrders.filter((o:Order) => o.status === 'Pending');
 
         if (pendingOrders.length === 0) {
-            return;
+            return currentOrders;
         }
 
         const marketIsOpen = isMarketOpen();
         if (!marketIsOpen) {
-            return;
+            return currentOrders;
         }
 
-        const tickers = [...new Set(pendingOrders.map((o: Order) => o.ticker))];
-        const stockData = await getStockData(tickers);
-        const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
+        (async () => {
+            const tickers = [...new Set(pendingOrders.map((o: Order) => o.ticker))];
+            const stockData = await getStockData(tickers);
+            const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
 
-        for (const order of pendingOrders) {
-            const ltp = stockPriceMap.get(order.ticker);
-            if (ltp === undefined) continue;
+            for (const order of pendingOrders) {
+                const ltp = stockPriceMap.get(order.ticker);
+                if (ltp === undefined) continue;
 
-            let shouldExecute = false;
-            let executionPrice = ltp; 
+                let shouldExecute = false;
+                let executionPrice = ltp; 
 
-            if (order.isAMO) {
-                shouldExecute = true; 
-            } else if (order.orderMethod === "LIMIT") {
-                if (order.type === 'BUY' && ltp <= order.limitPrice) {
-                    shouldExecute = true;
-                    executionPrice = Math.min(order.limitPrice, ltp);
-                } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
-                    shouldExecute = true;
-                    executionPrice = Math.max(order.limitPrice, ltp);
-                }
-            } else if(order.orderMethod === "SL") {
-                 if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                if (order.isAMO) {
+                    shouldExecute = true; 
+                } else if (order.orderMethod === "LIMIT") {
                     if (order.type === 'BUY' && ltp <= order.limitPrice) {
                         shouldExecute = true;
                         executionPrice = Math.min(order.limitPrice, ltp);
@@ -311,47 +303,57 @@ export function OrdersClient() {
                         shouldExecute = true;
                         executionPrice = Math.max(order.limitPrice, ltp);
                     }
-                 }
-            } else if(order.orderMethod === "SL-M") {
-                if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                } else if(order.orderMethod === "SL") {
+                     if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                        if (order.type === 'BUY' && ltp <= order.limitPrice) {
+                            shouldExecute = true;
+                            executionPrice = Math.min(order.limitPrice, ltp);
+                        } else if (order.type === 'SELL' && ltp >= order.limitPrice) {
+                            shouldExecute = true;
+                            executionPrice = Math.max(order.limitPrice, ltp);
+                        }
+                     }
+                } else if(order.orderMethod === "SL-M") {
+                    if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                        shouldExecute = true;
+                    }
+                } else if (order.orderMethod === "MARKET") {
                     shouldExecute = true;
                 }
-            } else if (order.orderMethod === "MARKET") {
-                shouldExecute = true;
+                
+                if (shouldExecute) {
+                    executeOrder(order, executionPrice);
+                }
             }
             
-            if (shouldExecute) {
-                // executeOrder now returns false if it fails (e.g. funds)
-                // if it fails, the order status is already updated to 'Cancelled' inside executeOrder
-                // so the loop will not pick it up again.
-                executeOrder(order, executionPrice);
-            }
-        }
-        
-        // Update LTP for pending orders without executing
-        setOrders(prevOrders => {
-             const ordersWithFreshLtp = prevOrders.map((o: Order) => {
-                if (o.status === 'Pending') {
-                    const newLtp = stockPriceMap.get(o.ticker);
-                    if (newLtp && newLtp !== o.ltp) {
-                      return { ...o, ltp: newLtp };
+            // Update LTP for pending orders without executing, using functional update
+            setOrders(prevOrders => {
+                 const ordersWithFreshLtp = prevOrders.map((o: Order) => {
+                    if (o.status === 'Pending') {
+                        const newLtp = stockPriceMap.get(o.ticker);
+                        if (newLtp && newLtp !== o.ltp) {
+                          return { ...o, ltp: newLtp };
+                        }
                     }
-                }
-                return o;
-            });
+                    return o;
+                });
 
-            // Only update state if there's a change to prevent re-renders
-            if (JSON.stringify(prevOrders) !== JSON.stringify(ordersWithFreshLtp)) {
-               return ordersWithFreshLtp;
-            }
-            return prevOrders;
-        });
+                // Only update state if there's a real change to prevent re-renders
+                if (JSON.stringify(prevOrders) !== JSON.stringify(ordersWithFreshLtp)) {
+                   return ordersWithFreshLtp;
+                }
+                return prevOrders;
+            });
+        })();
+
+        return currentOrders; // Return current state immediately
+      });
     };
 
     const interval = setInterval(checkPendingOrders, 5000);
 
     return () => clearInterval(interval);
-  }, [executeOrder, orders, user]);
+  }, [executeOrder, user]);
 
   const handleEditClick = (order: Order) => {
     if (order.status === 'Pending') {
@@ -507,6 +509,7 @@ export function OrdersClient() {
     
 
     
+
 
 
 
