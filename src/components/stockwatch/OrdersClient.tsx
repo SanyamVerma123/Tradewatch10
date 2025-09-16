@@ -90,9 +90,7 @@ export function OrdersClient() {
     const product = orderToExecute.product || 'CNC';
     const finalTradeValue = orderToExecute.quantity * ltp;
     
-    // Correct tax simulation
     const isIntradayTrade = product === 'MIS';
-    // For CNC Buy, STT is 0. For CNC Sell, it's 0.1%. For MIS Sell, it's 0.025%.
     const sttRate = (product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : (isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : 0);
     const stt = finalTradeValue * sttRate;
     const brokerage = Math.min(20, finalTradeValue * 0.0003); // 0.03% or Rs 20
@@ -109,12 +107,10 @@ export function OrdersClient() {
 
     // Final funds check before execution
     const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-    if (orderToExecute.type === 'BUY' && fundsData.balance < finalTradeValue + totalCharges) {
-        toast({
-            variant: "destructive",
-            title: "Insufficient Funds on Execution",
-            description: `Required: ~₹${(finalTradeValue + totalCharges).toFixed(2)}. Available: ₹${fundsData.balance.toFixed(2)}.`,
-        });
+    const requiredMargin = isIntradayTrade ? finalTradeValue / 5 : finalTradeValue;
+
+    if (orderToExecute.type === 'BUY' && fundsData.balance < requiredMargin + totalCharges) {
+        cancelOrder(orderToExecute, `Insufficient funds. Required: ~₹${(requiredMargin + totalCharges).toFixed(2)}, Available: ₹${fundsData.balance.toFixed(2)}`);
         return;
     }
     
@@ -512,6 +508,7 @@ export function OrdersClient() {
     
 
     
+
 
 
 
