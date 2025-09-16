@@ -53,20 +53,26 @@ export function FundsClient() {
         localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
       }
 
-      const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem(`portfolioData_${sbUser.id}`) || "null");
-      
-      if (portfolioData) {
-          const holdingsInvested = portfolioData.holdings.reduce((acc, h) => acc + h.investedValue, 0);
-          const holdingsCurrentValue = portfolioData.holdings.reduce((acc, h) => acc + (h.ltp * h.quantity), 0);
-          const positionsPnl = (portfolioData.positions || []).reduce((acc, p) => acc + p.pnl, 0);
-
-          const totalInvestedVal = holdingsInvested;
-          const totalCurrentVal = holdingsCurrentValue + positionsPnl;
-
-          setTotalInvested(totalInvestedVal);
-          setCurrentValue(totalCurrentVal);
-          setPnl(totalCurrentVal - totalInvestedVal);
+      // This logic will be simplified, as the portfolio data fetching now happens in PortfolioClient
+      // We will listen to storage changes to get the latest portfolio summary
+      const portfolioKey = `portfolioData_${sbUser.id}`;
+      const updateDataFromPortfolio = () => {
+        const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem(portfolioKey) || "null");
+        if (portfolioData) {
+            setTotalInvested(portfolioData.investedValue);
+            setCurrentValue(portfolioData.currentValue);
+            setPnl(portfolioData.totalPnl);
+        }
       }
+      
+      updateDataFromPortfolio();
+      
+      window.addEventListener('storage', (event) => {
+        if(event.key === portfolioKey){
+            updateDataFromPortfolio();
+        }
+      });
+      
       setIsLoading(false);
     };
 

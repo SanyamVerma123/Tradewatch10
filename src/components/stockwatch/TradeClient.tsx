@@ -42,7 +42,6 @@ interface TradeClientProps {
   orderToEdit?: Order;
 }
 
-type OrderType = "BUY" | "SELL";
 type StopLossTargetMode = 'PERCENT' | 'PRICE';
 
 const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: () => void, orderType: OrderType, disabled?: boolean, buttonText: string }) => {
@@ -136,6 +135,8 @@ const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: ()
     );
 };
 
+type OrderType = "BUY" | "SELL";
+
 function isMarketOpen() {
     const now = new Date();
     const istOffset = 330; 
@@ -187,7 +188,9 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   
   const [stopLossValue, setStopLossValue] = useState(orderToEdit?.stopLossValue?.toString() || "");
   const [targetValue, setTargetValue] = useState(orderToEdit?.targetValue?.toString() || "");
-  const [stopLossTargetMode, setStopLossTargetMode] = useState<StopLossTargetMode>('PERCENT');
+  const [stopLossMode, setStopLossMode] = useState<StopLossTargetMode>('PERCENT');
+  const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PERCENT');
+
 
   const isSellFromHolding = useMemo(() => orderToEdit?.isSellFromHolding, [orderToEdit]);
   const initialProduct = useMemo(() => orderToEdit?.product || (orderToEdit?.isShortSell ? 'MIS' : (orderToEdit?.isLong ? 'CNC' : 'MIS')), [orderToEdit]);
@@ -238,8 +241,12 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
       const portfolioDataText = localStorage.getItem(`portfolioData_${sbUser.id}`);
       if(portfolioDataText){
           try {
-            const portfolioData: Portfolio = JSON.parse(portfolioDataText);
-            setPortfolio(portfolioData);
+            const storedPortfolio: Portfolio = JSON.parse(portfolioDataText);
+            // Ensure positions is always an array
+            if (!storedPortfolio.positions) {
+                storedPortfolio.positions = [];
+            }
+            setPortfolio(storedPortfolio);
           } catch(e) {
             console.error("Failed to parse portfolio data", e)
           }
@@ -300,7 +307,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
     const positionQty = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
     return holdingQty + positionQty;
-}, [portfolio.holdings, portfolio.positions, ticker, orderToEdit]);
+}, [portfolio, ticker, orderToEdit]);
 
 
   const handlePlaceOrder = () => {
@@ -597,15 +604,15 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                     <div className="space-y-4 rounded-lg border p-4">
                         <h3 className="text-base font-medium">Stoploss &amp; Target</h3>
                         <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-2 items-end">
+                             <div className="grid grid-cols-2 gap-2 items-end">
                                 <div className="space-y-1">
                                     <Label htmlFor="stoploss">Stoploss</Label>
                                     <Input id="stoploss" type="number" placeholder="Optional" value={stopLossValue} onChange={e => setStopLossValue(e.target.value)} />
                                 </div>
-                                <RadioGroup value={stopLossTargetMode} onValueChange={(v) => setStopLossTargetMode(v as StopLossTargetMode)} className="flex h-10 rounded-md border bg-muted p-1">
-                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossTargetMode === 'PRICE' && "bg-background shadow-sm")}>₹</Label>
+                                <RadioGroup value={stopLossMode} onValueChange={(v) => setStopLossMode(v as StopLossTargetMode)} className="flex h-10 rounded-md border bg-muted p-1">
+                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossMode === 'PRICE' && "bg-background shadow-sm")}>₹</Label>
                                     <RadioGroupItem value="PRICE" id="sl-price" className="sr-only" />
-                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossTargetMode === 'PERCENT' && "bg-background shadow-sm")}>%</Label>
+                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossMode === 'PERCENT' && "bg-background shadow-sm")}>%</Label>
                                     <RadioGroupItem value="PERCENT" id="sl-percent" className="sr-only" />
                                 </RadioGroup>
                             </div>
@@ -614,10 +621,10 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
                                     <Label htmlFor="target">Target</Label>
                                     <Input id="target" type="number" placeholder="Optional" value={targetValue} onChange={e => setTargetValue(e.target.value)}/>
                                 </div>
-                                <RadioGroup value={stopLossTargetMode} onValueChange={(v) => setStopLossTargetMode(v as StopLossTargetMode)} className="flex h-10 rounded-md border bg-muted p-1">
-                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossTargetMode === 'PRICE' && "bg-background shadow-sm")}>₹</Label>
+                                 <RadioGroup value={targetMode} onValueChange={(v) => setTargetMode(v as StopLossTargetMode)} className="flex h-10 rounded-md border bg-muted p-1">
+                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", targetMode === 'PRICE' && "bg-background shadow-sm")}>₹</Label>
                                     <RadioGroupItem value="PRICE" id="target-price" className="sr-only" />
-                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", stopLossTargetMode === 'PERCENT' && "bg-background shadow-sm")}>%</Label>
+                                    <Label className={cn("flex-1 text-center text-sm cursor-pointer rounded-sm transition-colors", targetMode === 'PERCENT' && "bg-background shadow-sm")}>%</Label>
                                     <RadioGroupItem value="PERCENT" id="target-percent" className="sr-only" />
                                 </RadioGroup>
                             </div>
@@ -649,5 +656,3 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
     </div>
   );
 }
-
-    

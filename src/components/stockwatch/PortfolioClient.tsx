@@ -149,7 +149,7 @@ export function PortfolioClient() {
 
     
     // 2. Calculate Today's Positions & P&L
-    let positionsDayPnl = 0;
+    let realizedDayPnl = 0;
     let misMarginUsed = 0;
     const positionMap: { [compositeKey: string]: Position } = {};
     
@@ -157,7 +157,6 @@ export function PortfolioClient() {
         const ltp = newStocksMap[order.ticker]?.price || order.ltp;
         const product = order.product || 'MIS';
         
-        // Use composite key to separate MIS and CNC positions
         const compositeKey = `${order.ticker}-${product}`;
         
         let p = positionMap[compositeKey];
@@ -174,30 +173,29 @@ export function PortfolioClient() {
         p.ltp = ltp;
         const tradeValue = order.ltp * order.quantity;
         const currentNetQuantity = p.quantity;
+        const tradeSign = order.type === 'BUY' ? 1 : -1;
 
-        // If it's a sell from holding, it should not be in positions
-        if(order.isSellFromHolding) {
-            // But we need to account for the P&L from this sell for Day's P&L
+        if (order.isSellFromHolding) {
             const holding = pastHoldings.find(h => h.ticker === order.ticker);
             if(holding) {
-                positionsDayPnl += (order.ltp - holding.avgPrice) * order.quantity;
+                realizedDayPnl += (order.ltp - holding.avgPrice) * order.quantity;
             }
             continue;
         };
 
-        if (Math.sign(order.quantity * (order.type === 'BUY' ? 1 : -1)) === Math.sign(currentNetQuantity) || currentNetQuantity === 0) {
-            // Same direction, so average out
-            const currentAbsQty = Math.abs(currentNetQuantity);
-            const newTotalValue = (p.avgPrice * currentAbsQty) + tradeValue;
-            p.quantity += order.quantity * (order.type === 'BUY' ? 1 : -1);
+        if (Math.sign(tradeSign) === Math.sign(currentNetQuantity) || currentNetQuantity === 0) {
+            // Averaging: trade in the same direction
+            const newTotalValue = (p.avgPrice * Math.abs(currentNetQuantity)) + tradeValue;
+            p.quantity += order.quantity * tradeSign;
             p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
         } else {
-             // Opposite direction, square off
+             // Closing/Reversing: trade in the opposite direction
              const qtyToSquareOff = Math.min(Math.abs(currentNetQuantity), order.quantity);
-             positionsDayPnl += (order.ltp - p.avgPrice) * qtyToSquareOff * Math.sign(currentNetQuantity) * -1;
-             p.quantity += order.quantity * (order.type === 'BUY' ? 1 : -1);
-             // If position flips from long to short or vice-versa, the avg price for the new leg is the price of the flipping trade
+             realizedDayPnl += (order.ltp - p.avgPrice) * qtyToSquareOff * -Math.sign(currentNetQuantity);
+             p.quantity += order.quantity * tradeSign;
+             
              if (Math.sign(p.quantity) !== Math.sign(currentNetQuantity)) {
+                // Position has flipped (e.g., from long to short)
                 p.avgPrice = order.ltp;
             }
         }
@@ -207,8 +205,8 @@ export function PortfolioClient() {
 
     updatedPositions.forEach(p => {
         p.type = p.quantity > 0 ? 'BUY' : (p.quantity < 0 ? 'SELL' : 'CLOSED');
-        const pnl = (p.ltp - p.avgPrice) * p.quantity;
-        p.pnl = pnl; // this is unrealized P&L for open positions
+        const unrealizedPnl = (p.ltp - p.avgPrice) * p.quantity;
+        p.pnl = unrealizedPnl;
 
         const netQty = Math.abs(p.quantity);
         let investedValueForPos = p.avgPrice * netQty;
@@ -224,10 +222,9 @@ export function PortfolioClient() {
         const liveData = newStocksMap[p.ticker];
         p.dayChange = liveData?.change || 0;
         p.dayChangePercent = liveData?.changePercent || 0;
-        p.pnlPercent = p.investedValue > 0 && Math.abs(p.quantity) > 0.001 ? (pnl / p.investedValue) * 100 : 0;
+        p.pnlPercent = p.investedValue > 0 && Math.abs(p.quantity) > 0.001 ? (unrealizedPnl / p.investedValue) * 100 : 0;
     });
     
-    // Add unrealized P&L from open positions to day's P&L
     const openPositionsUnrealizedPnl = updatedPositions.reduce((acc, p) => acc + p.pnl, 0);
 
 
@@ -267,9 +264,8 @@ export function PortfolioClient() {
                     title: "Auto Square-Off",
                     description: `Your open intraday positions have been automatically closed as the market is now closed.`
                 });
-                // Recalculate everything after adding new orders
                 updatePortfolioData(isSilent);
-                return; // Exit to avoid setting state with old data
+                return;
             }
         }
     }
@@ -285,10 +281,11 @@ export function PortfolioClient() {
     const totalHoldingsInvested = pastHoldings.reduce((acc, h) => acc + (h.avgPrice * h.quantity), 0);
     const totalHoldingsCurrentValue = pastHoldings.reduce((acc, h) => acc + ((newStocksMap[h.ticker]?.price || h.ltp) * h.quantity), 0);
     
-    const dayPnl = holdingsDayPnl + positionsDayPnl + openPositionsUnrealizedPnl;
-    const totalInvested = totalHoldingsInvested; // Only from holdings
-    const totalCurrentValue = totalHoldingsCurrentValue + positionsDayPnl + openPositionsUnrealizedPnl;
-    const totalPnl = (totalHoldingsCurrentValue - totalHoldingsInvested) + positionsDayPnl + openPositionsUnrealizedPnl;
+    const dayPnl = holdingsDayPnl + realizedDayPnl + openPositionsUnrealizedPnl;
+    const totalInvested = totalHoldingsInvested;
+    const totalHoldingsPnl = totalHoldingsCurrentValue - totalHoldingsInvested;
+    const totalPnl = totalHoldingsPnl + realizedDayPnl + openPositionsUnrealizedPnl;
+    const currentValue = totalHoldingsCurrentValue + realizedDayPnl + openPositionsUnrealizedPnl;
     
     const finalHoldings = pastHoldings.map(h => {
         const liveData = newStocksMap[h.ticker];
@@ -308,18 +305,29 @@ export function PortfolioClient() {
         };
     }).filter(h => h.quantity > 0);
 
+    // Store the calculated realized PnL in the order itself
+    allOrders.forEach(order => {
+        if (order.status === 'Executed' && order.type === 'SELL') {
+            const pos = updatedPositions.find(p => p.ticker === order.ticker && p.product === order.product);
+            if (pos && order.realizedPnl === undefined) {
+                 order.realizedPnl = realizedDayPnl;
+            }
+        }
+    });
+    localStorage.setItem(ordersKey, JSON.stringify(allOrders));
+
 
     localStorage.setItem(portfolioKey, JSON.stringify({ holdings: finalHoldings }));
 
     const newPortfolio: Portfolio = {
       investedValue: totalInvested,
-      currentValue: totalHoldingsCurrentValue + totalPnl,
+      currentValue: currentValue,
       totalPnl: totalPnl,
       totalPnlPercent: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0,
       dayPnl: dayPnl,
       dayPnlPercent: (totalInvested + misMarginUsed) > 0 ? (dayPnl / (totalInvested + misMarginUsed)) * 100 : 0,
       holdings: finalHoldings,
-      positions: updatedPositions.filter(p => Math.abs(p.quantity) > 0.001), // Only show open positions
+      positions: updatedPositions.filter(p => Math.abs(p.quantity) > 0.001),
     };
 
     setPortfolio(newPortfolio);
