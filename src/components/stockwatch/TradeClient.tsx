@@ -38,7 +38,6 @@ import {
 
 interface TradeClientProps {
   ticker: string;
-  initialStock: Stock;
   orderToEdit?: Order;
 }
 
@@ -174,10 +173,10 @@ async function showOrderNotification(ticker: string) {
 }
 
 
-export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientProps) {
+export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const router = useRouter();
   const { toast } = useToast();
-  const [stock, setStock] = useState<Stock | null>(initialStock);
+  const [stock, setStock] = useState<Stock | null>(null);
   const [availableFunds, setAvailableFunds] = useState(0);
   const [user, setUser] = useState<User | null>(null);
 
@@ -192,7 +191,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
 
   const [useTarget, setUseTarget] = useState(!!orderToEdit?.targetValue);
   const [targetValue, setTargetValue] = useState(orderToEdit?.targetValue?.toString() || "");
-  const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PERCENT');
+  const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PRICE');
 
 
   const isSellFromHolding = useMemo(() => orderToEdit?.isSellFromHolding, [orderToEdit]);
@@ -202,7 +201,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
   const [product, setProduct] = useState(initialProduct.toUpperCase());
   const [orderMethod, setOrderMethod] = useState(initialOrderMethod.toUpperCase());
   
-  const [isStockLoading, setIsStockLoading] = useState(false);
+  const [isStockLoading, setIsStockLoading] = useState(true);
   
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
@@ -262,18 +261,16 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
         setProduct(orderToEdit.product?.toUpperCase() || (orderToEdit.isShortSell ? 'MIS' : (orderToEdit.isLong ? 'CNC' : 'MIS')));
         setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
         setQuantity(orderToEdit.quantity?.toString() || "1");
-        setPrice(orderToEdit.limitPrice?.toString() || initialStock?.price?.toFixed(2) || "");
+        setPrice(orderToEdit.limitPrice?.toString() || stock?.price?.toFixed(2) || "");
         setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
     }
-  }, [orderToEdit, router, initialStock?.price]);
+  }, [orderToEdit, router, stock?.price]);
 
   useEffect(() => {
-    if (!initialStock) {
-        fetchStock();
-    }
+    fetchStock();
     const interval = setInterval(() => fetchStock(true), 2000);
     return () => clearInterval(interval);
-  }, [fetchStock, initialStock]);
+  }, [fetchStock]);
   
   const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
   
@@ -504,7 +501,7 @@ export function TradeClient({ ticker, initialStock, orderToEdit }: TradeClientPr
             )}
         </header>
 
-        {(!stock || (isStockLoading && !stock)) ? <PageLoader /> : (
+        {(isStockLoading && !stock) ? <PageLoader /> : (
              <div className="px-4 my-4 flex items-baseline gap-x-2">
                 <p className="text-2xl font-bold">₹{stock?.price.toFixed(2)}</p>
                 <p className={cn("font-semibold text-base", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
