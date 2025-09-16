@@ -28,9 +28,9 @@ export function FundsClient() {
   const router = useRouter();
   const { toast } = useToast();
   const [funds, setFunds] = useState<FundsData | null>(null);
-  const [pnl, setPnl] = useState(0);
-  const [totalInvested, setTotalInvested] = useState(0);
-  const [currentValue, setCurrentValue] = useState(0);
+  const [pnl, setPnl] = useState<number>(0);
+  const [totalInvested, setTotalInvested] = useState<number>(0);
+  const [currentValue, setCurrentValue] = useState<number>(0);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -53,27 +53,31 @@ export function FundsClient() {
         localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
       }
 
-      // This logic will be simplified, as the portfolio data fetching now happens in PortfolioClient
-      // We will listen to storage changes to get the latest portfolio summary
       const portfolioKey = `portfolioData_${sbUser.id}`;
       const updateDataFromPortfolio = () => {
         const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem(portfolioKey) || "null");
         if (portfolioData) {
-            setTotalInvested(portfolioData.investedValue);
-            setCurrentValue(portfolioData.currentValue);
-            setPnl(portfolioData.totalPnl);
+            setTotalInvested(portfolioData.investedValue || 0);
+            setCurrentValue(portfolioData.currentValue || 0);
+            setPnl(portfolioData.totalPnl || 0);
         }
       }
       
       updateDataFromPortfolio();
       
-      window.addEventListener('storage', (event) => {
+      const handleStorageChange = (event: StorageEvent) => {
         if(event.key === portfolioKey){
             updateDataFromPortfolio();
         }
-      });
+      };
+
+      window.addEventListener('storage', handleStorageChange);
       
       setIsLoading(false);
+
+      return () => {
+        window.removeEventListener('storage', handleStorageChange);
+      };
     };
 
     fetchUserAndData();
