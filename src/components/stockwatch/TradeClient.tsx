@@ -201,7 +201,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [portfolio, setPortfolio] = useState<Portfolio>({ holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 });
 
   // One-time setup effect for form state from props
-  useEffect(() => {
+useEffect(() => {
     const initializeData = async () => {
         const { data: { user: sbUser }, error } = await supabase.auth.getUser();
         if (error || !sbUser) {
@@ -214,11 +214,8 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         setAvailableFunds(fundsData.balance || 0);
         
         let localPortfolio: Portfolio = { holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 };
-        const portfolioDataKey = `portfolioData_${sbUser.id}`;
         const ordersKey = `orders_${sbUser.id}`;
         
-        // This is a simplified reconstruction of the portfolio from orders for max quantity check
-        // In a real app this logic would be much more robust and likely server-side
         try {
             const allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
             const executedOrders = allOrders.filter(o => o.status === 'Executed');
@@ -278,6 +275,8 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                         const position = localPortfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit.product);
                         setQuantity(position ? Math.abs(position.quantity).toString() : "1");
                    }
+                } else if (orderToEdit.isAdding) {
+                    setQuantity("1");
                 } else {
                    setQuantity(orderToEdit.quantity?.toString() || "1");
                 }
@@ -296,7 +295,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
 
     initializeData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker]); 
+  }, [ticker]);
 
 
   const fetchStock = useCallback(async () => {
@@ -327,6 +326,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const isEditing = !!orderToEdit?.id && !orderToEdit.isExit && !orderToEdit.isAdding;
   const isExiting = !!orderToEdit?.isExit;
   const isAdding = !!orderToEdit?.isAdding;
+  const isNewTrade = !isEditing && !isExiting && !isAdding;
 
   const getExecutionPrice = useCallback(() => {
     if (orderMethod.includes('MARKET')) {
@@ -342,23 +342,13 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const requiredFunds = approxMargin + totalCharges;
   
   const maxSellQuantity = useMemo(() => {
-    if (!portfolio) return 0;
+    if (!portfolio || orderType !== 'SELL') return 0;
     
-    // For short positions, max quantity to buy back is the position quantity
-    if (orderType === 'BUY' && isExiting) {
-        const position = portfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit?.product);
-        return position ? Math.abs(position.quantity) : 0;
-    }
+    const holdingQty = portfolio.holdings.find(h => h.ticker === ticker)?.quantity || 0;
+    const positionQty = portfolio.positions.find(p => p.ticker === ticker && p.product === 'MIS' && p.quantity > 0)?.quantity || 0;
 
-    // For long positions, max quantity to sell is sum of holdings and positions
-    if (orderType === 'SELL') {
-      const holdingQty = portfolio.holdings.find(h => h.ticker === ticker)?.quantity || 0;
-      const positionQty = portfolio.positions.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
-      return holdingQty + positionQty;
-    }
-
-    return 0; // Not a sell order or not exiting a short position
-}, [portfolio, ticker, orderType, isExiting, orderToEdit?.product]);
+    return holdingQty + positionQty;
+}, [portfolio, ticker, orderType]);
 
 
   const handlePlaceOrder = () => {
@@ -593,9 +583,9 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
 
                   <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                          <Label htmlFor="quantity">Quantity</Label>
+                          <Label htmlFor="quantity">{orderType === 'BUY' && isNewTrade ? 'Lot Size' : 'Quantity'}</Label>
                           <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                           <p className="text-xs text-muted-foreground">Available: {orderType === 'BUY' ? 'N/A' : maxSellQuantity}</p>
+                           {orderType === 'SELL' && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>

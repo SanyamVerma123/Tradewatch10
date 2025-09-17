@@ -92,7 +92,7 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
         if(isOpen && stock) {
             fetchHistorical();
         }
-    }, [isOpen, stock, fetchHistorical]);
+    }, [isOpen, stock?.ticker, fetchHistorical]);
 
     if (!stock) return null;
 
