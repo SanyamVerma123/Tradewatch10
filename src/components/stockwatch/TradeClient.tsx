@@ -180,12 +180,12 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [user, setUser] = useState<User | null>(null);
   
   // State for form inputs
-  const [orderType, setOrderType] = useState<OrderType>("BUY");
-  const [quantity, setQuantity] = useState("");
-  const [price, setPrice] = useState("");
-  const [triggerPrice, setTriggerPrice] = useState("");
-  const [product, setProduct] = useState("MIS");
-  const [orderMethod, setOrderMethod] = useState("LIMIT");
+  const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
+  const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
+  const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
+  const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
+  const [product, setProduct] = useState(orderToEdit?.product || "MIS");
+  const [orderMethod, setOrderMethod] = useState(orderToEdit?.orderMethod?.toUpperCase() || "LIMIT");
   
   const [useStopLoss, setUseStopLoss] = useState(false);
   const [stopLossValue, setStopLossValue] = useState("");
@@ -202,47 +202,50 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
 
   // One-time setup effect for form state from props
   useEffect(() => {
-    const initializeState = async () => {
+    const initializeData = async () => {
         const { data: { user: sbUser }, error } = await supabase.auth.getUser();
         if (error || !sbUser) {
             router.replace('/');
             return;
         }
         setUser(sbUser);
-            
+
         const fundsData = JSON.parse(localStorage.getItem(`funds_${sbUser.id}`) || '{}');
         setAvailableFunds(fundsData.balance || 0);
 
         const portfolioDataText = localStorage.getItem(`portfolioData_${sbUser.id}`);
-        if(portfolioDataText){
+        if (portfolioDataText) {
             try {
                 const storedPortfolio: Portfolio = JSON.parse(portfolioDataText);
                 setPortfolio(storedPortfolio || { holdings: [], positions: [] });
-            } catch(e) {
+            } catch (e) {
                 console.error("Failed to parse portfolio data", e);
             }
         }
         
         const data = await getStockData([ticker]);
         if (data && data.length > 0) {
-            setStock(data[0]);
-             if (orderToEdit) {
+            const fetchedStock = data[0];
+            setStock(fetchedStock);
+            // Set initial state from orderToEdit or defaults only once
+            if (orderToEdit) {
                 setOrderType(orderToEdit.type || "BUY");
                 setProduct(orderToEdit.product || "MIS");
                 setQuantity(orderToEdit.quantity?.toString() || "1");
-                setPrice(orderToEdit.limitPrice?.toString() || data[0].price.toFixed(2));
+                setPrice(orderToEdit.limitPrice?.toString() || fetchedStock.price.toFixed(2));
                 setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
                 setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
             } else {
-                 setPrice(data[0].price.toFixed(2));
-                 setQuantity("1");
+                setPrice(fetchedStock.price.toFixed(2));
+                setQuantity("1");
             }
         }
+        
         setIsDataInitialized(true);
     };
 
-    initializeState();
-  }, []); // <-- Empty dependency array means this runs ONLY ONCE on mount
+    initializeData();
+  }, [ticker]); // This effect now runs only when the ticker changes
 
 
   const fetchStock = useCallback(async () => {
@@ -288,18 +291,21 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const requiredFunds = approxMargin + totalCharges;
   
   const maxSellQuantity = useMemo(() => {
-    if (orderToEdit?.product === 'MIS' && orderType === 'SELL') { // If it's a short position from portfolio
-        const position = portfolio.positions?.find(p => p.ticker === ticker && p.product === 'MIS');
+    if (!portfolio) return 0;
+    
+    // If we are exiting a short position, max quantity is the size of that position
+    if (orderToEdit?.isExit && orderToEdit?.type === 'BUY' && orderToEdit.product) {
+        const position = portfolio.positions?.find(p => p.ticker === ticker && p.product === orderToEdit.product);
         return position ? Math.abs(position.quantity) : 0;
     }
-    
+
     // Otherwise, it's the sum of holdings and long positions for that ticker.
     const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
-    const position = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0); // Only long positions contribute
+    const position = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0); // Only long positions
     const positionQty = position ? position.quantity : 0;
     
     return holdingQty + positionQty;
-}, [portfolio, ticker, orderToEdit, orderType]);
+}, [portfolio, ticker, orderToEdit]);
 
 
   const handlePlaceOrder = () => {
@@ -312,7 +318,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         return;
     }
 
-    if (orderType === 'SELL' && !orderToEdit?.isShortSell && qty > maxSellQuantity) {
+    if (orderType === 'SELL' && !orderToEdit?.isShortSell && !isAdding && qty > maxSellQuantity) {
        toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot sell more than the ${maxSellQuantity} shares you own.` });
        return;
     }
@@ -441,7 +447,6 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     </div>
   );
   
-  const hasExistingPosition = !!orderToEdit?.product;
   const isOrderTypeLocked = isExiting || isAdding;
   const isProductLocked = !!orderToEdit?.product;
 
@@ -537,8 +542,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
                           <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                           {orderType === 'SELL' && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
-                           {orderType === 'BUY' && <p className="text-xs text-muted-foreground">Lot size 1</p>}
+                          <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>
@@ -666,5 +670,3 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     </div>
   );
 }
-
-    
