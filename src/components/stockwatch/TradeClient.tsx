@@ -179,25 +179,25 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [stock, setStock] = useState<Stock | null>(null);
   const [availableFunds, setAvailableFunds] = useState(0);
   const [user, setUser] = useState<User | null>(null);
-  const [isDataInitialized, setIsDataInitialized] = useState(false);
-
-  // State for form inputs - initialized to defaults
-  const [orderType, setOrderType] = useState<OrderType>("BUY");
-  const [quantity, setQuantity] = useState("1");
-  const [price, setPrice] = useState("");
-  const [triggerPrice, setTriggerPrice] = useState("");
-  const [product, setProduct] = useState("MIS");
-  const [orderMethod, setOrderMethod] = useState("LIMIT");
   
-  const [useStopLoss, setUseStopLoss] = useState(false);
-  const [stopLossValue, setStopLossValue] = useState("");
+  // State for form inputs - initialized to defaults
+  const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
+  const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
+  const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
+  const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
+  const [product, setProduct] = useState(orderToEdit?.product?.toUpperCase() || "MIS");
+  const [orderMethod, setOrderMethod] = useState(orderToEdit?.orderMethod?.toUpperCase() || "LIMIT");
+  
+  const [useStopLoss, setUseStopLoss] = useState(!!orderToEdit?.stopLossValue);
+  const [stopLossValue, setStopLossValue] = useState(orderToEdit?.stopLossValue?.toString() || "");
   const [stopLossMode, setStopLossMode] = useState<StopLossTargetMode>('PERCENT');
 
-  const [useTarget, setUseTarget] = useState(false);
-  const [targetValue, setTargetValue] = useState("");
+  const [useTarget, setUseTarget] = useState(!!orderToEdit?.targetValue);
+  const [targetValue, setTargetValue] = useState(orderToEdit?.targetValue?.toString() || "");
   const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PRICE');
-
+  
   const [isStockLoading, setIsStockLoading] = useState(true);
+  const [isDataInitialized, setIsDataInitialized] = useState(false);
   
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
@@ -205,23 +205,44 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
 
   const isSellFromHolding = useMemo(() => orderToEdit?.isSellFromHolding, [orderToEdit]);
 
-  // Effect to initialize all state from props ONCE
+  // One-time setup effect
   useEffect(() => {
     if (orderToEdit) {
-      const isFromHolding = !!orderToEdit.isSellFromHolding;
       setOrderType(orderToEdit.type || "BUY");
-      setProduct(orderToEdit.product?.toUpperCase() || (isFromHolding ? 'CNC' : 'MIS'));
-      setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
       setQuantity(orderToEdit.quantity?.toString() || "1");
       setPrice(orderToEdit.limitPrice?.toString() || "");
       setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
+      setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
       setUseStopLoss(!!orderToEdit.stopLossValue);
       setStopLossValue(orderToEdit.stopLossValue?.toString() || "");
       setUseTarget(!!orderToEdit.targetValue);
       setTargetValue(orderToEdit.targetValue?.toString() || "");
+      setProduct(orderToEdit.product?.toUpperCase() || "MIS");
     }
-     // Always run user and data fetch
-    const fetchUserAndData = async () => {
+  }, [orderToEdit]);
+
+  const fetchStock = useCallback(async () => {
+    try {
+      const data = await getStockData([ticker]);
+      if (data && data.length > 0) {
+        const newStock = data[0];
+        setStock(newStock);
+        // Smart price update
+        if (orderMethod === "MARKET" || price === "") {
+          setPrice(newStock.price.toFixed(2));
+        }
+      } else {
+        toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, [ticker, toast, orderMethod, price]);
+
+  // Initial data loading effect
+  useEffect(() => {
+    const initializeData = async () => {
+      setIsStockLoading(true);
       const { data: { user: sbUser }, error } = await supabase.auth.getUser();
       if (error || !sbUser) {
         router.replace('/');
@@ -241,41 +262,37 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
             console.error("Failed to parse portfolio data", e)
           }
       }
+      
+      await fetchStock();
+      
+      setIsStockLoading(false);
       setIsDataInitialized(true);
     };
     
-    fetchUserAndData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderToEdit, router]); // Dependency is only on orderToEdit and router
+    initializeData();
+  }, [router, fetchStock]);
 
-
-  const fetchStock = useCallback(async (isSilent = false) => {
-    if (!isSilent) setIsStockLoading(true);
-    try {
-      const data = await getStockData([ticker]);
-      if (data && data.length > 0) {
-        const newStock = data[0];
-        setStock(newStock);
-        // Only auto-fill price if the input is empty or it's a market order
-        if (orderMethod === "MARKET" || price === "") {
-            setPrice(newStock.price.toFixed(2));
-        }
-      } else {
-        toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
-      }
-    } catch (error) {
-      console.error(error);
-      // toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
-    } finally {
-        if (!isSilent) setIsStockLoading(false);
-    }
-  }, [ticker, orderMethod, price, toast]);
-
+  // Live price update interval
   useEffect(() => {
-    fetchStock();
-    const interval = setInterval(() => fetchStock(true), 2000);
+    if (!isDataInitialized) return; // Don't start interval until initial load is done
+
+    const interval = setInterval(async () => {
+        try {
+            const data = await getStockData([ticker]);
+            if (data && data.length > 0) {
+                const newStock = data[0];
+                setStock(newStock);
+                if (orderMethod === "MARKET" || price === "") {
+                    setPrice(newStock.price.toFixed(2));
+                }
+            }
+        } catch (error) {
+            console.error("Silent stock fetch failed:", error);
+        }
+    }, 2000);
+
     return () => clearInterval(interval);
-  }, [fetchStock]);
+  }, [isDataInitialized, ticker, orderMethod, price]);
   
   const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
   
@@ -436,7 +453,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   }
   
   const PageLoader = () => (
-    <div className="flex justify-center items-center h-64">
+    <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
     </div>
   )
@@ -458,7 +475,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   }, [isSellFromHolding, isShortSell, isDataInitialized]);
 
   if (!isDataInitialized) {
-      return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>
+      return <PageLoader />;
   }
 
 
