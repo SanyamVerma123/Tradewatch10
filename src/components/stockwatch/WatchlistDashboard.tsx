@@ -546,7 +546,7 @@ export function WatchlistDashboard() {
                                     <a href={article.url} target="_blank" rel="noopener noreferrer" key={article.id} className="block">
                                         <Card className="overflow-hidden hover:shadow-lg transition-shadow">
                                             <div className="flex gap-4">
-                                                <Image data-ai-hint="stock market business" src={article.image} alt={article.headline} width={120} height={80} className="w-24 h-24 object-cover" />
+                                                <Image data-ai-hint="stock market business" src={article.image} alt={article.headline || "News article image"} width={120} height={80} className="w-24 h-24 object-cover" />
                                                 <CardContent className="p-2 flex flex-col justify-center">
                                                     <h3 className="font-semibold leading-tight text-sm mb-1">{article.headline}</h3>
                                                     <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>
