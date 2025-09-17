@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -33,6 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { getStockData } from "@/app/actions";
 
 
 interface TradeClientProps {
@@ -200,49 +200,34 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [portfolio, setPortfolio] = useState<Portfolio>({ holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 });
   const isInitialSetupDone = useRef(false);
 
-  // One-time setup effect
+  // One-time setup effect for form state from props
   useEffect(() => {
-    if (!orderToEdit || isInitialSetupDone.current) return;
-
-    setOrderType(orderToEdit.type || "BUY");
-    setProduct(orderToEdit.product || "MIS");
-
-    // For exits, the quantity is pre-filled. For adds, it's 1. For new orders, it's 1.
-    if (orderToEdit.isExit) {
-        setQuantity(orderToEdit.quantity?.toString() || "1");
-    } else if (orderToEdit.id) { // This is a modification or an "add" action
-        setQuantity(orderToEdit.quantity?.toString() || "1");
-    } else {
-        setQuantity("1");
+    if (orderToEdit && !isInitialSetupDone.current) {
+        setOrderType(orderToEdit.type || "BUY");
+        setProduct(orderToEdit.product || "MIS");
+        
+        // When adding to a position, default qty is 1. When exiting, it's the full position.
+        // When modifying, it's the existing order quantity.
+        if (orderToEdit.isExit) {
+            setQuantity(orderToEdit.quantity?.toString() || "1");
+        } else if (orderToEdit.id) { // This is a modification or an "add" action
+             setQuantity(orderToEdit.quantity?.toString() || "1");
+        } else {
+             setQuantity("1");
+        }
+        
+        setPrice(orderToEdit.limitPrice?.toString() || "");
+        setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
+        setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
+        setUseStopLoss(!!orderToEdit.stopLossValue);
+        setStopLossValue(orderToEdit.stopLossValue?.toString() || "");
+        setUseTarget(!!orderToEdit.targetValue);
+        setTargetValue(orderToEdit.targetValue?.toString() || "");
+        
+        isInitialSetupDone.current = true;
     }
-    
-    setPrice(orderToEdit.limitPrice?.toString() || "");
-    setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
-    setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
-    setUseStopLoss(!!orderToEdit.stopLossValue);
-    setStopLossValue(orderToEdit.stopLossValue?.toString() || "");
-    setUseTarget(!!orderToEdit.targetValue);
-    setTargetValue(orderToEdit.targetValue?.toString() || "");
-    
-    isInitialSetupDone.current = true;
   }, [orderToEdit]);
 
-
-  const fetchStock = useCallback(async (isInitial = false) => {
-    try {
-        const response = await fetch(`/api/stock/${ticker}`);
-        if (!response.ok) throw new Error('Failed to fetch stock data');
-        const data: Stock = await response.json();
-        
-        setStock(data);
-        if (orderMethod === "MARKET" || (isInitial && price === "")) {
-            setPrice(data.price.toFixed(2));
-        }
-    } catch (error) {
-        console.error("Error fetching stock data:", error);
-        if (isInitial) toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
-    }
-  }, [ticker, toast, orderMethod, price]);
 
   // Initial data loading effect
   useEffect(() => {
@@ -267,12 +252,11 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
             }
         }
         
-        // Initial fetch is now handled by the API route, but we can trigger a client-side one too.
-        // await fetchStock(true);
         const data = await getStockData([ticker]);
         if (data && data.length > 0) {
             setStock(data[0]);
-            if (!isInitialSetupDone.current) {
+            // Only set price if it's not an edit/modification flow
+            if (!orderToEdit) {
               setPrice(data[0].price.toFixed(2));
             }
         }
@@ -281,7 +265,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     };
     
     initializeData();
-  }, [router, ticker]);
+  }, [router, ticker, orderToEdit]);
 
   // Live price update interval
   useEffect(() => {
@@ -293,7 +277,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
             if (data && data.length > 0) {
                 const newStock = data[0];
                 setStock(newStock);
-                // Only update the price field if it's a market order.
+                // Only update the price field if it's a market order or empty.
                 if (orderMethod === "MARKET") {
                     setPrice(newStock.price.toFixed(2));
                 }
@@ -322,10 +306,18 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const totalCharges = brokerage + (tradeValue * 0.000345); // Simplified charges
   const requiredFunds = approxMargin + totalCharges;
   
-  const maxSellQuantity = orderToEdit?.isSellFromHolding 
-    ? orderToEdit.quantity 
-    : (portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0) + 
-      (portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0);
+  const maxSellQuantity = useMemo(() => {
+    // If we're exiting a specific position from the portfolio, that's our max.
+    if (orderToEdit?.isExit) {
+        return orderToEdit.quantity;
+    }
+    
+    // Otherwise, it's the sum of holdings and long positions for that ticker.
+    const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
+    const positionQty = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
+    return holdingQty + positionQty;
+}, [portfolio, ticker, orderToEdit]);
+
 
   const handlePlaceOrder = () => {
     if(!stock || !user) return;
@@ -337,7 +329,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         return;
     }
 
-    if (orderType === 'SELL' && !orderToEdit?.isShortSell && !isExiting && qty > maxSellQuantity) {
+    if (orderType === 'SELL' && qty > maxSellQuantity) {
        toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot sell more than the ${maxSellQuantity} shares you have.` });
        return;
     }
@@ -390,7 +382,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         product: product,
         orderMethod: orderMethod,
         isSellFromHolding: orderToEdit?.isSellFromHolding,
-        isShortSell: orderType === 'SELL' && !orderToEdit?.isSellFromHolding, // Simplified
+        isShortSell: orderToEdit?.isShortSell,
         isExit: isExiting,
         stopLossValue: useStopLoss ? (parseFloat(stopLossValue) || undefined) : undefined,
         targetValue: useTarget ? (parseFloat(targetValue) || undefined) : undefined,
@@ -470,7 +462,6 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     </div>
   )
   
-  // A position or holding exists that we could be adding to or exiting from.
   const hasExistingPosition = !!orderToEdit?.product;
   const isOrderTypeLocked = isExiting || (hasExistingPosition && !isEditing);
   const isProductLocked = !!orderToEdit?.product;
@@ -508,7 +499,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                             </DropdownMenuItem>
                         </AlertDialogTrigger>
                         </DropdownMenuContent>
-                    </DropdownMenu>
+                    </AlertDialogMenu>
                     <AlertDialogContent>
                         <AlertDialogHeader>
                         <AlertDialogTitle>Are you sure?</AlertDialogTitle>
@@ -696,3 +687,5 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     </div>
   );
 }
+
+    
