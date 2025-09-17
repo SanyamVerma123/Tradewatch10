@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -565,7 +564,7 @@ export function WatchlistDashboard() {
                 {news.slice(0, 6).map(article => (
                     <a href={article.url} target="_blank" rel="noopener noreferrer" key={article.id}>
                         <Card className="overflow-hidden hover:shadow-lg transition-shadow h-full">
-                            <Image data-ai-hint="stock market business" src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover bg-muted" />
+                            <Image data-ai-hint="stock market business" src={article.image} alt={article.headline || "News article image"} width={400} height={200} className="w-full h-32 object-cover bg-muted" />
                             <CardContent className="p-4">
                                 <h3 className="font-semibold leading-tight mb-2 text-sm">{article.headline}</h3>
                                 <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>
@@ -587,3 +586,5 @@ export function WatchlistDashboard() {
     </div>
   );
 }
+
+    
