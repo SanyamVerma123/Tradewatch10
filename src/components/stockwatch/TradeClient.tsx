@@ -214,7 +214,8 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
       if (data && data.length > 0) {
         const newStock = data[0];
         setStock(newStock);
-        if (orderMethod === "MARKET" || !price) { 
+        // Only auto-fill price if the input is empty or it's a market order
+        if (orderMethod === "MARKET" || price === "") {
             setPrice(newStock.price.toFixed(2));
         }
       } else {
