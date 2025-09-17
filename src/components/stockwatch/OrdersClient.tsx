@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -62,13 +61,14 @@ export function OrdersClient() {
     const fetchUser = async () => {
       const { data: { user: sbUser }, error } = await supabase.auth.getUser();
       if (error || !sbUser) {
+        router.replace('/');
       } else {
         setUser(sbUser);
       }
       setIsLoading(false);
     };
     fetchUser();
-  }, []);
+  }, [router]);
 
   const cancelOrder = useCallback((orderToCancel: Order, reason: string) => {
     if (!user) return;
@@ -144,7 +144,7 @@ export function OrdersClient() {
     if (orderToExecute.type === 'SELL') {
       const compositeKey = `${orderToExecute.ticker}-${product}`;
       const position = (portfolio.positions || []).find(p => p.id === `pos-${compositeKey}`);
-      const holding = portfolio.holdings.find(h => h.ticker === orderToExecute.ticker);
+      const holding = (portfolio.holdings || []).find(h => h.ticker === orderToExecute.ticker);
 
       let buyPrice = 0;
       if (orderToExecute.isSellFromHolding && holding) {
