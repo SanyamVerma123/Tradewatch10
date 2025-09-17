@@ -25,9 +25,8 @@ interface StockActionSheetProps {
   stock: Stock | null;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onTrade?: (type: 'buy' | 'sell', ticker: string, isFromHolding: boolean) => void;
+  onTrade?: (action: 'add' | 'exit' | 'buy' | 'sell', ticker: string) => void;
   tradeButtonVariant?: 'long-short' | 'buy-sell' | 'add-exit';
-  isFromHolding?: boolean;
 }
 
 type Timeframe = '5d' | '1mo' | '3mo' | '1y' | 'max';
@@ -77,7 +76,7 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
 const MemoizedStockChart = memo(StockChart);
 
 
-export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short', isFromHolding = false }: StockActionSheetProps) {
+export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short' }: StockActionSheetProps) {
     const [historicalData, setHistoricalData] = useState<HistoricalHistoryResult | null>(null);
     const [timeframe, setTimeframe] = useState<Timeframe>('3mo');
 
@@ -93,29 +92,32 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
         if(isOpen && stock) {
             fetchHistorical();
         }
-    }, [isOpen, stock?.ticker, fetchHistorical]);
+    }, [isOpen, stock, fetchHistorical]);
 
     if (!stock) return null;
 
-    const handleTradeClick = (type: 'buy' | 'sell') => {
+    const handleTradeClick = (action: 'add' | 'exit' | 'buy' | 'sell') => {
         if (onTrade) {
-          onTrade(type, stock.ticker, isFromHolding);
+          onTrade(action, stock.ticker);
         }
     };
     
-    let buyText = 'Buy';
-    let sellText = 'Sell';
-
-    if (tradeButtonVariant === 'add-exit') {
-        buyText = 'Add';
-        sellText = 'Exit';
-    } else if (tradeButtonVariant === 'long-short') {
-        buyText = 'Long';
-        sellText = 'Short';
-    } else if (isFromHolding) {
-        buyText = 'Buy More';
+    const getButtonLabels = () => {
+        switch(tradeButtonVariant) {
+            case 'add-exit':
+                return { primary: 'Add', secondary: 'Exit' };
+            case 'buy-sell':
+                return { primary: 'Buy', secondary: 'Sell' };
+            case 'long-short':
+                return { primary: 'Long', secondary: 'Short' };
+            default:
+                return { primary: 'Buy', secondary: 'Sell' };
+        }
     }
 
+    const { primary, secondary } = getButtonLabels();
+    const primaryAction = tradeButtonVariant === 'add-exit' ? 'add' : 'buy';
+    const secondaryAction = tradeButtonVariant === 'add-exit' ? 'exit' : 'sell';
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -173,8 +175,8 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
         
         <div className="py-4 sticky bottom-0 bg-background">
             <div className="grid grid-cols-2 gap-4">
-                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => handleTradeClick('buy')}>{buyText}</Button>
-                <Button size="lg" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => handleTradeClick('sell')}>{sellText}</Button>
+                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => handleTradeClick(primaryAction)}>{primary}</Button>
+                <Button size="lg" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => handleTradeClick(secondaryAction)}>{secondary}</Button>
             </div>
         </div>
 

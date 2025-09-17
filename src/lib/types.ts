@@ -56,6 +56,7 @@ export interface Order {
   isSellFromHolding?: boolean;
   isShortSell?: boolean;
   isLong?: boolean;
+  isExit?: boolean;
   executedAt?: string; // ISO date string
   realizedPnl?: number;
   stopLossValue?: number;
@@ -104,4 +105,5 @@ export interface User {
     
 
     
+
 

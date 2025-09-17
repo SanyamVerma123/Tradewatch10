@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, SlidersHorizontal, ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { portfolio as initialPortfolioData } from "@/lib/portfolio";
 import { StockActionSheet } from "./StockActionSheet";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase/client";
@@ -51,13 +50,14 @@ export function PortfolioClient() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("Holdings");
   const [searchTerm, setSearchTerm] = useState("");
-  const [portfolio, setPortfolio] = useState<Portfolio>(initialPortfolioData);
+  const [portfolio, setPortfolio] = useState<Portfolio>({ holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [stocksMap, setStocksMap] = useState<Record<string, Stock>>({});
   const [user, setUser] = useState<User | null>(null);
 
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
+  const [actionSheetContext, setActionSheetContext] = useState<'holding' | 'position' | 'watchlist'>('watchlist');
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -92,11 +92,13 @@ export function PortfolioClient() {
     const todayExecutedOrders = executedOrders.filter(o => isToday(new Date(o.executedAt!)));
     
     const allTickersInOrders = [...new Set(allOrders.map(o => o.ticker))];
+    const initialPortfolioData = { holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 };
+
 
     if (allTickersInOrders.length === 0) {
-      setPortfolio({ ...initialPortfolioData, holdings: [], positions: [] });
+      setPortfolio(initialPortfolioData);
       setIsLoading(false);
-      localStorage.setItem(portfolioKey, JSON.stringify({ holdings: [], positions: [] }));
+      localStorage.setItem(portfolioKey, JSON.stringify(initialPortfolioData));
       return;
     }
     
@@ -106,7 +108,7 @@ export function PortfolioClient() {
     setStocksMap(newStocksMap);
 
     const holdingsMap: { [ticker: string]: Holding } = {};
-    const pastCncOrders = executedOrders.filter(o => (o.product === 'CNC' || o.isSellFromHolding) && !isToday(new Date(o.executedAt!)));
+    const pastCncOrders = executedOrders.filter(o => (o.product === 'CNC' || o.isSellFromHolding) && o.executedAt && !isToday(new Date(o.executedAt)));
 
     for (const order of pastCncOrders) {
         let holding = holdingsMap[order.ticker];
@@ -170,7 +172,12 @@ export function PortfolioClient() {
              realizedDayPnl += pnlFromTrade;
              p.quantity += order.quantity * tradeSign;
              
-             if (Math.sign(p.quantity) !== Math.sign(currentNetQuantity)) {
+             if (p.quantity === 0) {
+                p.avgPrice = 0; // Reset average price when position is closed
+             } else if (Math.abs(p.quantity) < 0.001 && Math.abs(p.quantity) > 0) {
+                 p.quantity = 0; // clean up floating point errors
+             } else if (Math.sign(p.quantity) !== Math.sign(currentNetQuantity)) {
+                // Flipped position
                 p.avgPrice = order.ltp;
             }
         }
@@ -191,8 +198,11 @@ export function PortfolioClient() {
             openMISPositions.forEach(pos => {
                 const liveData = newStocksMap[pos.ticker];
                 if (!liveData) return;
+                
+                const realizedPnlOnSquareOff = (liveData.price - pos.avgPrice) * pos.quantity;
+
                 const closingOrder: Order = {
-                    id: `auto-sq-off-${Date.now()}-${pos.ticker}`, type: pos.quantity > 0 ? 'SELL' : 'BUY', ticker: pos.ticker, quantity: Math.abs(pos.quantity), filledQuantity: Math.abs(pos.quantity), limitPrice: liveData.price, status: 'Executed', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), exchange: liveData.exchange || 'NSE', orderType: `${pos.product} MARKET`, ltp: liveData.price, isAMO: false, product: pos.product, orderMethod: 'MARKET', executedAt: new Date().toISOString(),
+                    id: `auto-sq-off-${Date.now()}-${pos.ticker}`, type: pos.quantity > 0 ? 'SELL' : 'BUY', ticker: pos.ticker, quantity: Math.abs(pos.quantity), filledQuantity: Math.abs(pos.quantity), limitPrice: liveData.price, status: 'Executed', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), exchange: liveData.exchange || 'NSE', orderType: `${pos.product} MARKET`, ltp: liveData.price, isAMO: false, product: pos.product, orderMethod: 'MARKET', executedAt: new Date().toISOString(), realizedPnl: realizedPnlOnSquareOff
                 };
                 newOrdersForSquareOff.push(closingOrder);
             });
@@ -201,6 +211,7 @@ export function PortfolioClient() {
                 const updatedOrders = [...allOrders, ...newOrdersForSquareOff];
                 localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
                 toast({ title: "Auto Square-Off", description: `Your open intraday positions have been automatically closed.` });
+                // Re-run to update portfolio state after auto-square-off
                 updatePortfolioData();
                 return;
             }
@@ -219,14 +230,13 @@ export function PortfolioClient() {
     const openPositions = updatedPositions.filter(p => Math.abs(p.quantity) > 0.001);
 
     const newPortfolio: Portfolio = {
-      investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0, // Will be calculated by lightweight updater
+      ...initialPortfolioData,
       holdings: finalHoldings,
       positions: openPositions,
     };
 
     setPortfolio(newPortfolio);
     setIsLoading(false);
-    // Lightweight update will now start
   }, [toast, user]);
 
 
@@ -280,17 +290,16 @@ export function PortfolioClient() {
     // Realized PNL needs to be fetched from orders to be accurate in summary
     const ordersKey = `orders_${user.id}`;
     let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-    const realizedDayPnl = allOrders.filter(o => o.status === 'Executed' && o.executedAt && isToday(new Date(o.executedAt)) && o.realizedPnl).reduce((acc, o) => acc + (o.realizedPnl || 0), 0);
+    const realizedDayPnl = allOrders.filter(o => o.status === 'Executed' && o.executedAt && isToday(new Date(o.executedAt)) && o.realizedPnl !== undefined).reduce((acc, o) => acc + (o.realizedPnl || 0), 0);
 
     const dayPnl = holdingsDayPnl + realizedDayPnl + openPositionsUnrealizedPnl;
-    const totalInvested = totalHoldingsInvested;
-    const totalHoldingsPnl = totalHoldingsCurrentValue - totalHoldingsInvested;
-    const totalPnl = totalHoldingsPnl + realizedDayPnl + openPositionsUnrealizedPnl;
-    const currentValue = totalHoldingsCurrentValue + realizedDayPnl + openPositionsUnrealizedPnl; // This might be better as totalHoldingsCurrentValue + MIS invested value
+    const totalInvested = totalHoldingsInvested; // Only holdings contribute to the main invested value
+    const totalPnl = (totalHoldingsCurrentValue - totalHoldingsInvested) + realizedDayPnl + openPositionsUnrealizedPnl;
+    const currentValue = totalHoldingsCurrentValue + realizedDayPnl + openPositionsUnrealizedPnl; 
 
     setPortfolio({
         investedValue: totalInvested,
-        currentValue: currentValue,
+        currentValue: totalHoldingsCurrentValue,
         totalPnl: totalPnl,
         totalPnlPercent: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0,
         dayPnl: dayPnl,
@@ -298,6 +307,16 @@ export function PortfolioClient() {
         holdings: updatedHoldings,
         positions: updatedPositions,
     });
+
+    // Write the latest portfolio totals to localStorage for other pages to use
+    const portfolioKey = `portfolioData_${user.id}`;
+    const portfolioSummary = { 
+        investedValue: totalInvested, 
+        currentValue: totalHoldingsCurrentValue,
+        totalPnl: totalPnl,
+    };
+    localStorage.setItem(portfolioKey, JSON.stringify(portfolioSummary));
+
 
   }, [user]);
 
@@ -327,6 +346,7 @@ export function PortfolioClient() {
     const stockData = stocksMap[holding.ticker];
     if (stockData) {
       setSelectedStock(stockData);
+      setActionSheetContext('holding');
       setIsActionSheetOpen(true);
     }
   };
@@ -335,24 +355,48 @@ export function PortfolioClient() {
      const stockData = stocksMap[position.ticker];
     if (stockData) {
       setSelectedStock(stockData);
+      setActionSheetContext('position');
       setIsActionSheetOpen(true);
     }
   }
 
-  const onActionSheetTrade = (type: 'buy' | 'sell', ticker: string, isFromHolding: boolean) => {
+  const onActionSheetTrade = (action: 'add' | 'exit', ticker: string) => {
      const stock = stocksMap[ticker];
-     let orderData: Partial<Order>;
+     if (!stock) return;
 
-     if (isFromHolding) { 
+     let orderData: Partial<Order> = { ticker };
+     
+     if (actionSheetContext === 'holding') {
         const holding = portfolio.holdings.find(h => h.ticker === ticker);
-        orderData = {
-            type: type.toUpperCase() as 'BUY' | 'SELL', ticker: ticker, quantity: type === 'sell' ? holding?.quantity : 1, product: 'CNC', orderMethod: 'MARKET', ltp: stock?.price || 0, price: stock?.price?.toFixed(2) || '0', isSellFromHolding: type === 'sell',
-        };
-     } else { 
-        const position = portfolio.positions.find(p => p.ticker === ticker && p.id.endsWith(`-${p.product}`));
-        orderData = {
-            type: type.toUpperCase() as 'BUY' | 'SELL', ticker: ticker, quantity: type === 'sell' ? Math.abs(position?.quantity || 0) : 1, product: position?.product as 'CNC' | 'MIS', orderMethod: 'MARKET', ltp: stock?.price || 0, price: stock?.price?.toFixed(2) || '0',
-        };
+        if (!holding) return;
+        
+        orderData.product = 'CNC';
+        orderData.isSellFromHolding = true;
+        
+        if (action === 'exit') {
+            orderData.type = 'SELL';
+            orderData.quantity = holding.quantity;
+            orderData.isExit = true;
+        } else { // 'add'
+            orderData.type = 'BUY';
+            orderData.quantity = 1; // Default to add 1
+        }
+     } else if (actionSheetContext === 'position') {
+        const position = portfolio.positions.find(p => p.ticker === ticker);
+        if (!position) return;
+        
+        orderData.product = position.product;
+        
+        if (action === 'exit') {
+            // Exiting a long position is SELL, exiting a short is BUY
+            orderData.type = position.quantity > 0 ? 'SELL' : 'BUY'; 
+            orderData.quantity = Math.abs(position.quantity);
+            orderData.isExit = true;
+        } else { // 'add'
+            // Adding to a long position is BUY, adding to short is SELL
+            orderData.type = position.quantity > 0 ? 'BUY' : 'SELL';
+            orderData.quantity = 1; // Default to add 1
+        }
      }
      
      router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);
@@ -389,24 +433,24 @@ export function PortfolioClient() {
             <div className="grid grid-cols-2 gap-4 text-center">
                 <div>
                     <div className="text-sm text-muted-foreground">Invested</div>
-                    <div className="text-lg font-semibold">₹{portfolio.investedValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                    <div className="text-lg font-semibold">₹{(portfolio.investedValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
                 </div>
                 <div>
                     <div className="text-sm text-muted-foreground">Current</div>
-                    <div className="text-lg font-semibold">₹{portfolio.currentValue.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                    <div className="text-lg font-semibold">₹{(portfolio.currentValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
                 </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-4 text-center">
                 <div>
                     <div className="text-sm text-muted-foreground">Overall P&L</div>
                     <div className={cn("text-lg font-semibold", portfolio.totalPnl >= 0 ? "text-positive" : "text-destructive")}>
-                        {portfolio.totalPnl >= 0 ? '+' : ''}{portfolio.totalPnl.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                        {portfolio.totalPnl >= 0 ? '+' : ''}{(portfolio.totalPnl || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
                     </div>
                 </div>
                 <div>
                     <div className="text-sm text-muted-foreground">Day's P&L</div>
                     <div className={cn("text-lg font-semibold", portfolio.dayPnl >= 0 ? "text-positive" : "text-destructive")}>
-                        {portfolio.dayPnl >= 0 ? '+' : ''}{portfolio.dayPnl.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                        {portfolio.dayPnl >= 0 ? '+' : ''}{(portfolio.dayPnl || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
                     </div>
                 </div>
             </div>
@@ -531,8 +575,7 @@ export function PortfolioClient() {
         isOpen={isActionSheetOpen} 
         onOpenChange={setIsActionSheetOpen} 
         onTrade={onActionSheetTrade}
-        tradeButtonVariant="add-exit"
-        isFromHolding={activeTab === 'Holdings'}
+        tradeButtonVariant={actionSheetContext === 'watchlist' ? 'long-short' : 'add-exit'}
       />
     </div>
   );

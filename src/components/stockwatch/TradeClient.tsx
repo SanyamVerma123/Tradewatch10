@@ -2,11 +2,10 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import type { Order, Stock, Portfolio, Holding, Position } from "@/lib/types";
-import { getStockData } from "@/app/actions";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, MoreVertical, Info, RefreshCcw, Loader2, ChevronsRight, Trash2 } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import type { Order, Stock, Portfolio } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, MoreVertical, RefreshCcw, Loader2, ChevronsRight, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,7 +32,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 
@@ -200,82 +198,90 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
   const [portfolio, setPortfolio] = useState<Portfolio>({ holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 });
-
-  const isSellFromHolding = useMemo(() => orderToEdit?.isSellFromHolding, [orderToEdit]);
+  const isInitialSetupDone = useRef(false);
 
   // One-time setup effect
   useEffect(() => {
-    const initializeState = () => {
-      if (orderToEdit) {
-        setOrderType(orderToEdit.type || "BUY");
+    if (!orderToEdit || isInitialSetupDone.current) return;
+
+    setOrderType(orderToEdit.type || "BUY");
+    setProduct(orderToEdit.product || "MIS");
+
+    // For exits, the quantity is pre-filled. For adds, it's 1. For new orders, it's 1.
+    if (orderToEdit.isExit) {
         setQuantity(orderToEdit.quantity?.toString() || "1");
-        setPrice(orderToEdit.limitPrice?.toString() || "");
-        setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
-        setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
-        setUseStopLoss(!!orderToEdit.stopLossValue);
-        setStopLossValue(orderToEdit.stopLossValue?.toString() || "");
-        setUseTarget(!!orderToEdit.targetValue);
-        setTargetValue(orderToEdit.targetValue?.toString() || "");
-        setProduct(orderToEdit.product?.toUpperCase() || "MIS");
-      }
-    };
-    initializeState();
+    } else if (orderToEdit.id) { // This is a modification or an "add" action
+        setQuantity(orderToEdit.quantity?.toString() || "1");
+    } else {
+        setQuantity("1");
+    }
+    
+    setPrice(orderToEdit.limitPrice?.toString() || "");
+    setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
+    setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
+    setUseStopLoss(!!orderToEdit.stopLossValue);
+    setStopLossValue(orderToEdit.stopLossValue?.toString() || "");
+    setUseTarget(!!orderToEdit.targetValue);
+    setTargetValue(orderToEdit.targetValue?.toString() || "");
+    
+    isInitialSetupDone.current = true;
   }, [orderToEdit]);
 
 
-  const fetchStock = useCallback(async () => {
+  const fetchStock = useCallback(async (isInitial = false) => {
     try {
-      const data = await getStockData([ticker]);
-      if (data && data.length > 0) {
-        const newStock = data[0];
-        setStock(newStock);
-        if (orderMethod === "MARKET" || price === "") {
-          setPrice(newStock.price.toFixed(2));
+        const response = await fetch(`/api/stock/${ticker}`);
+        if (!response.ok) throw new Error('Failed to fetch stock data');
+        const data: Stock = await response.json();
+        
+        setStock(data);
+        if (orderMethod === "MARKET" || (isInitial && price === "")) {
+            setPrice(data.price.toFixed(2));
         }
-      } else {
-        toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
-      }
     } catch (error) {
-      console.error(error);
+        console.error("Error fetching stock data:", error);
+        if (isInitial) toast({ variant: "destructive", title: "Error", description: "Could not fetch stock data." });
     }
   }, [ticker, toast, orderMethod, price]);
 
   // Initial data loading effect
   useEffect(() => {
     const initializeData = async () => {
-      const { data: { user: sbUser }, error } = await supabase.auth.getUser();
-      if (error || !sbUser) {
-        router.replace('/');
-        return;
-      }
-      setUser(sbUser);
-        
-      const fundsData = JSON.parse(localStorage.getItem(`funds_${sbUser.id}`) || '{}');
-      setAvailableFunds(fundsData.balance || 0);
-
-      const portfolioDataText = localStorage.getItem(`portfolioData_${sbUser.id}`);
-      if(portfolioDataText){
-          try {
-            const storedPortfolio: Portfolio = JSON.parse(portfolioDataText);
-            setPortfolio(storedPortfolio || { holdings: [], positions: [] });
-          } catch(e) {
-            console.error("Failed to parse portfolio data", e)
-          }
-      }
-      
-      const data = await getStockData([ticker]);
-      if (data && data.length > 0) {
-        setStock(data[0]);
-        if(price === "") {
-          setPrice(data[0].price.toFixed(2));
+        const { data: { user: sbUser }, error } = await supabase.auth.getUser();
+        if (error || !sbUser) {
+            router.replace('/');
+            return;
         }
-      }
+        setUser(sbUser);
+            
+        const fundsData = JSON.parse(localStorage.getItem(`funds_${sbUser.id}`) || '{}');
+        setAvailableFunds(fundsData.balance || 0);
+
+        const portfolioDataText = localStorage.getItem(`portfolioData_${sbUser.id}`);
+        if(portfolioDataText){
+            try {
+                const storedPortfolio: Portfolio = JSON.parse(portfolioDataText);
+                setPortfolio(storedPortfolio || { holdings: [], positions: [] });
+            } catch(e) {
+                console.error("Failed to parse portfolio data", e);
+            }
+        }
+        
+        // Initial fetch is now handled by the API route, but we can trigger a client-side one too.
+        // await fetchStock(true);
+        const data = await getStockData([ticker]);
+        if (data && data.length > 0) {
+            setStock(data[0]);
+            if (!isInitialSetupDone.current) {
+              setPrice(data[0].price.toFixed(2));
+            }
+        }
       
-      setIsDataInitialized(true);
+        setIsDataInitialized(true);
     };
     
     initializeData();
-  }, [router, ticker, price]);
+  }, [router, ticker]);
 
   // Live price update interval
   useEffect(() => {
@@ -287,6 +293,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
             if (data && data.length > 0) {
                 const newStock = data[0];
                 setStock(newStock);
+                // Only update the price field if it's a market order.
                 if (orderMethod === "MARKET") {
                     setPrice(newStock.price.toFixed(2));
                 }
@@ -299,8 +306,9 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     return () => clearInterval(interval);
   }, [isDataInitialized, ticker, orderMethod]);
   
-  const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
-  
+  const isEditing = !!orderToEdit?.id && !orderToEdit.isExit;
+  const isExiting = !!orderToEdit?.isExit;
+
   const getExecutionPrice = useCallback(() => {
     if (orderMethod.includes('MARKET')) {
         return stock?.price || 0;
@@ -308,39 +316,16 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     return parseFloat(price) || stock?.price || 0;
   }, [orderMethod, price, stock?.price]);
 
-  const tradeValue = useMemo(() => (parseInt(quantity) || 0) * getExecutionPrice(), [quantity, getExecutionPrice]);
-  const approxMargin = useMemo(() => product === 'MIS' ? tradeValue / 5 : tradeValue, [product, tradeValue]);
-  const brokerage = useMemo(() => Math.min(20, tradeValue * 0.0003), [tradeValue]);
-  const totalCharges = useMemo(() => brokerage + (tradeValue * 0.000345), [brokerage, tradeValue]); // Simplified charges
-  const requiredFunds = useMemo(() => approxMargin + totalCharges, [approxMargin, totalCharges]);
-
-  const currentPosition = useMemo(() => (portfolio.positions || []).find(p => p.ticker === ticker && p.product === product), [portfolio.positions, ticker, product]);
-  const currentHolding = useMemo(() => (portfolio.holdings || []).find(h => h.ticker === ticker), [portfolio.holdings, ticker]);
+  const tradeValue = (parseInt(quantity) || 0) * getExecutionPrice();
+  const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
+  const brokerage = Math.min(20, tradeValue * 0.0003);
+  const totalCharges = brokerage + (tradeValue * 0.000345); // Simplified charges
+  const requiredFunds = approxMargin + totalCharges;
   
-  const isExitingPosition = useMemo(() => {
-      if (orderToEdit) return !!orderToEdit.product || isSellFromHolding;
-      if (orderType === 'BUY' && currentPosition && currentPosition.quantity < 0) return true; // Buying to close a short
-      if (orderType === 'SELL' && currentPosition && currentPosition.quantity > 0) return true; // Selling to close a long
-      if (orderType === 'SELL' && currentHolding) return true;
-      return false;
-  }, [orderToEdit, orderType, currentPosition, currentHolding, isSellFromHolding]);
-
-  const isShortSell = useMemo(() => orderType === 'SELL' && !isSellFromHolding && !currentPosition && !currentHolding, [orderType, isSellFromHolding, currentPosition, currentHolding]);
-
- const maxSellQuantity = useMemo(() => {
-    if (orderToEdit?.isSellFromHolding) {
-        return orderToEdit.quantity;
-    }
-    const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
-    const positionQty = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
-    
-    if (orderToEdit?.product) { // If exiting a specific position
-        return orderToEdit.quantity
-    }
-
-    return holdingQty + positionQty;
-}, [portfolio.holdings, portfolio.positions, ticker, orderToEdit]);
-
+  const maxSellQuantity = orderToEdit?.isSellFromHolding 
+    ? orderToEdit.quantity 
+    : (portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0) + 
+      (portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0);
 
   const handlePlaceOrder = () => {
     if(!stock || !user) return;
@@ -352,9 +337,14 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         return;
     }
 
-    if (orderType === 'SELL' && !isShortSell && qty > maxSellQuantity) {
+    if (orderType === 'SELL' && !orderToEdit?.isShortSell && !isExiting && qty > maxSellQuantity) {
        toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot sell more than the ${maxSellQuantity} shares you have.` });
        return;
+    }
+
+    if (isExiting && orderType === 'SELL' && qty > (orderToEdit?.quantity || 0)) {
+        toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot exit more than ${orderToEdit?.quantity} shares.` });
+        return;
     }
 
     if (orderType === 'BUY' && requiredFunds > availableFunds) {
@@ -362,7 +352,6 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
       return;
     }
     
-
     const marketIsOpen = isMarketOpen();
     const executionPrice = getExecutionPrice();
     
@@ -375,8 +364,8 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         return;
     }
     
-    // Block funds for BUY orders immediately
-    if (orderType === 'BUY') {
+    // Block funds for BUY orders immediately if it's not a modification
+    if (orderType === 'BUY' && !isEditing) {
         const fundsKey = `funds_${user.id}`;
         const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         const newBalance = (fundsData.balance || 0) - requiredFunds;
@@ -400,7 +389,9 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         isAMO: !marketIsOpen,
         product: product,
         orderMethod: orderMethod,
-        isSellFromHolding: isSellFromHolding,
+        isSellFromHolding: orderToEdit?.isSellFromHolding,
+        isShortSell: orderType === 'SELL' && !orderToEdit?.isSellFromHolding, // Simplified
+        isExit: isExiting,
         stopLossValue: useStopLoss ? (parseFloat(stopLossValue) || undefined) : undefined,
         targetValue: useTarget ? (parseFloat(targetValue) || undefined) : undefined,
     };
@@ -408,6 +399,16 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     let updatedOrders;
     if(isEditing) {
+        // Refund old margin and deduct new one
+        if (orderType === 'BUY' && orderToEdit) {
+            const fundsKey = `funds_${user.id}`;
+            const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
+            const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
+            const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
+            const newBalance = (fundsData.balance || 0) + oldMargin; // Refund
+            localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+            setAvailableFunds(newBalance);
+        }
         updatedOrders = storedOrders.map((o: Order) => o.id === newOrder.id ? newOrder : o);
     } else {
         updatedOrders = [newOrder, ...storedOrders];
@@ -459,7 +460,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   let swipeText = `SWIPE TO ${orderType}`;
   if(isEditing) {
     swipeText = `SWIPE TO MODIFY`;
-  } else if (isExitingPosition) {
+  } else if (isExiting) {
     swipeText = `SWIPE TO EXIT`;
   }
   
@@ -469,21 +470,10 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     </div>
   )
   
-  const isProductDisabled = useMemo(() => {
-    if (isSellFromHolding) return true;
-    if (isExitingPosition) return true;
-    if (isShortSell) return true;
-    return false;
-  }, [isSellFromHolding, isExitingPosition, isShortSell]);
-
-  useEffect(() => {
-    if (!isDataInitialized) return; // Don't run this logic until user data is loaded
-    if (isSellFromHolding) {
-      setProduct('CNC');
-    } else if (isShortSell) {
-      setProduct('MIS');
-    }
-  }, [isSellFromHolding, isShortSell, isDataInitialized]);
+  // A position or holding exists that we could be adding to or exiting from.
+  const hasExistingPosition = !!orderToEdit?.product;
+  const isOrderTypeLocked = isExiting || (hasExistingPosition && !isEditing);
+  const isProductLocked = !!orderToEdit?.product;
 
   if (!isDataInitialized) {
       return <PageLoader />;
@@ -540,7 +530,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
             )}
         </header>
 
-        {(!isDataInitialized && !stock) ? <PageLoader /> : (
+        {(!stock) ? <div className="px-4 my-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : (
              <div className="px-4 my-4 flex items-baseline gap-x-2">
                 <p className="text-2xl font-bold">₹{stock?.price.toFixed(2)}</p>
                 <p className={cn("font-semibold text-base", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
@@ -551,14 +541,16 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         
         <main className="flex-1 overflow-y-auto pb-4">
           <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full">
-              {isSellFromHolding ? (
+              {isExiting ? (
                  <div className="px-4">
-                    <h2 className="text-center font-bold text-lg text-red-600">SELL FROM HOLDING</h2>
+                    <h2 className={cn("text-center font-bold text-lg", orderType === 'BUY' ? 'text-blue-600' : 'text-red-600')}>
+                        {`EXIT ${orderType === 'BUY' ? 'SHORT' : 'LONG'} POSITION`}
+                    </h2>
                  </div>
               ) : (
                 <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="BUY" disabled={isExitingPosition && orderType === 'SELL'} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
-                    <TabsTrigger value="SELL" disabled={isExitingPosition && orderType === 'BUY'} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
+                    <TabsTrigger value="BUY" disabled={isOrderTypeLocked} className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Buy</TabsTrigger>
+                    <TabsTrigger value="SELL" disabled={isOrderTypeLocked} className="data-[state=active]:bg-red-600 data-[state=active]:text-white">Sell</TabsTrigger>
                 </TabsList>
               )}
               <div className="p-4 space-y-6">
@@ -591,19 +583,18 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                       </div>
                   )}
 
-
                   <div className="space-y-2">
                       <Label>Product</Label>
                       <RadioGroup value={product} onValueChange={setProduct} className="flex gap-4">
                           <Button asChild variant="outline" className={cn("flex-1", product === "MIS" && "border-primary text-primary")}>
-                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
-                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isProductDisabled} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isProductLocked ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
+                                  <RadioGroupItem value="MIS" id="mis" className="sr-only" disabled={isProductLocked} />
                                   Intraday <span className="text-xs text-muted-foreground">MIS</span>
                               </Label>
                           </Button>
                           <Button asChild variant="outline" className={cn("flex-1", product === "CNC" && "border-primary text-primary")}>
-                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isProductDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
-                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={isProductDisabled} />
+                              <Label className={cn("flex-col items-center justify-center h-full gap-0 p-2", isProductLocked ? "cursor-not-allowed opacity-50" : "cursor-pointer")}>
+                                  <RadioGroupItem value="CNC" id="cnc" className="sr-only" disabled={isProductLocked} />
                                   Longterm <span className="text-xs text-muted-foreground">CNC</span>
                               </Label>
                           </Button>
@@ -642,7 +633,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                     <div className="space-y-4 rounded-lg border p-4">
                         <div className="space-y-2">
                              <div className="flex items-center justify-between">
-                                 <Label htmlFor="stoploss-switch" className="font-medium">Stoploss</Label>
+                                 <Label htmlFor="stoploss-switch" className="font-medium flex items-center gap-2">Stoploss</Label>
                                  <Switch id="stoploss-switch" checked={useStopLoss} onCheckedChange={setUseStopLoss} />
                              </div>
                             {useStopLoss && (
