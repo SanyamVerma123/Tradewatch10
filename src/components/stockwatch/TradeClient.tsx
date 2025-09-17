@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { getStockData } from "@/app/actions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +33,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { getStockData } from "@/app/actions";
 
 
 interface TradeClientProps {
@@ -206,14 +206,15 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         setOrderType(orderToEdit.type || "BUY");
         setProduct(orderToEdit.product || "MIS");
         
-        // When adding to a position, default qty is 1. When exiting, it's the full position.
-        // When modifying, it's the existing order quantity.
+        // isExit comes from Portfolio, quantity will be set to full pos qty
+        // isAdding comes from Portfolio, quantity will default to 1
+        // isEditing comes from Orders page, quantity will be existing order qty
         if (orderToEdit.isExit) {
             setQuantity(orderToEdit.quantity?.toString() || "1");
-        } else if (orderToEdit.id) { // This is a modification or an "add" action
+        } else if (orderToEdit.isAdding) {
+            setQuantity("1");
+        } else if (orderToEdit.id) { // This is a modification
              setQuantity(orderToEdit.quantity?.toString() || "1");
-        } else {
-             setQuantity("1");
         }
         
         setPrice(orderToEdit.limitPrice?.toString() || "");
@@ -254,10 +255,11 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         
         const data = await getStockData([ticker]);
         if (data && data.length > 0) {
-            setStock(data[0]);
-            // Only set price if it's not an edit/modification flow
-            if (!orderToEdit) {
-              setPrice(data[0].price.toFixed(2));
+            const currentStock = data[0];
+            setStock(currentStock);
+            // Only set price if it's not an edit/modification flow and it's empty
+            if (!isInitialSetupDone.current && !price) {
+              setPrice(currentStock.price.toFixed(2));
             }
         }
       
@@ -265,33 +267,36 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     };
     
     initializeData();
-  }, [router, ticker, orderToEdit]);
+  }, [router, ticker, price]);
+
+  const fetchStock = useCallback(async () => {
+      try {
+        const data = await getStockData([ticker]);
+        if (data && data.length > 0) {
+            const newStock = data[0];
+            setStock(newStock);
+            if (orderMethod === "MARKET") {
+                setPrice(newStock.price.toFixed(2));
+            }
+        }
+    } catch (error) {
+        console.error("Silent stock fetch failed:", error);
+    }
+  }, [ticker, orderMethod]);
+
 
   // Live price update interval
   useEffect(() => {
     if (!isDataInitialized) return;
 
-    const interval = setInterval(async () => {
-        try {
-            const data = await getStockData([ticker]);
-            if (data && data.length > 0) {
-                const newStock = data[0];
-                setStock(newStock);
-                // Only update the price field if it's a market order or empty.
-                if (orderMethod === "MARKET") {
-                    setPrice(newStock.price.toFixed(2));
-                }
-            }
-        } catch (error) {
-            console.error("Silent stock fetch failed:", error);
-        }
-    }, 2000);
+    const interval = setInterval(fetchStock, 2000);
 
     return () => clearInterval(interval);
-  }, [isDataInitialized, ticker, orderMethod]);
+  }, [isDataInitialized, fetchStock]);
   
-  const isEditing = !!orderToEdit?.id && !orderToEdit.isExit;
+  const isEditing = !!orderToEdit?.id && !orderToEdit.isExit && !orderToEdit.isAdding;
   const isExiting = !!orderToEdit?.isExit;
+  const isAdding = !!orderToEdit?.isAdding;
 
   const getExecutionPrice = useCallback(() => {
     if (orderMethod.includes('MARKET')) {
@@ -307,14 +312,17 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const requiredFunds = approxMargin + totalCharges;
   
   const maxSellQuantity = useMemo(() => {
-    // If we're exiting a specific position from the portfolio, that's our max.
-    if (orderToEdit?.isExit) {
-        return orderToEdit.quantity;
+    if (orderToEdit?.product === 'MIS') { // If it's a short position from portfolio
+        return orderToEdit.quantity || 0;
     }
     
     // Otherwise, it's the sum of holdings and long positions for that ticker.
     const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
-    const positionQty = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
+    const position = portfolio.positions?.find(p => p.ticker === ticker);
+    const positionQty = (position && position.quantity > 0) ? position.quantity : 0;
+    
+    // If we're editing a SELL order, that qty is not yet in portfolio, so we don't count it.
+    // If we're creating a new sell order, we can sell everything available.
     return holdingQty + positionQty;
 }, [portfolio, ticker, orderToEdit]);
 
@@ -329,14 +337,9 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         return;
     }
 
-    if (orderType === 'SELL' && qty > maxSellQuantity) {
-       toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot sell more than the ${maxSellQuantity} shares you have.` });
+    if (orderType === 'SELL' && !orderToEdit?.isShortSell && qty > maxSellQuantity) {
+       toast({ variant: "destructive", title: "Invalid Quantity", description: `You can only sell up to ${maxSellQuantity} owned shares.` });
        return;
-    }
-
-    if (isExiting && orderType === 'SELL' && qty > (orderToEdit?.quantity || 0)) {
-        toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot exit more than ${orderToEdit?.quantity} shares.` });
-        return;
     }
 
     if (orderType === 'BUY' && requiredFunds > availableFunds) {
@@ -382,8 +385,9 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         product: product,
         orderMethod: orderMethod,
         isSellFromHolding: orderToEdit?.isSellFromHolding,
-        isShortSell: orderToEdit?.isShortSell,
+        isShortSell: orderToEdit?.isShortSell || (orderType === 'SELL' && maxSellQuantity === 0),
         isExit: isExiting,
+        isAdding: isAdding,
         stopLossValue: useStopLoss ? (parseFloat(stopLossValue) || undefined) : undefined,
         targetValue: useTarget ? (parseFloat(targetValue) || undefined) : undefined,
     };
@@ -450,8 +454,10 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const isSLOrder = orderMethod === "SL" || orderMethod === "SL-M";
   
   let swipeText = `SWIPE TO ${orderType}`;
-  if(isEditing) {
-    swipeText = `SWIPE TO MODIFY`;
+  if(isAdding) {
+    swipeText = `SWIPE TO ${orderType}`;
+  } else if (isEditing) {
+    swipeText = 'SWIPE TO MODIFY';
   } else if (isExiting) {
     swipeText = `SWIPE TO EXIT`;
   }
@@ -460,10 +466,10 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
     </div>
-  )
+  );
   
   const hasExistingPosition = !!orderToEdit?.product;
-  const isOrderTypeLocked = isExiting || (hasExistingPosition && !isEditing);
+  const isOrderTypeLocked = isExiting || isAdding || (hasExistingPosition && !isEditing);
   const isProductLocked = !!orderToEdit?.product;
 
   if (!isDataInitialized) {
@@ -499,7 +505,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                             </DropdownMenuItem>
                         </AlertDialogTrigger>
                         </DropdownMenuContent>
-                    </AlertDialogMenu>
+                    </DropdownMenu>
                     <AlertDialogContent>
                         <AlertDialogHeader>
                         <AlertDialogTitle>Are you sure?</AlertDialogTitle>
@@ -532,10 +538,10 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         
         <main className="flex-1 overflow-y-auto pb-4">
           <Tabs value={orderType} onValueChange={(value) => setOrderType(value as OrderType)} className="w-full">
-              {isExiting ? (
+              {(isExiting || isAdding) ? (
                  <div className="px-4">
                     <h2 className={cn("text-center font-bold text-lg", orderType === 'BUY' ? 'text-blue-600' : 'text-red-600')}>
-                        {`EXIT ${orderType === 'BUY' ? 'SHORT' : 'LONG'} POSITION`}
+                        {isExiting ? `EXIT POSITION` : `ADD TO POSITION`}
                     </h2>
                  </div>
               ) : (
@@ -558,8 +564,8 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
                           <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                          {orderType === 'SELL' && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
-                          {orderType === 'BUY' && <p className="text-xs text-muted-foreground">Lot size 1</p>}
+                           {orderType === 'SELL' && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
+                           {orderType === 'BUY' && <p className="text-xs text-muted-foreground">Lot size 1</p>}
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>
