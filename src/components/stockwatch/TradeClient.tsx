@@ -181,7 +181,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   
   // State for form inputs
   const [orderType, setOrderType] = useState<OrderType>("BUY");
-  const [quantity, setQuantity] = useState("1");
+  const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState("");
   const [triggerPrice, setTriggerPrice] = useState("");
   const [product, setProduct] = useState("MIS");
@@ -268,13 +268,15 @@ useEffect(() => {
                 setProduct(orderToEdit.product || "MIS");
                 
                 if (orderToEdit.isExit) {
+                   let qtyToSet = "1";
                    if (orderToEdit.product === 'CNC') {
                         const holding = localPortfolio.holdings.find(h => h.ticker === ticker);
-                        setQuantity(holding?.quantity.toString() || "1");
+                        if (holding) qtyToSet = holding.quantity.toString();
                    } else {
                         const position = localPortfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit.product);
-                        setQuantity(position ? Math.abs(position.quantity).toString() : "1");
+                        if (position) qtyToSet = Math.abs(position.quantity).toString();
                    }
+                   setQuantity(qtyToSet);
                 } else if (orderToEdit.isAdding) {
                     setQuantity("1");
                 } else {
@@ -345,7 +347,8 @@ useEffect(() => {
     if (!portfolio || orderType !== 'SELL') return 0;
     
     const holdingQty = portfolio.holdings.find(h => h.ticker === ticker)?.quantity || 0;
-    const positionQty = portfolio.positions.find(p => p.ticker === ticker && p.product === 'MIS' && p.quantity > 0)?.quantity || 0;
+    const position = portfolio.positions.find(p => p.ticker === ticker && p.quantity > 0);
+    const positionQty = position ? position.quantity : 0;
 
     return holdingQty + positionQty;
 }, [portfolio, ticker, orderType]);
@@ -583,9 +586,9 @@ useEffect(() => {
 
                   <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                          <Label htmlFor="quantity">{orderType === 'BUY' && isNewTrade ? 'Lot Size' : 'Quantity'}</Label>
+                          <Label htmlFor="quantity">Quantity</Label>
                           <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                           {orderType === 'SELL' && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
+                           {(orderType === 'SELL' || isExiting) && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>
