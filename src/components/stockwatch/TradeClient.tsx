@@ -242,14 +242,15 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                     const key = `${order.ticker}-${order.product}`;
                     let p = positionsMap[key] || { id: `p-${key}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
                     const tradeSign = order.type === 'BUY' ? 1 : -1;
+                    const prevQuantity = p.quantity;
                     p.quantity += order.quantity * tradeSign;
-                    // Simplified avgPrice calc for this context
-                    if (Math.sign(p.quantity) !== tradeSign && p.quantity !== 0) {
-                        // Position flipped or reduced
-                    } else {
-                       const newTotalValue = (p.avgPrice * Math.abs(p.quantity - (order.quantity * tradeSign))) + (order.ltp * order.quantity);
+
+                    if (Math.sign(p.quantity) === Math.sign(tradeSign) || prevQuantity === 0) { // increasing position
+                       const newTotalValue = (p.avgPrice * Math.abs(prevQuantity)) + (order.ltp * order.quantity);
                        p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
-                    }
+                    } else if (p.quantity === 0) {
+                        p.avgPrice = 0;
+                    } // else (reducing position but not flipping), avg price remains same
                     positionsMap[key] = p;
                 }
             });
@@ -268,7 +269,19 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
             if (orderToEdit) {
                 setOrderType(orderToEdit.type || "BUY");
                 setProduct(orderToEdit.product || "MIS");
-                setQuantity(orderToEdit.quantity?.toString() || "1");
+                
+                if (orderToEdit.isExit) {
+                   if (orderToEdit.product === 'CNC') {
+                        const holding = localPortfolio.holdings.find(h => h.ticker === ticker);
+                        setQuantity(holding?.quantity.toString() || "1");
+                   } else {
+                        const position = localPortfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit.product);
+                        setQuantity(position ? Math.abs(position.quantity).toString() : "1");
+                   }
+                } else {
+                   setQuantity(orderToEdit.quantity?.toString() || "1");
+                }
+                
                 setPrice(orderToEdit.limitPrice?.toString() || fetchedStock.price.toFixed(2));
                 setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
                 setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
@@ -292,7 +305,6 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         if (data && data.length > 0) {
             const newStock = data[0];
             setStock(newStock);
-            // Smartly update price only if it's market or empty
             if (orderMethod === "MARKET" || !price) {
                 setPrice(newStock.price.toFixed(2));
             }
@@ -329,22 +341,24 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const totalCharges = brokerage + (tradeValue * 0.000345); // Simplified charges
   const requiredFunds = approxMargin + totalCharges;
   
-    const maxSellQuantity = useMemo(() => {
-    if (!portfolio || orderType === 'BUY') return 0;
+  const maxSellQuantity = useMemo(() => {
+    if (!portfolio) return 0;
     
-    // If exiting a short position
-    if (isExiting && orderToEdit?.product) {
-        const position = portfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit.product);
+    // For short positions, max quantity to buy back is the position quantity
+    if (orderType === 'BUY' && isExiting) {
+        const position = portfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit?.product);
         return position ? Math.abs(position.quantity) : 0;
     }
 
-    // Standard sell
-    const holdingQty = portfolio.holdings.find(h => h.ticker === ticker)?.quantity || 0;
-    const position = portfolio.positions.find(p => p.ticker === ticker && p.quantity > 0); // Only long positions
-    const positionQty = position ? position.quantity : 0;
-    
-    return holdingQty + positionQty;
-}, [portfolio, ticker, orderType, isExiting, orderToEdit]);
+    // For long positions, max quantity to sell is sum of holdings and positions
+    if (orderType === 'SELL') {
+      const holdingQty = portfolio.holdings.find(h => h.ticker === ticker)?.quantity || 0;
+      const positionQty = portfolio.positions.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
+      return holdingQty + positionQty;
+    }
+
+    return 0; // Not a sell order or not exiting a short position
+}, [portfolio, ticker, orderType, isExiting, orderToEdit?.product]);
 
 
   const handlePlaceOrder = () => {
@@ -581,7 +595,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
                           <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                          <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>
+                           <p className="text-xs text-muted-foreground">Available: {orderType === 'BUY' ? 'N/A' : maxSellQuantity}</p>
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>
@@ -709,3 +723,5 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     </div>
   );
 }
+
+    
