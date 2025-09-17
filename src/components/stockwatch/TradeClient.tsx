@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import type { Order, Stock, Portfolio } from "@/lib/types";
+import type { Order, Stock, Portfolio, Holding, Position } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, MoreVertical, RefreshCcw, Loader2, ChevronsRight, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -180,12 +180,12 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [user, setUser] = useState<User | null>(null);
   
   // State for form inputs
-  const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
-  const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
-  const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
-  const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
-  const [product, setProduct] = useState(orderToEdit?.product || "MIS");
-  const [orderMethod, setOrderMethod] = useState(orderToEdit?.orderMethod?.toUpperCase() || "LIMIT");
+  const [orderType, setOrderType] = useState<OrderType>("BUY");
+  const [quantity, setQuantity] = useState("1");
+  const [price, setPrice] = useState("");
+  const [triggerPrice, setTriggerPrice] = useState("");
+  const [product, setProduct] = useState("MIS");
+  const [orderMethod, setOrderMethod] = useState("LIMIT");
   
   const [useStopLoss, setUseStopLoss] = useState(false);
   const [stopLossValue, setStopLossValue] = useState("");
@@ -212,22 +212,59 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
 
         const fundsData = JSON.parse(localStorage.getItem(`funds_${sbUser.id}`) || '{}');
         setAvailableFunds(fundsData.balance || 0);
+        
+        let localPortfolio: Portfolio = { holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 };
+        const portfolioDataKey = `portfolioData_${sbUser.id}`;
+        const ordersKey = `orders_${sbUser.id}`;
+        
+        // This is a simplified reconstruction of the portfolio from orders for max quantity check
+        // In a real app this logic would be much more robust and likely server-side
+        try {
+            const allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+            const executedOrders = allOrders.filter(o => o.status === 'Executed');
+            
+            const holdingsMap: { [ticker: string]: Holding } = {};
+            const positionsMap: { [compositeKey: string]: Position } = {};
 
-        const portfolioDataText = localStorage.getItem(`portfolioData_${sbUser.id}`);
-        if (portfolioDataText) {
-            try {
-                const storedPortfolio: Portfolio = JSON.parse(portfolioDataText);
-                setPortfolio(storedPortfolio || { holdings: [], positions: [] });
-            } catch (e) {
-                console.error("Failed to parse portfolio data", e);
-            }
-        }
+            executedOrders.forEach(order => {
+                if (order.product === 'CNC') {
+                    let h = holdingsMap[order.ticker] || { id: `h-${order.ticker}`, ticker: order.ticker, quantity: 0, avgPrice: 0, investedValue: 0, ltp: 0, pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0 };
+                    const tradeValue = order.ltp * order.quantity;
+                    if(order.type === 'BUY') {
+                        const newTotalValue = (h.avgPrice * h.quantity) + tradeValue;
+                        h.quantity += order.quantity;
+                        h.avgPrice = h.quantity > 0 ? newTotalValue / h.quantity : 0;
+                    } else {
+                        h.quantity -= order.quantity;
+                    }
+                    holdingsMap[order.ticker] = h;
+                } else { // MIS
+                    const key = `${order.ticker}-${order.product}`;
+                    let p = positionsMap[key] || { id: `p-${key}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
+                    const tradeSign = order.type === 'BUY' ? 1 : -1;
+                    p.quantity += order.quantity * tradeSign;
+                    // Simplified avgPrice calc for this context
+                    if (Math.sign(p.quantity) !== tradeSign && p.quantity !== 0) {
+                        // Position flipped or reduced
+                    } else {
+                       const newTotalValue = (p.avgPrice * Math.abs(p.quantity - (order.quantity * tradeSign))) + (order.ltp * order.quantity);
+                       p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
+                    }
+                    positionsMap[key] = p;
+                }
+            });
+
+            localPortfolio.holdings = Object.values(holdingsMap).filter(h => h.quantity > 0);
+            localPortfolio.positions = Object.values(positionsMap).filter(p => p.quantity !== 0);
+
+        } catch (e) { console.error("Could not parse portfolio for TradeClient", e); }
+        
+        setPortfolio(localPortfolio);
         
         const data = await getStockData([ticker]);
         if (data && data.length > 0) {
             const fetchedStock = data[0];
             setStock(fetchedStock);
-            // Set initial state from orderToEdit or defaults only once
             if (orderToEdit) {
                 setOrderType(orderToEdit.type || "BUY");
                 setProduct(orderToEdit.product || "MIS");
@@ -245,7 +282,8 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     };
 
     initializeData();
-  }, [ticker]); // This effect now runs only when the ticker changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker]); 
 
 
   const fetchStock = useCallback(async () => {
@@ -254,14 +292,15 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         if (data && data.length > 0) {
             const newStock = data[0];
             setStock(newStock);
-            if (orderMethod === "MARKET" && document.activeElement?.id !== 'price') {
+            // Smartly update price only if it's market or empty
+            if (orderMethod === "MARKET" || !price) {
                 setPrice(newStock.price.toFixed(2));
             }
         }
     } catch (error) {
         console.error("Silent stock fetch failed:", error);
     }
-  }, [ticker, orderMethod]);
+  }, [ticker, orderMethod, price]);
 
 
   // Live price update interval
@@ -290,22 +329,22 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const totalCharges = brokerage + (tradeValue * 0.000345); // Simplified charges
   const requiredFunds = approxMargin + totalCharges;
   
-  const maxSellQuantity = useMemo(() => {
-    if (!portfolio) return 0;
+    const maxSellQuantity = useMemo(() => {
+    if (!portfolio || orderType === 'BUY') return 0;
     
-    // If we are exiting a short position, max quantity is the size of that position
-    if (orderToEdit?.isExit && orderToEdit?.type === 'BUY' && orderToEdit.product) {
-        const position = portfolio.positions?.find(p => p.ticker === ticker && p.product === orderToEdit.product);
+    // If exiting a short position
+    if (isExiting && orderToEdit?.product) {
+        const position = portfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit.product);
         return position ? Math.abs(position.quantity) : 0;
     }
 
-    // Otherwise, it's the sum of holdings and long positions for that ticker.
-    const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
-    const position = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0); // Only long positions
+    // Standard sell
+    const holdingQty = portfolio.holdings.find(h => h.ticker === ticker)?.quantity || 0;
+    const position = portfolio.positions.find(p => p.ticker === ticker && p.quantity > 0); // Only long positions
     const positionQty = position ? position.quantity : 0;
     
     return holdingQty + positionQty;
-}, [portfolio, ticker, orderToEdit]);
+}, [portfolio, ticker, orderType, isExiting, orderToEdit]);
 
 
   const handlePlaceOrder = () => {
