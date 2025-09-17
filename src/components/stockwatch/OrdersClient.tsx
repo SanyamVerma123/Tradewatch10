@@ -56,6 +56,7 @@ export function OrdersClient() {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -207,6 +208,13 @@ export function OrdersClient() {
             const tickers = [...new Set(pendingOrders.map((o: Order) => o.ticker))];
             if (tickers.length === 0) return;
             const stockData = await getStockData(tickers);
+            
+            const newLivePrices: Record<string, number> = {};
+            stockData.forEach(s => {
+                newLivePrices[s.ticker] = s.price;
+            });
+            setLivePrices(prev => ({...prev, ...newLivePrices}));
+            
             const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
 
             let ordersWereUpdated = false;
@@ -217,25 +225,37 @@ export function OrdersClient() {
                 let shouldExecute = false;
                 let executionPrice = ltp;
 
-                if (order.isAMO) { shouldExecute = true; } 
+                // After-Market-Orders execute at market open price
+                if (order.isAMO) { 
+                    shouldExecute = true; 
+                } 
+                // Market orders execute immediately
+                else if (order.orderMethod === "MARKET") {
+                    shouldExecute = true;
+                }
+                // Limit orders
                 else if (order.orderMethod === "LIMIT") {
                     if ((order.type === 'BUY' && ltp <= order.limitPrice) || (order.type === 'SELL' && ltp >= order.limitPrice)) {
                         shouldExecute = true;
                         executionPrice = order.type === 'BUY' ? Math.min(order.limitPrice, ltp) : Math.max(order.limitPrice, ltp);
                     }
-                } else if (order.orderMethod === "SL") {
+                } 
+                // Stop-Loss Limit orders
+                else if (order.orderMethod === "SL") {
                     if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                        // Once trigger is hit, it becomes a limit order
                         if ((order.type === 'BUY' && ltp <= order.limitPrice) || (order.type === 'SELL' && ltp >= order.limitPrice)) {
                            shouldExecute = true;
                            executionPrice = order.type === 'BUY' ? Math.min(order.limitPrice, ltp) : Math.max(order.limitPrice, ltp);
                         }
                     }
-                } else if (order.orderMethod === "SL-M") {
+                } 
+                // Stop-Loss Market orders
+                else if (order.orderMethod === "SL-M") {
                     if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                        // Once trigger is hit, it becomes a market order
                         shouldExecute = true;
                     }
-                } else if (order.orderMethod === "MARKET") {
-                    shouldExecute = true;
                 }
                 
                 if (shouldExecute) {
@@ -302,7 +322,9 @@ export function OrdersClient() {
         </div>
         <TabsContent value="Pending">
           <div className="space-y-4">
-            {filteredPendingOrders.length > 0 ? filteredPendingOrders.map((order) => (
+            {filteredPendingOrders.length > 0 ? filteredPendingOrders.map((order) => {
+              const liveLtp = livePrices[order.ticker] || order.ltp;
+              return (
               <Card key={order.id} onClick={() => handleEditClick(order)} className={order.status === 'Pending' ? 'cursor-pointer' : ''}>
                 <CardContent className="p-4">
                   <div className="flex justify-between items-start">
@@ -322,12 +344,12 @@ export function OrdersClient() {
                     </div>
                     <div className="text-right">
                         <p className="font-semibold">₹{order.limitPrice.toFixed(2)}</p>
-                        <p className="text-xs text-muted-foreground">LTP ₹{order.ltp.toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">LTP ₹{liveLtp.toFixed(2)}</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            )) : <div className="text-center py-10"><p className="text-muted-foreground">You have no pending orders.</p></div>}
+            )}) : <div className="text-center py-10"><p className="text-muted-foreground">You have no pending orders.</p></div>}
           </div>
         </TabsContent>
         <TabsContent value="Executed">
