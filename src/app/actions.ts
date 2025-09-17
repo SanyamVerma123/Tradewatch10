@@ -129,34 +129,24 @@ export async function searchStocks(query: string) {
     }
 }
 
-export async function getNewsFromGNews(topic: string = "business OR finance OR stock market") {
-    const apiKey = process.env.GNEWS_API_KEY;
-    if (!apiKey) {
-        console.error("GNews API key is not configured.");
-        return null;
-    }
-
-    const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(topic)}&lang=en&country=in&max=10&sortby=publishedAt&apikey=${apiKey}`;
-
+export async function getMarketNews() {
     try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            console.error(`GNews API error: ${response.status} ${response.statusText}`);
-            const errorBody = await response.json();
-            console.error("GNews error details:", errorBody);
-            return null;
-        }
-        const data = await response.json();
-        return data.articles.map((article: any) => ({
-            id: article.url,
-            headline: article.title,
-            source: article.source.name,
-            time: new Date(article.publishedAt).toLocaleString(),
-            image: article.image || 'https://picsum.photos/seed/news_fallback/400/200',
-            url: article.url,
-        }));
+        const searchResult = await yahooFinance.search('NIFTY 50', { newsCount: 10,  }, yahooFinanceOptions);
+        if (!searchResult.news) return null;
+        
+        return searchResult.news.map((article: any, index: number) => {
+            const imageUrl = article.thumbnail?.resolutions?.[0]?.url;
+            return {
+                id: article.uuid,
+                headline: article.title,
+                source: article.publisher,
+                time: new Date(article.providerPublishTime * 1000).toLocaleString(),
+                image: imageUrl || `https://picsum.photos/seed/news${index + 1}/400/200`,
+                url: article.link,
+            };
+        });
     } catch (error) {
-        console.error("Error fetching news from GNews:", error);
+        console.error("Error fetching news from Yahoo Finance:", error);
         return null;
     }
 }

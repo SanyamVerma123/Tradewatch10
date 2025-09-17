@@ -1,9 +1,11 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import type { Stock, Watchlist, NewsArticle, Order } from "@/lib/types";
 import {
   AlertDialog,
@@ -36,7 +38,7 @@ import { Search, Sparkles, Settings, Loader2, PlusCircle, X } from "lucide-react
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { watchlists as initialWatchlistsData, news as fallbackNewsData } from "@/lib/data";
+import { watchlists as initialWatchlistsData } from "@/lib/data";
 import { StockActionSheet } from "./StockActionSheet";
 import { AIAnalysisDialog } from "./AIAnalysisDialog";
 import { supabase } from "@/lib/supabase/client";
@@ -544,7 +546,7 @@ export function WatchlistDashboard() {
                                     <a href={article.url} target="_blank" rel="noopener noreferrer" key={article.id} className="block">
                                         <Card className="overflow-hidden hover:shadow-lg transition-shadow">
                                             <div className="flex gap-4">
-                                                <img data-ai-hint="stock market business" src={article.image} alt={article.headline} width={120} height={80} className="w-24 h-24 object-cover" />
+                                                <Image data-ai-hint="stock market business" src={article.image} alt={article.headline} width={120} height={80} className="w-24 h-24 object-cover" />
                                                 <CardContent className="p-2 flex flex-col justify-center">
                                                     <h3 className="font-semibold leading-tight text-sm mb-1">{article.headline}</h3>
                                                     <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>
@@ -563,7 +565,7 @@ export function WatchlistDashboard() {
                 {news.slice(0, 6).map(article => (
                     <a href={article.url} target="_blank" rel="noopener noreferrer" key={article.id}>
                         <Card className="overflow-hidden hover:shadow-lg transition-shadow h-full">
-                            <img data-ai-hint="stock market business" src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover bg-muted" />
+                            <Image data-ai-hint="stock market business" src={article.image} alt={article.headline} width={400} height={200} className="w-full h-32 object-cover bg-muted" />
                             <CardContent className="p-4">
                                 <h3 className="font-semibold leading-tight mb-2 text-sm">{article.headline}</h3>
                                 <p className="text-xs text-muted-foreground">{article.source} &bull; {article.time}</p>

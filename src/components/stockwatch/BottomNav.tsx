@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { getNewsFromGNews } from "@/app/actions";
+import { getMarketNews } from "@/app/actions";
 import type { NewsArticle } from "@/lib/types";
 
 const navItems = [
@@ -56,14 +56,14 @@ export default function BottomNav() {
     }
 
     if (shouldFetch) {
-        const liveNews = await getNewsFromGNews();
+        const liveNews = await getMarketNews();
         if (liveNews) {
             const articles: NewsArticle[] = liveNews.map((article: any) => ({
-                id: article.url,
-                headline: article.title,
-                source: article.source.name,
-                time: new Date(article.publishedAt).toLocaleString(),
-                image: article.image || `https://picsum.photos/seed/${Math.random()}/400/200`,
+                id: article.id,
+                headline: article.headline,
+                source: article.source,
+                time: article.time,
+                image: article.image,
                 url: article.url,
             }));
 
