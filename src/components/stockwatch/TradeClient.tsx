@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { Order, Stock, Portfolio } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, MoreVertical, RefreshCcw, Loader2, ChevronsRight, Trash2 } from "lucide-react";
@@ -40,7 +40,7 @@ interface TradeClientProps {
   orderToEdit?: Order;
 }
 
-type StopLossTargetMode = 'PERCENT' | 'PRICE';
+type OrderType = "BUY" | "SELL";
 
 const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: () => void, orderType: OrderType, disabled?: boolean, buttonText: string }) => {
     const [swiping, setSwiping] = useState(false);
@@ -100,7 +100,7 @@ const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: ()
     
      useEffect(() => {
         hasSwiped.current = false;
-        resetSwipe();
+        setPosition(4);
     }, [orderType, disabled, buttonText]);
 
 
@@ -132,7 +132,7 @@ const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: ()
     );
 };
 
-type OrderType = "BUY" | "SELL";
+
 
 function isMarketOpen() {
     const now = new Date();
@@ -170,6 +170,7 @@ async function showOrderNotification(ticker: string) {
     }
 }
 
+type StopLossTargetMode = 'PERCENT' | 'PRICE';
 
 export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const router = useRouter();
@@ -180,7 +181,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   
   // State for form inputs
   const [orderType, setOrderType] = useState<OrderType>("BUY");
-  const [quantity, setQuantity] = useState("1");
+  const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState("");
   const [triggerPrice, setTriggerPrice] = useState("");
   const [product, setProduct] = useState("MIS");
@@ -198,41 +199,10 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
   const [portfolio, setPortfolio] = useState<Portfolio>({ holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 });
-  const isInitialSetupDone = useRef(false);
 
   // One-time setup effect for form state from props
   useEffect(() => {
-    if (orderToEdit && !isInitialSetupDone.current) {
-        setOrderType(orderToEdit.type || "BUY");
-        setProduct(orderToEdit.product || "MIS");
-        
-        // isExit comes from Portfolio, quantity will be set to full pos qty
-        // isAdding comes from Portfolio, quantity will default to 1
-        // isEditing comes from Orders page, quantity will be existing order qty
-        if (orderToEdit.isExit) {
-            setQuantity(orderToEdit.quantity?.toString() || "1");
-        } else if (orderToEdit.isAdding) {
-            setQuantity("1");
-        } else if (orderToEdit.id) { // This is a modification
-             setQuantity(orderToEdit.quantity?.toString() || "1");
-        }
-        
-        setPrice(orderToEdit.limitPrice?.toString() || "");
-        setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
-        setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
-        setUseStopLoss(!!orderToEdit.stopLossValue);
-        setStopLossValue(orderToEdit.stopLossValue?.toString() || "");
-        setUseTarget(!!orderToEdit.targetValue);
-        setTargetValue(orderToEdit.targetValue?.toString() || "");
-        
-        isInitialSetupDone.current = true;
-    }
-  }, [orderToEdit]);
-
-
-  // Initial data loading effect
-  useEffect(() => {
-    const initializeData = async () => {
+    const initializeState = async () => {
         const { data: { user: sbUser }, error } = await supabase.auth.getUser();
         if (error || !sbUser) {
             router.replace('/');
@@ -255,19 +225,25 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         
         const data = await getStockData([ticker]);
         if (data && data.length > 0) {
-            const currentStock = data[0];
-            setStock(currentStock);
-            // Only set price if it's not an edit/modification flow and it's empty
-            if (!isInitialSetupDone.current && !price) {
-              setPrice(currentStock.price.toFixed(2));
+            setStock(data[0]);
+             if (orderToEdit) {
+                setOrderType(orderToEdit.type || "BUY");
+                setProduct(orderToEdit.product || "MIS");
+                setQuantity(orderToEdit.quantity?.toString() || "1");
+                setPrice(orderToEdit.limitPrice?.toString() || data[0].price.toFixed(2));
+                setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
+                setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
+            } else {
+                 setPrice(data[0].price.toFixed(2));
+                 setQuantity("1");
             }
         }
-      
         setIsDataInitialized(true);
     };
-    
-    initializeData();
-  }, [router, ticker, price]);
+
+    initializeState();
+  }, []); // <-- Empty dependency array means this runs ONLY ONCE on mount
+
 
   const fetchStock = useCallback(async () => {
       try {
@@ -275,7 +251,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         if (data && data.length > 0) {
             const newStock = data[0];
             setStock(newStock);
-            if (orderMethod === "MARKET") {
+            if (orderMethod === "MARKET" && document.activeElement?.id !== 'price') {
                 setPrice(newStock.price.toFixed(2));
             }
         }
@@ -312,19 +288,18 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const requiredFunds = approxMargin + totalCharges;
   
   const maxSellQuantity = useMemo(() => {
-    if (orderToEdit?.product === 'MIS') { // If it's a short position from portfolio
-        return orderToEdit.quantity || 0;
+    if (orderToEdit?.product === 'MIS' && orderType === 'SELL') { // If it's a short position from portfolio
+        const position = portfolio.positions?.find(p => p.ticker === ticker && p.product === 'MIS');
+        return position ? Math.abs(position.quantity) : 0;
     }
     
     // Otherwise, it's the sum of holdings and long positions for that ticker.
     const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
-    const position = portfolio.positions?.find(p => p.ticker === ticker);
-    const positionQty = (position && position.quantity > 0) ? position.quantity : 0;
+    const position = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0); // Only long positions contribute
+    const positionQty = position ? position.quantity : 0;
     
-    // If we're editing a SELL order, that qty is not yet in portfolio, so we don't count it.
-    // If we're creating a new sell order, we can sell everything available.
     return holdingQty + positionQty;
-}, [portfolio, ticker, orderToEdit]);
+}, [portfolio, ticker, orderToEdit, orderType]);
 
 
   const handlePlaceOrder = () => {
@@ -338,7 +313,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     }
 
     if (orderType === 'SELL' && !orderToEdit?.isShortSell && qty > maxSellQuantity) {
-       toast({ variant: "destructive", title: "Invalid Quantity", description: `You can only sell up to ${maxSellQuantity} owned shares.` });
+       toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot sell more than the ${maxSellQuantity} shares you own.` });
        return;
     }
 
@@ -388,8 +363,6 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         isShortSell: orderToEdit?.isShortSell || (orderType === 'SELL' && maxSellQuantity === 0),
         isExit: isExiting,
         isAdding: isAdding,
-        stopLossValue: useStopLoss ? (parseFloat(stopLossValue) || undefined) : undefined,
-        targetValue: useTarget ? (parseFloat(targetValue) || undefined) : undefined,
     };
 
     const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
@@ -455,7 +428,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   
   let swipeText = `SWIPE TO ${orderType}`;
   if(isAdding) {
-    swipeText = `SWIPE TO ${orderType}`;
+    swipeText = `SWIPE TO ADD`;
   } else if (isEditing) {
     swipeText = 'SWIPE TO MODIFY';
   } else if (isExiting) {
@@ -469,7 +442,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   );
   
   const hasExistingPosition = !!orderToEdit?.product;
-  const isOrderTypeLocked = isExiting || isAdding || (hasExistingPosition && !isEditing);
+  const isOrderTypeLocked = isExiting || isAdding;
   const isProductLocked = !!orderToEdit?.product;
 
   if (!isDataInitialized) {
