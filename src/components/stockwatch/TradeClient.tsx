@@ -180,25 +180,23 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [availableFunds, setAvailableFunds] = useState(0);
   const [user, setUser] = useState<User | null>(null);
   
-  // State for form inputs - initialized to defaults
-  const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
-  const [quantity, setQuantity] = useState(orderToEdit?.quantity?.toString() || "1");
-  const [price, setPrice] = useState(orderToEdit?.limitPrice?.toString() || "");
-  const [triggerPrice, setTriggerPrice] = useState(orderToEdit?.triggerPrice?.toString() || "");
-  const [product, setProduct] = useState(orderToEdit?.product?.toUpperCase() || "MIS");
-  const [orderMethod, setOrderMethod] = useState(orderToEdit?.orderMethod?.toUpperCase() || "LIMIT");
+  // State for form inputs
+  const [orderType, setOrderType] = useState<OrderType>("BUY");
+  const [quantity, setQuantity] = useState("1");
+  const [price, setPrice] = useState("");
+  const [triggerPrice, setTriggerPrice] = useState("");
+  const [product, setProduct] = useState("MIS");
+  const [orderMethod, setOrderMethod] = useState("LIMIT");
   
-  const [useStopLoss, setUseStopLoss] = useState(!!orderToEdit?.stopLossValue);
-  const [stopLossValue, setStopLossValue] = useState(orderToEdit?.stopLossValue?.toString() || "");
+  const [useStopLoss, setUseStopLoss] = useState(false);
+  const [stopLossValue, setStopLossValue] = useState("");
   const [stopLossMode, setStopLossMode] = useState<StopLossTargetMode>('PERCENT');
 
-  const [useTarget, setUseTarget] = useState(!!orderToEdit?.targetValue);
-  const [targetValue, setTargetValue] = useState(orderToEdit?.targetValue?.toString() || "");
+  const [useTarget, setUseTarget] = useState(false);
+  const [targetValue, setTargetValue] = useState("");
   const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PRICE');
   
-  const [isStockLoading, setIsStockLoading] = useState(true);
   const [isDataInitialized, setIsDataInitialized] = useState(false);
-  
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
   const [portfolio, setPortfolio] = useState<Portfolio>({ holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 });
@@ -207,19 +205,23 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
 
   // One-time setup effect
   useEffect(() => {
-    if (orderToEdit) {
-      setOrderType(orderToEdit.type || "BUY");
-      setQuantity(orderToEdit.quantity?.toString() || "1");
-      setPrice(orderToEdit.limitPrice?.toString() || "");
-      setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
-      setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
-      setUseStopLoss(!!orderToEdit.stopLossValue);
-      setStopLossValue(orderToEdit.stopLossValue?.toString() || "");
-      setUseTarget(!!orderToEdit.targetValue);
-      setTargetValue(orderToEdit.targetValue?.toString() || "");
-      setProduct(orderToEdit.product?.toUpperCase() || "MIS");
-    }
+    const initializeState = () => {
+      if (orderToEdit) {
+        setOrderType(orderToEdit.type || "BUY");
+        setQuantity(orderToEdit.quantity?.toString() || "1");
+        setPrice(orderToEdit.limitPrice?.toString() || "");
+        setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
+        setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
+        setUseStopLoss(!!orderToEdit.stopLossValue);
+        setStopLossValue(orderToEdit.stopLossValue?.toString() || "");
+        setUseTarget(!!orderToEdit.targetValue);
+        setTargetValue(orderToEdit.targetValue?.toString() || "");
+        setProduct(orderToEdit.product?.toUpperCase() || "MIS");
+      }
+    };
+    initializeState();
   }, [orderToEdit]);
+
 
   const fetchStock = useCallback(async () => {
     try {
@@ -227,7 +229,6 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
       if (data && data.length > 0) {
         const newStock = data[0];
         setStock(newStock);
-        // Smart price update
         if (orderMethod === "MARKET" || price === "") {
           setPrice(newStock.price.toFixed(2));
         }
@@ -242,7 +243,6 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   // Initial data loading effect
   useEffect(() => {
     const initializeData = async () => {
-      setIsStockLoading(true);
       const { data: { user: sbUser }, error } = await supabase.auth.getUser();
       if (error || !sbUser) {
         router.replace('/');
@@ -263,18 +263,23 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
           }
       }
       
-      await fetchStock();
+      const data = await getStockData([ticker]);
+      if (data && data.length > 0) {
+        setStock(data[0]);
+        if(price === "") {
+          setPrice(data[0].price.toFixed(2));
+        }
+      }
       
-      setIsStockLoading(false);
       setIsDataInitialized(true);
     };
     
     initializeData();
-  }, [router, fetchStock]);
+  }, [router, ticker, price]);
 
   // Live price update interval
   useEffect(() => {
-    if (!isDataInitialized) return; // Don't start interval until initial load is done
+    if (!isDataInitialized) return;
 
     const interval = setInterval(async () => {
         try {
@@ -282,7 +287,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
             if (data && data.length > 0) {
                 const newStock = data[0];
                 setStock(newStock);
-                if (orderMethod === "MARKET" || price === "") {
+                if (orderMethod === "MARKET") {
                     setPrice(newStock.price.toFixed(2));
                 }
             }
@@ -292,7 +297,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [isDataInitialized, ticker, orderMethod, price]);
+  }, [isDataInitialized, ticker, orderMethod]);
   
   const isEditing = !!orderToEdit?.id && !orderToEdit?.isSellFromHolding;
   
@@ -323,11 +328,16 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const isShortSell = useMemo(() => orderType === 'SELL' && !isSellFromHolding && !currentPosition && !currentHolding, [orderType, isSellFromHolding, currentPosition, currentHolding]);
 
  const maxSellQuantity = useMemo(() => {
-    if (orderToEdit?.quantity) {
-      return orderToEdit.quantity;
+    if (orderToEdit?.isSellFromHolding) {
+        return orderToEdit.quantity;
     }
     const holdingQty = portfolio.holdings?.find(h => h.ticker === ticker)?.quantity || 0;
     const positionQty = portfolio.positions?.find(p => p.ticker === ticker && p.quantity > 0)?.quantity || 0;
+    
+    if (orderToEdit?.product) { // If exiting a specific position
+        return orderToEdit.quantity
+    }
+
     return holdingQty + positionQty;
 }, [portfolio.holdings, portfolio.positions, ticker, orderToEdit]);
 
@@ -342,15 +352,16 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
         return;
     }
 
+    if (orderType === 'SELL' && !isShortSell && qty > maxSellQuantity) {
+       toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot sell more than the ${maxSellQuantity} shares you have.` });
+       return;
+    }
+
     if (orderType === 'BUY' && requiredFunds > availableFunds) {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~₹${requiredFunds.toFixed(2)}. Available: ₹${availableFunds.toFixed(2)}.` });
       return;
     }
     
-    if (orderType === 'SELL' && qty > maxSellQuantity && !isShortSell) {
-       toast({ variant: "destructive", title: "Insufficient Holdings", description: `You only have ${maxSellQuantity} shares to sell.` });
-       return;
-    }
 
     const marketIsOpen = isMarketOpen();
     const executionPrice = getExecutionPrice();
@@ -529,7 +540,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
             )}
         </header>
 
-        {(isStockLoading && !stock) ? <PageLoader /> : (
+        {(!isDataInitialized && !stock) ? <PageLoader /> : (
              <div className="px-4 my-4 flex items-baseline gap-x-2">
                 <p className="text-2xl font-bold">₹{stock?.price.toFixed(2)}</p>
                 <p className={cn("font-semibold text-base", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
@@ -687,7 +698,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
                       <span className="font-semibold">₹{availableFunds.toFixed(2)}</span>
                   </div>
               </div>
-               <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={isStockLoading} buttonText={swipeText} />
+               <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={!isDataInitialized} buttonText={swipeText} />
           </div>
         </footer>
         )}
