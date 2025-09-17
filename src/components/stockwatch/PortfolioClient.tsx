@@ -108,9 +108,9 @@ export function PortfolioClient() {
     setStocksMap(newStocksMap);
 
     const holdingsMap: { [ticker: string]: Holding } = {};
-    const pastCncOrders = executedOrders.filter(o => (o.product === 'CNC' || o.isSellFromHolding) && o.executedAt && !isToday(new Date(o.executedAt)));
+    const cncOrders = executedOrders.filter(o => o.product === 'CNC');
 
-    for (const order of pastCncOrders) {
+    for (const order of cncOrders) {
         let holding = holdingsMap[order.ticker];
         
         if (order.type === 'BUY') {
@@ -124,19 +124,22 @@ export function PortfolioClient() {
             const newTotalValue = (holding.avgPrice * holding.quantity) + tradeValue;
             holding.quantity += order.quantity;
             holding.avgPrice = holding.quantity > 0 ? newTotalValue / holding.quantity : 0;
-        } else { 
+        } else { // SELL
             if (holding) {
               holding.quantity -= order.quantity;
             }
         }
     }
 
-    const pastHoldings = Object.values(holdingsMap).filter(h => h.quantity > 0.001);
+    const currentHoldings = Object.values(holdingsMap).filter(h => h.quantity > 0.001);
     
     let realizedDayPnl = 0;
     const positionMap: { [compositeKey: string]: Position } = {};
     
-    for (const order of todayExecutedOrders) {
+    // Only today's non-CNC orders affect positions
+    const todayPositionOrders = todayExecutedOrders.filter(o => o.product !== 'CNC');
+
+    for (const order of todayPositionOrders) {
         const ltp = newStocksMap[order.ticker]?.price || order.ltp;
         const product = order.product || 'MIS';
         const compositeKey = `${order.ticker}-${product}`;
@@ -153,14 +156,6 @@ export function PortfolioClient() {
         const tradeValue = order.ltp * order.quantity;
         const currentNetQuantity = p.quantity;
         const tradeSign = order.type === 'BUY' ? 1 : -1;
-
-        if (order.isSellFromHolding) {
-            const holding = pastHoldings.find(h => h.ticker === order.ticker);
-            if(holding) {
-                realizedDayPnl += (order.ltp - holding.avgPrice) * order.quantity;
-            }
-            continue;
-        };
 
         if (Math.sign(tradeSign) === Math.sign(currentNetQuantity) || currentNetQuantity === 0) {
             const newTotalValue = (p.avgPrice * Math.abs(currentNetQuantity)) + tradeValue;
@@ -218,7 +213,7 @@ export function PortfolioClient() {
         }
     }
 
-    const finalHoldings = pastHoldings.map(h => {
+    const finalHoldings = currentHoldings.map(h => {
         const liveData = newStocksMap[h.ticker];
         const ltp = liveData?.price || h.ltp;
         const invested = h.avgPrice * h.quantity;
@@ -380,6 +375,7 @@ export function PortfolioClient() {
         } else { // 'add'
             orderData.type = 'BUY';
             orderData.quantity = 1; // Default to add 1
+            orderData.isAdding = true;
         }
      } else if (actionSheetContext === 'position') {
         const position = portfolio.positions.find(p => p.ticker === ticker);
@@ -396,6 +392,7 @@ export function PortfolioClient() {
             // Adding to a long position is BUY, adding to short is SELL
             orderData.type = position.quantity > 0 ? 'BUY' : 'SELL';
             orderData.quantity = 1; // Default to add 1
+            orderData.isAdding = true;
         }
      }
      

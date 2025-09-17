@@ -180,12 +180,12 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [user, setUser] = useState<User | null>(null);
   
   // State for form inputs
-  const [orderType, setOrderType] = useState<OrderType>("BUY");
-  const [quantity, setQuantity] = useState("");
+  const [orderType, setOrderType] = useState<OrderType>(orderToEdit?.type || "BUY");
+  const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("");
   const [triggerPrice, setTriggerPrice] = useState("");
-  const [product, setProduct] = useState("MIS");
-  const [orderMethod, setOrderMethod] = useState("LIMIT");
+  const [product, setProduct] = useState(orderToEdit?.product || "MIS");
+  const [orderMethod, setOrderMethod] = useState(orderToEdit?.orderMethod || "LIMIT");
   
   const [useStopLoss, setUseStopLoss] = useState(false);
   const [stopLossValue, setStopLossValue] = useState("");
@@ -266,22 +266,7 @@ useEffect(() => {
             if (orderToEdit) {
                 setOrderType(orderToEdit.type || "BUY");
                 setProduct(orderToEdit.product || "MIS");
-                
-                if (orderToEdit.isExit) {
-                   let qtyToSet = "1";
-                   if (orderToEdit.product === 'CNC') {
-                        const holding = localPortfolio.holdings.find(h => h.ticker === ticker);
-                        if (holding) qtyToSet = holding.quantity.toString();
-                   } else {
-                        const position = localPortfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit.product);
-                        if (position) qtyToSet = Math.abs(position.quantity).toString();
-                   }
-                   setQuantity(qtyToSet);
-                } else if (orderToEdit.isAdding) {
-                    setQuantity("1");
-                } else {
-                   setQuantity(orderToEdit.quantity?.toString() || "1");
-                }
+                setQuantity(orderToEdit.quantity?.toString() || "1");
                 
                 setPrice(orderToEdit.limitPrice?.toString() || fetchedStock.price.toFixed(2));
                 setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
@@ -344,14 +329,14 @@ useEffect(() => {
   const requiredFunds = approxMargin + totalCharges;
   
   const maxSellQuantity = useMemo(() => {
-    if (!portfolio || orderType !== 'SELL') return 0;
+    if (!portfolio) return 0;
     
     const holdingQty = portfolio.holdings.find(h => h.ticker === ticker)?.quantity || 0;
     const position = portfolio.positions.find(p => p.ticker === ticker && p.quantity > 0);
     const positionQty = position ? position.quantity : 0;
 
     return holdingQty + positionQty;
-}, [portfolio, ticker, orderType]);
+}, [portfolio, ticker]);
 
 
   const handlePlaceOrder = () => {
@@ -411,7 +396,7 @@ useEffect(() => {
         isAMO: !marketIsOpen,
         product: product,
         orderMethod: orderMethod,
-        isSellFromHolding: orderToEdit?.isSellFromHolding,
+        isSellFromHolding: (orderType === 'SELL' && product === 'CNC'),
         isShortSell: orderToEdit?.isShortSell || (orderType === 'SELL' && maxSellQuantity === 0),
         isExit: isExiting,
         isAdding: isAdding,
@@ -494,7 +479,7 @@ useEffect(() => {
   );
   
   const isOrderTypeLocked = isExiting || isAdding;
-  const isProductLocked = !!orderToEdit?.product;
+  const isProductLocked = isExiting || isAdding;
 
   if (!isDataInitialized) {
       return <PageLoader />;
