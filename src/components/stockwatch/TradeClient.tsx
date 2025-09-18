@@ -43,6 +43,13 @@ interface TradeClientProps {
 
 type OrderType = "BUY" | "SELL";
 
+const PageLoader = () => (
+    <div className="flex justify-center items-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+);
+
+
 const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: () => void, orderType: OrderType, disabled?: boolean, buttonText: string }) => {
     const [swiping, setSwiping] = useState(false);
     const [position, setPosition] = useState(0);
@@ -311,10 +318,9 @@ useEffect(() => {
     return () => clearInterval(interval);
   }, [isDataInitialized, fetchStock]);
   
-  const isEditing = !!orderToEdit?.id && !orderToEdit.isExit && !orderToEdit.isAdding;
+  const isEditing = !!(orderToEdit?.id && !orderToEdit.isExit && !orderToEdit.isAdding && orderToEdit.status === 'Pending');
   const isExiting = !!orderToEdit?.isExit;
   const isAdding = !!orderToEdit?.isAdding;
-  const isNewTrade = !isEditing && !isExiting && !isAdding;
 
   const getExecutionPrice = useCallback(() => {
     if (orderMethod.includes('MARKET')) {
@@ -407,7 +413,7 @@ useEffect(() => {
     }
 
     const newOrder: Order = {
-        id: (isEditing && orderToEdit?.id) ? orderToEdit.id : `order-${Date.now()}`,
+        id: isEditing ? orderToEdit.id : `order-${Date.now()}`,
         type: orderType,
         ticker,
         quantity: qty,
@@ -489,11 +495,7 @@ useEffect(() => {
   }
   
   if (!isDataInitialized || !stock) {
-    return (
-        <div className="flex justify-center items-center h-screen">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-    );
+    return <PageLoader />;
   }
   
   const isOrderTypeLocked = isExiting || isAdding;
@@ -715,5 +717,3 @@ useEffect(() => {
     </div>
   );
 }
-
-    
