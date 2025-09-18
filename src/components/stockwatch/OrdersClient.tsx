@@ -26,7 +26,6 @@ export function OrdersClient() {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
 
   const fetchUserAndOrders = useCallback(async () => {
     const { data: { user: sbUser }, error } = await supabase.auth.getUser();
@@ -64,14 +63,32 @@ export function OrdersClient() {
   useEffect(() => {
     const updateLivePrices = async () => {
         const pending = orders.filter(o => o.status === 'Pending');
-        if(pending.length > 0) {
+        if (pending.length > 0) {
             const tickers = [...new Set(pending.map(o => o.ticker))];
-            const stockData = await getStockData(tickers);
-            const newLivePrices: Record<string, number> = {};
-            stockData.forEach(s => {
-                newLivePrices[s.ticker] = s.price;
-            });
-            setLivePrices(prev => ({...prev, ...newLivePrices}));
+            try {
+                const stockData = await getStockData(tickers);
+                const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
+                
+                setOrders(currentOrders => {
+                    let wasUpdated = false;
+                    const updatedOrders = currentOrders.map(order => {
+                        if (order.status === 'Pending' && stockPriceMap.has(order.ticker)) {
+                            const newLtp = stockPriceMap.get(order.ticker)!;
+                            if (order.ltp !== newLtp) {
+                                wasUpdated = true;
+                                return { ...order, ltp: newLtp };
+                            }
+                        }
+                        return order;
+                    });
+
+                    // Only update state if there's a change to prevent infinite loops
+                    return wasUpdated ? updatedOrders : currentOrders;
+                });
+
+            } catch (error) {
+                console.error("Failed to fetch live prices for orders:", error);
+            }
         }
     };
 
@@ -130,7 +147,6 @@ export function OrdersClient() {
         <TabsContent value="Pending">
           <div className="space-y-4">
             {filteredPendingOrders.length > 0 ? filteredPendingOrders.map((order) => {
-              const liveLtp = livePrices[order.ticker] || order.ltp;
               return (
               <Card key={order.id} onClick={() => handleEditClick(order)} className={order.status === 'Pending' ? 'cursor-pointer' : ''}>
                 <CardContent className="p-4">
@@ -151,7 +167,7 @@ export function OrdersClient() {
                     </div>
                     <div className="text-right">
                         <p className="font-semibold">₹{order.limitPrice.toFixed(2)}</p>
-                        <p className="text-xs text-muted-foreground">LTP ₹{liveLtp.toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">LTP ₹{order.ltp.toFixed(2)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -229,3 +245,5 @@ export function OrdersClient() {
     </div>
   );
 }
+
+    
