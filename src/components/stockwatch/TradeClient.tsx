@@ -355,8 +355,33 @@ useEffect(() => {
        return;
     }
 
+    // Refund old margin if we are editing a BUY order
+    if (isEditing && orderToEdit?.type === 'BUY') {
+        const fundsKey = `funds_${user.id}`;
+        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
+        const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
+        const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
+        const oldCharges = Math.min(20, oldOrderValue * 0.0003) + (oldOrderValue * 0.000345);
+        const fundsToRefund = oldMargin + oldCharges;
+        const newBalance = (fundsData.balance || 0) + fundsToRefund;
+        localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+        setAvailableFunds(newBalance);
+    }
+
     if (orderType === 'BUY' && requiredFunds > availableFunds) {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~₹${requiredFunds.toFixed(2)}. Available: ₹${availableFunds.toFixed(2)}.` });
+      // Re-add the refunded margin if the new order fails
+       if (isEditing && orderToEdit?.type === 'BUY') {
+            const fundsKey = `funds_${user.id}`;
+            const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
+            const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
+            const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
+            const oldCharges = Math.min(20, oldOrderValue * 0.0003) + (oldOrderValue * 0.000345);
+            const fundsToRefund = oldMargin + oldCharges;
+            const newBalance = (fundsData.balance || 0) - fundsToRefund;
+            localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+            setAvailableFunds(newBalance);
+       }
       return;
     }
     
@@ -372,8 +397,8 @@ useEffect(() => {
         return;
     }
     
-    // Block funds for BUY orders immediately if it's not a modification
-    if (orderType === 'BUY' && !isEditing) {
+    // Block funds for new BUY orders or updated BUY orders
+    if (orderType === 'BUY') {
         const fundsKey = `funds_${user.id}`;
         const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         const newBalance = (fundsData.balance || 0) - requiredFunds;
@@ -406,16 +431,6 @@ useEffect(() => {
     const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     let updatedOrders;
     if(isEditing) {
-        // Refund old margin and deduct new one
-        if (orderType === 'BUY' && orderToEdit) {
-            const fundsKey = `funds_${user.id}`;
-            const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-            const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
-            const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
-            const newBalance = (fundsData.balance || 0) + oldMargin; // Refund
-            localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
-            setAvailableFunds(newBalance);
-        }
         updatedOrders = storedOrders.map((o: Order) => o.id === newOrder.id ? newOrder : o);
     } else {
         updatedOrders = [newOrder, ...storedOrders];
@@ -473,18 +488,16 @@ useEffect(() => {
     swipeText = `SWIPE TO EXIT`;
   }
   
-  const PageLoader = () => (
-    <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-    </div>
-  );
+  if (!isDataInitialized || !stock) {
+    return (
+        <div className="flex justify-center items-center h-screen">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+    );
+  }
   
   const isOrderTypeLocked = isExiting || isAdding;
   const isProductLocked = isExiting || isAdding;
-
-  if (!isDataInitialized) {
-      return <PageLoader />;
-  }
 
 
   return (
@@ -702,3 +715,5 @@ useEffect(() => {
     </div>
   );
 }
+
+    
