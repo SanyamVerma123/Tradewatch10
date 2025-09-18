@@ -87,7 +87,7 @@ export function PortfolioClient() {
         allOrders = [];
     }
     
-    const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executedAt);
+    const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executedAt).sort((a, b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime());
 
     const todayExecutedOrders = executedOrders.filter(o => isToday(new Date(o.executedAt!)));
     
@@ -110,33 +110,36 @@ export function PortfolioClient() {
     const holdingsMap: { [ticker: string]: Holding } = {};
     const cncOrders = executedOrders.filter(o => o.product === 'CNC');
 
+    // Correctly calculate holdings by iterating through all CNC orders chronologically
     for (const order of cncOrders) {
         let holding = holdingsMap[order.ticker];
         
+        if (!holding) {
+             holding = {
+                id: `holding-${order.ticker}`, ticker: order.ticker, quantity: 0, avgPrice: 0, investedValue: 0, ltp: 0, pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0,
+            };
+            holdingsMap[order.ticker] = holding;
+        }
+
         if (order.type === 'BUY') {
-            if (!holding) {
-                holding = {
-                    id: `holding-${order.ticker}`, ticker: order.ticker, quantity: 0, avgPrice: 0, investedValue: 0, ltp: 0, pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0,
-                };
-                holdingsMap[order.ticker] = holding;
-            }
+            const existingValue = holding.avgPrice * holding.quantity;
             const tradeValue = order.ltp * order.quantity;
-            const newTotalValue = (holding.avgPrice * holding.quantity) + tradeValue;
+            const newTotalValue = existingValue + tradeValue;
+            
             holding.quantity += order.quantity;
             holding.avgPrice = holding.quantity > 0 ? newTotalValue / holding.quantity : 0;
         } else { // SELL
-            if (holding) {
-              holding.quantity -= order.quantity;
-            }
+            // When selling, the average price of the remaining shares doesn't change
+            holding.quantity -= order.quantity;
         }
     }
+
 
     const currentHoldings = Object.values(holdingsMap).filter(h => h.quantity > 0.001);
     
     let realizedDayPnl = 0;
     const positionMap: { [compositeKey: string]: Position } = {};
     
-    // Only today's non-CNC orders affect positions
     const todayPositionOrders = todayExecutedOrders.filter(o => o.product !== 'CNC');
 
     for (const order of todayPositionOrders) {
