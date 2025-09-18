@@ -321,6 +321,7 @@ useEffect(() => {
   const isEditing = !!(orderToEdit?.id && orderToEdit.status === 'Pending');
   const isExiting = !!orderToEdit?.isExit;
   const isAdding = !!orderToEdit?.isAdding;
+  const isNewShortSell = orderType === 'SELL' && !isExiting && !isAdding;
 
   const getExecutionPrice = useCallback(() => {
     if (orderMethod.includes('MARKET')) {
@@ -335,8 +336,22 @@ useEffect(() => {
   const totalCharges = brokerage + (tradeValue * 0.000345); // Simplified charges
   const requiredFunds = approxMargin + totalCharges;
   
-  const maxSellQuantity = useMemo(() => {
+  const availableQtyToTrade = useMemo(() => {
     if (!portfolio || !user) return 0;
+    
+    // If we are exiting a position, the available quantity is the size of that position.
+    if(isExiting) {
+        const productToFind = orderToEdit?.product || product;
+        const position = portfolio.positions.find(p => p.ticker === ticker && p.product === productToFind);
+        if(position) return Math.abs(position.quantity);
+
+        const holding = portfolio.holdings.find(h => h.ticker === ticker);
+        if(holding) return holding.quantity;
+
+        return 0;
+    }
+
+    // Otherwise, it's the total net quantity from holdings and positions.
     const ordersKey = `orders_${user.id}`;
     let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     const executedOrders = allOrders.filter(o => o.status === 'Executed');
@@ -352,7 +367,7 @@ useEffect(() => {
     });
 
     return totalBuyQty - totalSellQty;
-}, [portfolio, ticker, user]);
+}, [portfolio, ticker, user, isExiting, orderToEdit, product]);
 
 
   const handlePlaceOrder = () => {
@@ -365,9 +380,15 @@ useEffect(() => {
         return;
     }
 
-    if (orderType === 'SELL' && !orderToEdit?.isShortSell && !isAdding && qty > maxSellQuantity) {
-       toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot sell more than the ${maxSellQuantity} shares you own.` });
+    if (orderType === 'SELL' && !isNewShortSell && !isAdding && qty > availableQtyToTrade) {
+       toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot sell more than the ${availableQtyToTrade} shares you own.` });
        return;
+    }
+    
+    // If exiting a short position (i.e. buying to cover), check quantity
+    if(orderType === 'BUY' && isExiting && qty > availableQtyToTrade) {
+        toast({ variant: "destructive", title: "Invalid Quantity", description: `You only need to buy ${availableQtyToTrade} shares to square off your position.` });
+        return;
     }
 
     // Refund old margin if we are editing a BUY order
@@ -437,7 +458,7 @@ useEffect(() => {
         isAMO: !marketIsOpen,
         product: product,
         orderMethod: orderMethod,
-        isShortSell: orderToEdit?.isShortSell || (orderType === 'SELL' && maxSellQuantity === 0),
+        isShortSell: orderToEdit?.isShortSell || (isNewShortSell && availableQtyToTrade === 0),
         isExit: isExiting,
         isAdding: isAdding,
     };
@@ -597,7 +618,7 @@ useEffect(() => {
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
                           <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                           {(orderType === 'SELL' || isExiting) && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
+                           {((orderType === 'SELL' && !isNewShortSell) || (orderType === 'BUY' && isExiting)) && <p className="text-xs text-muted-foreground">Available: {availableQtyToTrade}</p>}
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>
@@ -725,3 +746,5 @@ useEffect(() => {
     </div>
   );
 }
+
+    
