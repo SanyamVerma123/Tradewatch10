@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import Link from "next/link";
@@ -9,7 +10,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getMarketNews, getStockData } from "@/app/actions";
-import type { NewsArticle, Order } from "@/lib/types";
+import type { NewsArticle, Order, Position } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 
 const navItems = [
@@ -167,22 +168,43 @@ export default function BottomNav() {
         return false;
     }
     
-    // Calculate realized PnL for SELL orders
+    // Calculate realized PnL for SELL orders and BUY-to-cover-short orders
     let realizedPnl: number | undefined = undefined;
-    if (orderToExecute.type === 'SELL') {
-      const executedOrders = allOrders.filter((o: Order) => o.status === 'Executed' && o.ticker === orderToExecute.ticker);
-      const buyOrders = executedOrders.filter((o: Order) => o.type === 'BUY');
+    if (orderToExecute.type === 'SELL' || (orderToExecute.type === 'BUY' && orderToExecute.isExit)) {
+      // Find the position this order is closing/reducing
+      const isToday = (d: Date) => { const t = new Date(); return d.getDate() === t.getDate() && d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear(); };
+      const executedOrdersToday = allOrders.filter((o: Order) => o.status === 'Executed' && o.executedAt && isToday(new Date(o.executedAt)));
+      const positionMap: { [compositeKey: string]: Position } = {};
       
-      let totalBuyValue = 0;
-      let totalBuyQty = 0;
-      buyOrders.forEach(bo => {
-        totalBuyValue += bo.ltp * bo.quantity;
-        totalBuyQty += bo.quantity;
-      });
-
-      const avgBuyPrice = totalBuyQty > 0 ? totalBuyValue / totalBuyQty : 0;
-      if (avgBuyPrice > 0) {
-        realizedPnl = (ltp - avgBuyPrice) * orderToExecute.quantity;
+      for (const order of executedOrdersToday) {
+        const pKey = `${order.ticker}-${order.product}`;
+        let p = positionMap[pKey];
+        if (!p) {
+             p = { id: `p-${pKey}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
+             positionMap[pKey] = p;
+        }
+        const tradeSign = order.type === 'BUY' ? 1 : -1;
+        const currentNetQty = p.quantity;
+        if(Math.sign(tradeSign) === Math.sign(currentNetQty) || currentNetQty === 0) {
+            const newTotalValue = (p.avgPrice * Math.abs(currentNetQty)) + (order.ltp * order.quantity);
+            p.quantity += order.quantity * tradeSign;
+            p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
+        } else {
+            p.quantity += order.quantity * tradeSign;
+            if (Math.abs(p.quantity) < 0.001) p.avgPrice = 0;
+        }
+      }
+      
+      const posKey = `${orderToExecute.ticker}-${orderToExecute.product}`;
+      const relevantPosition = positionMap[posKey];
+      const avgPrice = relevantPosition ? relevantPosition.avgPrice : 0;
+      
+      if (avgPrice > 0) {
+        if (orderToExecute.type === 'SELL') { // Selling a long position
+          realizedPnl = (ltp - avgPrice) * orderToExecute.quantity;
+        } else { // Buying to cover a short position
+          realizedPnl = (avgPrice - ltp) * orderToExecute.quantity;
+        }
       }
     }
 

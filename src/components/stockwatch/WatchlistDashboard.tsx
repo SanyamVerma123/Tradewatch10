@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -292,20 +293,17 @@ export function WatchlistDashboard() {
     setIsActionSheetOpen(true);
   }
 
-  const handleTradeAction = (type: 'buy' | 'sell', ticker: string) => {
+  const handleTradeAction = (action: 'buy' | 'sell', ticker: string) => {
     const stock = stocks[ticker];
-    const isShortSell = type === 'sell';
+    if (!stock) return;
+    
+    const isShortSell = action === 'sell';
 
     const orderData: Partial<Order> = {
-        type: type === 'buy' ? 'BUY' : 'SELL',
+        type: isShortSell ? 'SELL' : 'BUY',
         ticker: ticker,
-        quantity: 1,
-        product: isShortSell ? 'MIS' : undefined, // Enforce MIS for short, leave undefined for long
-        orderMethod: 'MARKET',
-        ltp: stock?.price || 0,
-        price: stock?.price?.toFixed(2) || '0',
-        isShortSell: isShortSell,
-        isLong: !isShortSell,
+        // When shorting from watchlist, enforce MIS product type
+        product: isShortSell ? 'MIS' : undefined,
     };
     router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);
     setIsActionSheetOpen(false);

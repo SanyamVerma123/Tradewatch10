@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -321,7 +322,6 @@ useEffect(() => {
   const isEditing = !!(orderToEdit?.id && orderToEdit.status === 'Pending');
   const isExiting = !!orderToEdit?.isExit;
   const isAdding = !!orderToEdit?.isAdding;
-  const isNewShortSell = orderType === 'SELL' && !isExiting && !isAdding;
 
   const getExecutionPrice = useCallback(() => {
     if (orderMethod.includes('MARKET')) {
@@ -336,39 +336,26 @@ useEffect(() => {
   const totalCharges = brokerage + (tradeValue * 0.000345); // Simplified charges
   const requiredFunds = approxMargin + totalCharges;
   
-  const availableQtyToTrade = useMemo(() => {
-    if (!portfolio || !user) return 0;
-    
-    // If we are exiting a position, the available quantity is the size of that position.
-    if(isExiting) {
-        const productToFind = orderToEdit?.product || product;
-        const position = portfolio.positions.find(p => p.ticker === ticker && p.product === productToFind);
-        if(position) return Math.abs(position.quantity);
+  const holdingForTicker = useMemo(() => {
+    return portfolio.holdings.find(h => h.ticker === ticker);
+  }, [portfolio.holdings, ticker]);
 
-        const holding = portfolio.holdings.find(h => h.ticker === ticker);
-        if(holding) return holding.quantity;
+  const positionForTicker = useMemo(() => {
+    if (!orderToEdit) return undefined;
+    return portfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit.product);
+  }, [portfolio.positions, ticker, orderToEdit]);
 
-        return 0;
+  const netOwnedQuantity = (holdingForTicker?.quantity || 0);
+  const maxSellQuantity = useMemo(() => {
+    if (isExiting) {
+      if(positionForTicker) return Math.abs(positionForTicker.quantity);
+      if(holdingForTicker) return holdingForTicker.quantity;
+      return 0;
     }
-
-    // Otherwise, it's the total net quantity from holdings and positions.
-    const ordersKey = `orders_${user.id}`;
-    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-    const executedOrders = allOrders.filter(o => o.status === 'Executed');
-
-    let totalBuyQty = 0;
-    let totalSellQty = 0;
-    
-    executedOrders.forEach(o => {
-      if(o.ticker === ticker) {
-        if(o.type === 'BUY') totalBuyQty += o.quantity;
-        if(o.type === 'SELL') totalSellQty += o.quantity;
-      }
-    });
-
-    return totalBuyQty - totalSellQty;
-}, [portfolio, ticker, user, isExiting, orderToEdit, product]);
-
+    return netOwnedQuantity;
+  }, [isExiting, positionForTicker, holdingForTicker, netOwnedQuantity]);
+  
+  const isNewShortSell = orderType === 'SELL' && !isExiting && !isAdding && maxSellQuantity === 0;
 
   const handlePlaceOrder = () => {
     if(!stock || !user) return;
@@ -380,17 +367,18 @@ useEffect(() => {
         return;
     }
 
-    if (orderType === 'SELL' && !isNewShortSell && !isAdding && qty > availableQtyToTrade) {
-       toast({ variant: "destructive", title: "Invalid Quantity", description: `You cannot sell more than the ${availableQtyToTrade} shares you own.` });
+    if (orderType === 'SELL' && !isNewShortSell && !isAdding && qty > maxSellQuantity) {
+       toast({ variant: "destructive", title: "Invalid Quantity", description: `You can only sell up to ${maxSellQuantity} shares.` });
        return;
     }
-    
-    // If exiting a short position (i.e. buying to cover), check quantity
-    if(orderType === 'BUY' && isExiting && qty > availableQtyToTrade) {
-        toast({ variant: "destructive", title: "Invalid Quantity", description: `You only need to buy ${availableQtyToTrade} shares to square off your position.` });
-        return;
-    }
 
+    if (orderType === 'BUY' && isExiting && positionForTicker && positionForTicker.quantity < 0) {
+        if (qty > Math.abs(positionForTicker.quantity)) {
+           toast({ variant: "destructive", title: "Invalid Quantity", description: `You only need to buy ${Math.abs(positionForTicker.quantity)} shares to exit your short position.` });
+           return;
+        }
+    }
+    
     // Refund old margin if we are editing a BUY order
     if (isEditing && orderToEdit?.type === 'BUY') {
         const fundsKey = `funds_${user.id}`;
@@ -458,7 +446,7 @@ useEffect(() => {
         isAMO: !marketIsOpen,
         product: product,
         orderMethod: orderMethod,
-        isShortSell: orderToEdit?.isShortSell || (isNewShortSell && availableQtyToTrade === 0),
+        isShortSell: orderToEdit?.isShortSell || isNewShortSell,
         isExit: isExiting,
         isAdding: isAdding,
     };
@@ -528,7 +516,7 @@ useEffect(() => {
   }
   
   const isOrderTypeLocked = isExiting || isAdding;
-  const isProductLocked = isExiting || isAdding;
+  const isProductLocked = isExiting || isAdding || isNewShortSell;
 
 
   return (
@@ -618,7 +606,7 @@ useEffect(() => {
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
                           <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                           {((orderType === 'SELL' && !isNewShortSell) || (orderType === 'BUY' && isExiting)) && <p className="text-xs text-muted-foreground">Available: {availableQtyToTrade}</p>}
+                           {(orderType === 'SELL' && !isNewShortSell) && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>

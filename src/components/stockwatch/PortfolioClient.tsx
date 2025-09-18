@@ -367,8 +367,7 @@ export function PortfolioClient() {
   }
 
   const onActionSheetTrade = (action: 'add' | 'exit', ticker: string) => {
-     const stock = stocksMap[ticker];
-     if (!stock) return;
+     if (!selectedStock) return;
 
      let orderData: Partial<Order> = { ticker };
      
@@ -384,11 +383,9 @@ export function PortfolioClient() {
             orderData.isExit = true;
         } else { // 'add'
             orderData.type = 'BUY';
-            orderData.quantity = 1; // Default to add 1
-            orderData.isAdding = true;
         }
      } else if (actionSheetContext === 'position') {
-        const position = portfolio.positions.find(p => p.ticker === ticker && p.product === selectedStock?.product);
+        const position = portfolio.positions.find(p => p.ticker === ticker && p.product === selectedStock.product);
         if (!position) return;
         
         orderData.product = position.product;
@@ -401,8 +398,6 @@ export function PortfolioClient() {
         } else { // 'add'
             // Adding to a long position is BUY, adding to short is SELL
             orderData.type = position.quantity > 0 ? 'BUY' : 'SELL';
-            orderData.quantity = 1; // Default to add 1
-            orderData.isAdding = true;
         }
      }
      
