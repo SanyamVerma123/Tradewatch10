@@ -27,85 +27,91 @@ export function OrdersClient() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchUserAndOrders = useCallback(async () => {
-    const { data: { user: sbUser }, error } = await supabase.auth.getUser();
-    if (error || !sbUser) {
-        router.replace('/');
-        return;
-    }
-    setUser(sbUser);
-    
-    const ordersKey = `orders_${sbUser.id}`;
-    const storedOrdersText = localStorage.getItem(ordersKey) || '[]';
-    let storedOrders: Order[];
-    try {
-        storedOrders = JSON.parse(storedOrdersText);
-    } catch {
-        storedOrders = [];
-    }
-    setOrders(storedOrders);
-    setIsLoading(false);
-  }, [router]);
-  
+  // Effect to fetch user and redirect if not logged in
   useEffect(() => {
-    fetchUserAndOrders();
+    const checkUser = async () => {
+      const { data: { user: sbUser } } = await supabase.auth.getUser();
+      if (!sbUser) {
+        // This navigation now happens safely after the initial render.
+        router.replace('/');
+      } else {
+        setUser(sbUser);
+      }
+    };
+    checkUser();
+  }, [router]);
+
+  // Effect to load orders and handle storage events once the user is confirmed
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchOrders = () => {
+      const ordersKey = `orders_${user.id}`;
+      try {
+        const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+        setOrders(storedOrders);
+      } catch {
+        setOrders([]);
+      }
+      setIsLoading(false);
+    };
+
+    fetchOrders();
+
     const handleStorageChange = (event: StorageEvent) => {
-      if (user && event.key === `orders_${user.id}`) {
-        fetchUserAndOrders();
+      if (event.key === `orders_${user.id}`) {
+        fetchOrders();
       }
     };
     window.addEventListener('storage', handleStorageChange);
+    
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [fetchUserAndOrders, user]);
+  }, [user]);
 
+
+  // Effect to update live prices for pending orders
   useEffect(() => {
+    // Don't run interval until user and initial orders are loaded
+    if (!user || isLoading) return;
+
     const updateLivePrices = async () => {
-        setOrders(currentOrders => {
-            const pending = currentOrders.filter(o => o.status === 'Pending');
-            if (pending.length === 0) {
-                return currentOrders; // No need to fetch if no pending orders
-            }
-            
-            const tickers = [...new Set(pending.map(o => o.ticker))];
-            if (tickers.length === 0) return currentOrders;
+        const pending = orders.filter(o => o.status === 'Pending');
+        if (pending.length === 0) return;
 
-            getStockData(tickers).then(stockData => {
-                const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
-                
-                setOrders(prevOrders => {
-                    let wasUpdated = false;
-                     const newOrders = prevOrders.map(order => {
-                        if (order.status === 'Pending' && stockPriceMap.has(order.ticker)) {
-                            const newLtp = stockPriceMap.get(order.ticker)!;
-                            if (order.ltp !== newLtp) {
-                                wasUpdated = true;
-                                return { ...order, ltp: newLtp };
-                            }
+        const tickers = [...new Set(pending.map(o => o.ticker))];
+        if (tickers.length === 0) return;
+
+        try {
+            const stockData = await getStockData(tickers);
+            const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
+            
+            // This functional update ensures we are working with the latest state
+            setOrders(prevOrders => {
+                let wasUpdated = false;
+                const newOrders = prevOrders.map(order => {
+                    if (order.status === 'Pending' && stockPriceMap.has(order.ticker)) {
+                        const newLtp = stockPriceMap.get(order.ticker)!;
+                        if (order.ltp !== newLtp) {
+                            wasUpdated = true;
+                            return { ...order, ltp: newLtp };
                         }
-                        return order;
-                    });
-                    
-                    // By returning a new array, we ensure React re-renders.
-                    // The wasUpdated flag is now just for optimization if we wanted to avoid the setOrders call, but it's safer to always call it.
-                    return newOrders;
+                    }
+                    return order;
                 });
-
-            }).catch(error => {
-                console.error("Failed to fetch live prices for orders:", error);
+                // Only return a new array if something actually changed
+                return wasUpdated ? newOrders : prevOrders;
             });
-            
-            return currentOrders; // Return original orders immediately, update will happen in .then()
-        });
+        } catch (error) {
+            console.error("Failed to fetch live prices for orders:", error);
+        }
     };
     
-    // Run once immediately and then set interval
-    updateLivePrices();
     const interval = setInterval(updateLivePrices, 5000); 
 
     return () => clearInterval(interval);
-  }, []); // Empty dependency array ensures this effect runs only once to set up the interval
+  }, [user, isLoading, orders]);
 
 
   const handleEditClick = (order: Order) => {
@@ -115,7 +121,7 @@ export function OrdersClient() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || !user) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   
@@ -255,3 +261,5 @@ export function OrdersClient() {
     </div>
   );
 }
+
+    
