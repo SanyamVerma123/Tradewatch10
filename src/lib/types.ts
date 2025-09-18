@@ -53,7 +53,6 @@ export interface Order {
   isAMO?: boolean;
   product?: string;
   orderMethod?: string;
-  price?: string;
   isShortSell?: boolean;
   isExit?: boolean;
   isAdding?: boolean;
@@ -85,7 +84,7 @@ export interface Position {
     avgPrice: number;
     ltp: number;
     pnl: number;
-    investedValue: number;
+    investedValue: number; // This can represent margin for positions
     dayChange: number;
     dayChangePercent: number;
     pnlPercent: number;
@@ -111,10 +110,3 @@ export interface User {
     usedReferralCode?: boolean;
     referredByNames?: string[];
 }
-
-    
-
-    
-
-
-

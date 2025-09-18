@@ -36,6 +36,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+const PageLoader = () => (
+    <div className="flex justify-center items-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+);
 
 interface TradeClientProps {
   ticker: string;
@@ -44,11 +49,7 @@ interface TradeClientProps {
 
 type OrderType = "BUY" | "SELL";
 
-const PageLoader = () => (
-    <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-    </div>
-);
+
 
 
 const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: () => void, orderType: OrderType, disabled?: boolean, buttonText: string }) => {
@@ -193,7 +194,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("");
   const [triggerPrice, setTriggerPrice] = useState("");
-  const [product, setProduct] = useState(orderToEdit?.product || "MIS");
+  const [product, setProduct] = useState(orderToEdit?.product || "CNC");
   const [orderMethod, setOrderMethod] = useState(orderToEdit?.orderMethod || "LIMIT");
   
   const [useStopLoss, setUseStopLoss] = useState(false);
@@ -227,12 +228,13 @@ useEffect(() => {
         
         try {
             const allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-            const executedOrders = allOrders.filter(o => o.status === 'Executed');
+            const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executedAt).sort((a,b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime());
             
             const holdingsMap: { [ticker: string]: Holding } = {};
             const positionsMap: { [compositeKey: string]: Position } = {};
 
             executedOrders.forEach(order => {
+                const compositeKey = `${order.ticker}-${order.product}`;
                 if (order.product === 'CNC') {
                     let h = holdingsMap[order.ticker] || { id: `h-${order.ticker}`, ticker: order.ticker, quantity: 0, avgPrice: 0, investedValue: 0, ltp: 0, pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0 };
                     const tradeValue = order.ltp * order.quantity;
@@ -245,24 +247,28 @@ useEffect(() => {
                     }
                     holdingsMap[order.ticker] = h;
                 } else { // MIS
-                    const key = `${order.ticker}-${order.product}`;
-                    let p = positionsMap[key] || { id: `p-${key}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
+                    let p = positionsMap[compositeKey] || { id: `p-${compositeKey}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
                     const tradeSign = order.type === 'BUY' ? 1 : -1;
                     const prevQuantity = p.quantity;
-                    p.quantity += order.quantity * tradeSign;
 
-                    if (Math.sign(p.quantity) === Math.sign(tradeSign) || prevQuantity === 0) { // increasing position
+                    if (Math.sign(tradeSign) === Math.sign(prevQuantity) || prevQuantity === 0) { // increasing position or new
                        const newTotalValue = (p.avgPrice * Math.abs(prevQuantity)) + (order.ltp * order.quantity);
+                       p.quantity += order.quantity * tradeSign;
                        p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
-                    } else if (p.quantity === 0) {
-                        p.avgPrice = 0;
-                    } // else (reducing position but not flipping), avg price remains same
-                    positionsMap[key] = p;
+                    } else { // reducing position
+                        p.quantity += order.quantity * tradeSign;
+                         if (Math.abs(p.quantity) < 0.001) { // closed out
+                            p.avgPrice = 0;
+                        } else if (Math.sign(p.quantity) !== Math.sign(prevQuantity)) { // flipped
+                            p.avgPrice = order.ltp;
+                        }
+                    }
+                    positionsMap[compositeKey] = p;
                 }
             });
 
-            localPortfolio.holdings = Object.values(holdingsMap).filter(h => h.quantity > 0);
-            localPortfolio.positions = Object.values(positionsMap).filter(p => p.quantity !== 0);
+            localPortfolio.holdings = Object.values(holdingsMap).filter(h => h.quantity > 0.001);
+            localPortfolio.positions = Object.values(positionsMap).filter(p => Math.abs(p.quantity) > 0.001);
 
         } catch (e) { console.error("Could not parse portfolio for TradeClient", e); }
         
@@ -274,7 +280,7 @@ useEffect(() => {
             setStock(fetchedStock);
             if (orderToEdit) {
                 setOrderType(orderToEdit.type || "BUY");
-                setProduct(orderToEdit.product || "MIS");
+                setProduct(orderToEdit.product || (orderToEdit.isShortSell ? 'MIS' : 'CNC'));
                 setQuantity(orderToEdit.quantity?.toString() || "1");
                 
                 setPrice(orderToEdit.limitPrice?.toString() || fetchedStock.price.toFixed(2));
@@ -341,19 +347,18 @@ useEffect(() => {
   }, [portfolio.holdings, ticker]);
 
   const positionForTicker = useMemo(() => {
-    if (!orderToEdit) return undefined;
+    if (!orderToEdit?.product) return undefined;
     return portfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit.product);
-  }, [portfolio.positions, ticker, orderToEdit]);
+  }, [portfolio.positions, ticker, orderToEdit?.product]);
 
-  const netOwnedQuantity = (holdingForTicker?.quantity || 0);
   const maxSellQuantity = useMemo(() => {
-    if (isExiting) {
-      if(positionForTicker) return Math.abs(positionForTicker.quantity);
-      if(holdingForTicker) return holdingForTicker.quantity;
-      return 0;
-    }
-    return netOwnedQuantity;
-  }, [isExiting, positionForTicker, holdingForTicker, netOwnedQuantity]);
+    // Exiting a specific CNC holding
+    if (isExiting && orderToEdit?.product === 'CNC') return holdingForTicker?.quantity || 0;
+    // Exiting a specific MIS position
+    if (isExiting && orderToEdit?.product === 'MIS' && positionForTicker) return Math.abs(positionForTicker.quantity);
+    // General sell of a CNC holding
+    return holdingForTicker?.quantity || 0;
+  }, [isExiting, orderToEdit, holdingForTicker, positionForTicker]);
   
   const isNewShortSell = orderType === 'SELL' && !isExiting && !isAdding && maxSellQuantity === 0;
 
@@ -607,6 +612,7 @@ useEffect(() => {
                           <Label htmlFor="quantity">Quantity</Label>
                           <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
                            {(orderType === 'SELL' && !isNewShortSell) && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
+                           {(orderType === 'BUY' && isExiting) && <p className="text-xs text-muted-foreground">Required: {maxSellQuantity}</p>}
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>
@@ -734,5 +740,3 @@ useEffect(() => {
     </div>
   );
 }
-
-    

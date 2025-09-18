@@ -39,7 +39,7 @@ const isMarketClosedForAutoSquareOff = () => {
     const hours = istTime.getHours();
     const minutes = istTime.getMinutes();
     const day = istTime.getDay();
-    if(day === 0 || day === 6) return false; // Not on weekends
+    if(day === 0 || day === 6) return true; // Close on weekends for sure
     // After 3:30 PM
     return hours > 15 || (hours === 15 && minutes >= 30);
 }
@@ -73,7 +73,6 @@ export function PortfolioClient() {
   
   const updatePortfolioData = useCallback(async () => {
     if (!user) return;
-    setIsLoading(true);
     
     const ordersKey = `orders_${user.id}`;
     const portfolioKey = `portfolioData_${user.id}`;
@@ -103,6 +102,7 @@ export function PortfolioClient() {
       return;
     }
     
+    setIsLoading(true);
     const stockData = await getStockData(allTickersInOrders);
     const newStocksMap: Record<string, Stock> = {};
     stockData.forEach(s => newStocksMap[s.ticker] = s);
@@ -124,11 +124,10 @@ export function PortfolioClient() {
             holdingsMap[order.ticker] = holding;
         }
 
+        const tradeValue = order.ltp * order.quantity;
+
         if (order.type === 'BUY') {
-            const existingValue = holding.avgPrice * holding.quantity;
-            const tradeValue = order.ltp * order.quantity;
-            const newTotalValue = existingValue + tradeValue;
-            
+            const newTotalValue = (holding.avgPrice * holding.quantity) + tradeValue;
             holding.quantity += order.quantity;
             holding.avgPrice = holding.quantity > 0 ? newTotalValue / holding.quantity : 0;
         } else { // SELL
@@ -154,7 +153,7 @@ export function PortfolioClient() {
     
     for (const order of todayExecutedOrders) {
         const ltp = newStocksMap[order.ticker]?.price || order.ltp;
-        const product = order.product || 'CNC'; // Treat even CNC buys today as positions for the day
+        const product = order.product || 'CNC';
         const compositeKey = `${order.ticker}-${product}`;
         
         let p = positionMap[compositeKey];
@@ -202,6 +201,7 @@ export function PortfolioClient() {
         const openMISPositions = updatedPositions.filter(p => p.product === 'MIS' && Math.abs(p.quantity) > 0.001);
         if (openMISPositions.length > 0) {
             let newOrdersForSquareOff: Order[] = [];
+            let didSquareOff = false;
             openMISPositions.forEach(pos => {
                 const liveData = newStocksMap[pos.ticker];
                 if (!liveData) return;
@@ -211,15 +211,19 @@ export function PortfolioClient() {
                 const closingOrder: Order = {
                     id: `auto-sq-off-${Date.now()}-${pos.ticker}`, type: pos.quantity > 0 ? 'SELL' : 'BUY', ticker: pos.ticker, quantity: Math.abs(pos.quantity), filledQuantity: Math.abs(pos.quantity), limitPrice: liveData.price, status: 'Executed', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), exchange: liveData.exchange || 'NSE', orderType: `${pos.product} MARKET`, ltp: liveData.price, isAMO: false, product: pos.product, orderMethod: 'MARKET', executedAt: new Date().toISOString(), realizedPnl: realizedPnlOnSquareOff
                 };
-                newOrdersForSquareOff.push(closingOrder);
+                
+                // Avoid re-adding the same square-off order
+                if (!allOrders.some(o => o.id.startsWith('auto-sq-off') && o.ticker === pos.ticker)) {
+                    newOrdersForSquareOff.push(closingOrder);
+                    didSquareOff = true;
+                }
             });
 
-            if (newOrdersForSquareOff.length > 0) {
+            if (didSquareOff) {
                 const updatedOrders = [...allOrders, ...newOrdersForSquareOff];
                 localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
                 toast({ title: "Auto Square-Off", description: `Your open intraday positions have been automatically closed.` });
-                // Re-run to update portfolio state after auto-square-off
-                updatePortfolioData();
+                updatePortfolioData(); // Re-run to update portfolio state
                 return;
             }
         }
@@ -351,7 +355,7 @@ export function PortfolioClient() {
   const handleHoldingClick = (holding: Holding) => {
     const stockData = stocksMap[holding.ticker];
     if (stockData) {
-      setSelectedStock(stockData);
+      setSelectedStock({...stockData, product: 'CNC'});
       setActionSheetContext('holding');
       setIsActionSheetOpen(true);
     }
@@ -383,6 +387,7 @@ export function PortfolioClient() {
             orderData.isExit = true;
         } else { // 'add'
             orderData.type = 'BUY';
+            orderData.isAdding = true;
         }
      } else if (actionSheetContext === 'position') {
         const position = portfolio.positions.find(p => p.ticker === ticker && p.product === selectedStock.product);
@@ -398,6 +403,7 @@ export function PortfolioClient() {
         } else { // 'add'
             // Adding to a long position is BUY, adding to short is SELL
             orderData.type = position.quantity > 0 ? 'BUY' : 'SELL';
+            orderData.isAdding = true;
         }
      }
      
@@ -560,7 +566,7 @@ export function PortfolioClient() {
                   </div>
                   <div className="flex justify-between items-end mt-1 text-xs text-muted-foreground">
                     <div>
-                         <span>Invested {(pos.investedValue || 0).toFixed(2)}</span>
+                         <span>Margin {(pos.investedValue || 0).toFixed(2)}</span>
                     </div>
                     <div className="text-right">
                         <span>LTP {pos.ltp.toFixed(2)} <span className={cn(pos.dayChange >= 0 ? "text-positive" : "text-destructive")}>({pos.dayChangePercent.toFixed(2)}%)</span></span>
@@ -586,3 +592,4 @@ export function PortfolioClient() {
     
 
     
+
