@@ -106,16 +106,16 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
         switch(tradeButtonVariant) {
             case 'add-exit':
                 return { primary: 'Add', secondary: 'Exit' };
-            case 'buy-sell':
-                return { primary: 'Buy', secondary: 'Sell' };
             case 'long-short':
                 return { primary: 'Long', secondary: 'Short' };
-            default:
+            default: // 'buy-sell' and fallback
                 return { primary: 'Buy', secondary: 'Sell' };
         }
     }
 
     const { primary, secondary } = getButtonLabels();
+    
+    // Determine the action based on the button variant
     const primaryAction = tradeButtonVariant === 'add-exit' ? 'add' : 'buy';
     const secondaryAction = tradeButtonVariant === 'add-exit' ? 'exit' : 'sell';
 

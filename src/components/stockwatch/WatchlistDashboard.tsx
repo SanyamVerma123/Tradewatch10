@@ -304,6 +304,7 @@ export function WatchlistDashboard() {
         ticker: ticker,
         // When shorting from watchlist, enforce MIS product type
         product: isShortSell ? 'MIS' : undefined,
+        isShortSell: isShortSell,
     };
     router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);
     setIsActionSheetOpen(false);
@@ -583,7 +584,3 @@ export function WatchlistDashboard() {
     </div>
   );
 }
-
-    
-
-    

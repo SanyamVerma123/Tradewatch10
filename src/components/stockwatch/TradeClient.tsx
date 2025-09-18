@@ -286,6 +286,18 @@ useEffect(() => {
                 setPrice(orderToEdit.limitPrice?.toString() || fetchedStock.price.toFixed(2));
                 setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
                 setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
+
+                // If this is a new short sell from watchlist, enforce MIS
+                if (orderToEdit.isShortSell && !orderToEdit.isExit) {
+                    setProduct('MIS');
+                }
+                 // If we are exiting a short position, it must be a BUY and MIS
+                if (orderToEdit.isExit && (orderToEdit.type === 'BUY' || (positionForTicker && positionForTicker.quantity < 0))) {
+                    setProduct('MIS');
+                    setOrderType('BUY');
+                }
+
+
             } else {
                 setPrice(fetchedStock.price.toFixed(2));
                 setQuantity("1");
@@ -328,6 +340,7 @@ useEffect(() => {
   const isEditing = !!(orderToEdit?.id && orderToEdit.status === 'Pending');
   const isExiting = !!orderToEdit?.isExit;
   const isAdding = !!orderToEdit?.isAdding;
+  const isNewShortSell = !!orderToEdit?.isShortSell && !isExiting && !isAdding;
 
   const getExecutionPrice = useCallback(() => {
     if (orderMethod.includes('MARKET')) {
@@ -347,20 +360,23 @@ useEffect(() => {
   }, [portfolio.holdings, ticker]);
 
   const positionForTicker = useMemo(() => {
-    if (!orderToEdit?.product) return undefined;
-    return portfolio.positions.find(p => p.ticker === ticker && p.product === orderToEdit.product);
-  }, [portfolio.positions, ticker, orderToEdit?.product]);
+    const productType = orderToEdit?.product || product;
+    return portfolio.positions.find(p => p.ticker === ticker && p.product === productType);
+  }, [portfolio.positions, ticker, product, orderToEdit?.product]);
 
-  const maxSellQuantity = useMemo(() => {
+  const availableSellQuantity = useMemo(() => {
     // Exiting a specific CNC holding
-    if (isExiting && orderToEdit?.product === 'CNC') return holdingForTicker?.quantity || 0;
+    if (isExiting && product === 'CNC') return holdingForTicker?.quantity || 0;
     // Exiting a specific MIS position
-    if (isExiting && orderToEdit?.product === 'MIS' && positionForTicker) return Math.abs(positionForTicker.quantity);
+    if (isExiting && product === 'MIS' && positionForTicker) return Math.abs(positionForTicker.quantity);
     // General sell of a CNC holding
-    return holdingForTicker?.quantity || 0;
-  }, [isExiting, orderToEdit, holdingForTicker, positionForTicker]);
+    if(orderType === 'SELL' && product === 'CNC') return holdingForTicker?.quantity || 0;
+    
+    return 0; // Not a sell or no holdings
+  }, [isExiting, product, orderType, holdingForTicker, positionForTicker]);
   
-  const isNewShortSell = orderType === 'SELL' && !isExiting && !isAdding && maxSellQuantity === 0;
+  const showAvailableQuantity = (orderType === 'SELL' && !isNewShortSell) || isExiting;
+
 
   const handlePlaceOrder = () => {
     if(!stock || !user) return;
@@ -372,8 +388,8 @@ useEffect(() => {
         return;
     }
 
-    if (orderType === 'SELL' && !isNewShortSell && !isAdding && qty > maxSellQuantity) {
-       toast({ variant: "destructive", title: "Invalid Quantity", description: `You can only sell up to ${maxSellQuantity} shares.` });
+    if (orderType === 'SELL' && !isNewShortSell && !isAdding && availableSellQuantity > 0 && qty > availableSellQuantity) {
+       toast({ variant: "destructive", title: "Invalid Quantity", description: `You can only sell up to ${availableSellQuantity} shares.` });
        return;
     }
 
@@ -435,6 +451,8 @@ useEffect(() => {
         setAvailableFunds(newBalance);
     }
 
+    const finalProduct = isNewShortSell ? 'MIS' : product;
+
     const newOrder: Order = {
         id: isEditing ? orderToEdit.id : `order-${Date.now()}`,
         type: orderType,
@@ -446,12 +464,12 @@ useEffect(() => {
         status: 'Pending',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         exchange: stock.exchange || 'NSE',
-        orderType: `${product} ${orderMethod}`,
+        orderType: `${finalProduct} ${orderMethod}`,
         ltp: stock?.price || 0,
         isAMO: !marketIsOpen,
-        product: product,
+        product: finalProduct,
         orderMethod: orderMethod,
-        isShortSell: orderToEdit?.isShortSell || isNewShortSell,
+        isShortSell: isNewShortSell,
         isExit: isExiting,
         isAdding: isAdding,
     };
@@ -611,8 +629,7 @@ useEffect(() => {
                       <div className="space-y-1">
                           <Label htmlFor="quantity">Quantity</Label>
                           <Input id="quantity" type="number" value={quantity} onChange={e => setQuantity(e.target.value)} />
-                           {(orderType === 'SELL' && !isNewShortSell) && <p className="text-xs text-muted-foreground">Available: {maxSellQuantity}</p>}
-                           {(orderType === 'BUY' && isExiting) && <p className="text-xs text-muted-foreground">Required: {maxSellQuantity}</p>}
+                           {showAvailableQuantity && <p className="text-xs text-muted-foreground">Available: {availableSellQuantity}</p>}
                       </div>
                       <div className="space-y-1">
                           <Label htmlFor="price">Price</Label>
