@@ -18,6 +18,7 @@ export interface Stock {
   fiftyTwoWeekLow?: number;
   bid?: number;
   ask?: number;
+  product?: 'MIS' | 'CNC';
 }
 
 export interface Watchlist {
@@ -53,10 +54,9 @@ export interface Order {
   product?: string;
   orderMethod?: string;
   price?: string;
-  isSellFromHolding?: boolean;
   isShortSell?: boolean;
-  isLong?: boolean;
   isExit?: boolean;
+  isAdding?: boolean;
   executedAt?: string; // ISO date string
   realizedPnl?: number;
   stopLossValue?: number;
@@ -72,13 +72,23 @@ export interface Holding {
   currentValue?: number;
   pnl: number;
   pnlPercent: number;
-  ltp: number;
+ltp: number;
   dayChange: number;
   dayChangePercent: number;
 }
 
-export interface Position extends Holding {
+export interface Position {
+    id: string;
+    ticker: string;
     product: string;
+    quantity: number;
+    avgPrice: number;
+    ltp: number;
+    pnl: number;
+    investedValue: number;
+    dayChange: number;
+    dayChangePercent: number;
+    pnlPercent: number;
     type: 'BUY' | 'SELL' | 'CLOSED';
 }
 
@@ -105,5 +115,6 @@ export interface User {
     
 
     
+
 
 

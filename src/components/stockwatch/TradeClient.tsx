@@ -318,7 +318,7 @@ useEffect(() => {
     return () => clearInterval(interval);
   }, [isDataInitialized, fetchStock]);
   
-  const isEditing = !!(orderToEdit?.id && !orderToEdit.isExit && !orderToEdit.isAdding && orderToEdit.status === 'Pending');
+  const isEditing = !!(orderToEdit?.id && orderToEdit.status === 'Pending');
   const isExiting = !!orderToEdit?.isExit;
   const isAdding = !!orderToEdit?.isAdding;
 
@@ -336,14 +336,23 @@ useEffect(() => {
   const requiredFunds = approxMargin + totalCharges;
   
   const maxSellQuantity = useMemo(() => {
-    if (!portfolio) return 0;
-    
-    const holdingQty = portfolio.holdings.find(h => h.ticker === ticker)?.quantity || 0;
-    const position = portfolio.positions.find(p => p.ticker === ticker && p.quantity > 0);
-    const positionQty = position ? position.quantity : 0;
+    if (!portfolio || !user) return 0;
+    const ordersKey = `orders_${user.id}`;
+    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+    const executedOrders = allOrders.filter(o => o.status === 'Executed');
 
-    return holdingQty + positionQty;
-}, [portfolio, ticker]);
+    let totalBuyQty = 0;
+    let totalSellQty = 0;
+    
+    executedOrders.forEach(o => {
+      if(o.ticker === ticker) {
+        if(o.type === 'BUY') totalBuyQty += o.quantity;
+        if(o.type === 'SELL') totalSellQty += o.quantity;
+      }
+    });
+
+    return totalBuyQty - totalSellQty;
+}, [portfolio, ticker, user]);
 
 
   const handlePlaceOrder = () => {
@@ -428,7 +437,6 @@ useEffect(() => {
         isAMO: !marketIsOpen,
         product: product,
         orderMethod: orderMethod,
-        isSellFromHolding: (orderType === 'SELL' && product === 'CNC'),
         isShortSell: orderToEdit?.isShortSell || (orderType === 'SELL' && maxSellQuantity === 0),
         isExit: isExiting,
         isAdding: isAdding,

@@ -8,8 +8,9 @@ import { cn } from "@/lib/utils";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { getMarketNews } from "@/app/actions";
-import type { NewsArticle } from "@/lib/types";
+import { getMarketNews, getStockData } from "@/app/actions";
+import type { NewsArticle, Order } from "@/lib/types";
+import { useToast } from "@/hooks/use-toast";
 
 const navItems = [
   { href: "/watchlist", label: "Watchlist", icon: LayoutGrid },
@@ -34,9 +35,32 @@ async function showDelayedFundNotification() {
     }
 }
 
+// Heuristic to check if market is open (9:15 AM to 3:30 PM India time on weekdays)
+function isMarketOpen() {
+    const now = new Date();
+    const istOffset = 330; // 5.5 hours in minutes
+    const utcOffset = now.getTimezoneOffset();
+    const istTime = new Date(now.getTime() + (istOffset + utcOffset) * 60000);
+    
+    const day = istTime.getDay(); // Sunday = 0, Monday = 1, etc.
+    if (day === 0 || day === 6) return false; // Weekend
+
+    const hours = istTime.getHours();
+    const minutes = istTime.getMinutes();
+    
+    // Market is open between 9:15 AM and 3:30 PM
+    if (hours > 9 || (hours === 9 && minutes >= 15)) {
+        if (hours < 15 || (hours === 15 && minutes <= 30)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { toast } = useToast();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -83,12 +107,121 @@ export default function BottomNav() {
     }
   }, []);
 
+  const cancelOrder = useCallback((orderToCancel: Order, reason: string, userId: string) => {
+    if (!userId) return;
+    const ordersKey = `orders_${userId}`;
+    const allOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+    
+    const updatedOrders = allOrders.map((o: Order) => 
+        o.id === orderToCancel.id ? { ...o, status: 'Cancelled' as const } : o
+    );
+    
+    if (orderToCancel.type === 'BUY' && orderToCancel.status === 'Pending') {
+        const fundsKey = `funds_${userId}`;
+        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
+        
+        if (fundsData.balance !== undefined) {
+            const tradeValue = orderToCancel.quantity * (orderToCancel.orderMethod === "MARKET" ? orderToCancel.ltp : orderToCancel.limitPrice);
+            const brokerage = Math.min(20, tradeValue * 0.0003);
+            const totalCharges = brokerage + (tradeValue * 0.000345);
+            const approxMargin = orderToCancel.product === 'MIS' ? tradeValue / 5 : tradeValue;
+            const blockedFunds = approxMargin + totalCharges;
+
+            const newBalance = fundsData.balance + blockedFunds;
+            localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+             window.dispatchEvent(new StorageEvent('storage', { key: `funds_${userId}` }));
+        }
+    }
+    
+    localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
+    window.dispatchEvent(new StorageEvent('storage', { key: `orders_${userId}` }));
+    
+    toast({
+        variant: "destructive",
+        title: "Order Cancelled",
+        description: `${orderToCancel.ticker}: ${reason}`,
+    });
+  }, [toast]);
+
+
+  const executeOrder = useCallback((orderToExecute: Order, ltp: number, userId: string) => {
+    if (!userId) return false;
+
+    const ordersKey = `orders_${userId}`;
+    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+    const orderIndex = allOrders.findIndex(o => o.id === orderToExecute.id);
+    if (orderIndex === -1 || allOrders[orderIndex].status !== 'Pending') {
+        return false;
+    }
+    
+    const fundsKey = `funds_${userId}`;
+    const product = orderToExecute.product || 'CNC';
+    const finalTradeValue = orderToExecute.quantity * ltp;
+    const isIntradayTrade = product === 'MIS';
+    
+    const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
+    const approxMargin = isIntradayTrade ? finalTradeValue / 5 : finalTradeValue;
+
+    if (orderToExecute.type === 'BUY' && fundsData.balance < 0) { 
+        cancelOrder(orderToExecute, `Insufficient funds. Required margin: ~₹${approxMargin.toFixed(2)}`, userId);
+        return false;
+    }
+    
+    // Calculate realized PnL for SELL orders
+    let realizedPnl: number | undefined = undefined;
+    if (orderToExecute.type === 'SELL') {
+      const executedOrders = allOrders.filter((o: Order) => o.status === 'Executed' && o.ticker === orderToExecute.ticker);
+      const buyOrders = executedOrders.filter((o: Order) => o.type === 'BUY');
+      
+      let totalBuyValue = 0;
+      let totalBuyQty = 0;
+      buyOrders.forEach(bo => {
+        totalBuyValue += bo.ltp * bo.quantity;
+        totalBuyQty += bo.quantity;
+      });
+
+      const avgBuyPrice = totalBuyQty > 0 ? totalBuyValue / totalBuyQty : 0;
+      if (avgBuyPrice > 0) {
+        realizedPnl = (ltp - avgBuyPrice) * orderToExecute.quantity;
+      }
+    }
+
+    const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString(), realizedPnl };
+    allOrders[orderIndex] = executedOrder;
+
+    const sttRate = (product === 'CNC' && executedOrder.type === 'SELL') ? 0.001 : (isIntradayTrade && executedOrder.type === 'SELL' ? 0.00025 : 0);
+    const stt = finalTradeValue * sttRate;
+    const brokerage = Math.min(20, finalTradeValue * 0.0003);
+    const otherCharges = finalTradeValue * 0.000345;
+    const totalCharges = brokerage + stt + otherCharges;
+    
+    if (fundsData.balance !== undefined && executedOrder.type === 'SELL') {
+      let newBalance = fundsData.balance + (finalTradeValue - totalCharges);
+      newBalance = Math.max(0, newBalance);
+      localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+      window.dispatchEvent(new StorageEvent('storage', { key: `funds_${userId}` }));
+    }
+    
+    localStorage.setItem(ordersKey, JSON.stringify(allOrders));
+    window.dispatchEvent(new StorageEvent('storage', { key: `orders_${userId}` }));
+
+    toast({
+        title: `Order Executed!`,
+        description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}. Est. charges: ₹${totalCharges.toFixed(2)}`,
+    });
+    return true;
+
+  }, [toast, cancelOrder]);
+
+
   useEffect(() => {
+    let sessionChecked = false;
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       const loggedIn = !!session;
       setIsLoggedIn(loggedIn);
       setIsLoading(false);
+      sessionChecked = true;
 
       if (!loggedIn && pathname !== '/') {
         router.replace('/');
@@ -96,10 +229,8 @@ export default function BottomNav() {
       }
       
       if (loggedIn && session.user) {
-        // Fetch news on initial load
         fetchAndCacheNews(session.user.id);
         
-        // Check for post-login fund notification
         const notifFlag = `postLoginFundNotification_${session.user.id}`;
         if (localStorage.getItem(notifFlag) === 'true') {
             localStorage.removeItem(notifFlag);
@@ -118,6 +249,70 @@ export default function BottomNav() {
     };
 
     checkSession();
+    
+    const checkPendingOrders = async () => {
+        if(!sessionChecked) return;
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const ordersKey = `orders_${user.id}`;
+        const currentOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
+        const pendingOrders = currentOrders.filter((o: Order) => o.status === 'Pending');
+
+        if (pendingOrders.length === 0) return;
+
+        const marketIsOpen = isMarketOpen();
+        if (!marketIsOpen) return;
+        
+        try {
+            const tickers = [...new Set(pendingOrders.map((o: Order) => o.ticker))];
+            if (tickers.length === 0) return;
+            const stockData = await getStockData(tickers);
+            
+            const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
+
+            for (const order of pendingOrders) {
+                const ltp = stockPriceMap.get(order.ticker);
+                if (ltp === undefined) continue;
+
+                let shouldExecute = false;
+                let executionPrice = ltp;
+
+                if (order.isAMO) { shouldExecute = true; } 
+                else if (order.orderMethod === "MARKET") { shouldExecute = true; }
+                else if (order.orderMethod === "LIMIT") {
+                    if ((order.type === 'BUY' && ltp <= order.limitPrice) || (order.type === 'SELL' && ltp >= order.limitPrice)) {
+                        shouldExecute = true;
+                        executionPrice = order.limitPrice;
+                    }
+                } 
+                else if (order.orderMethod === "SL") {
+                    if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                        if ((order.type === 'BUY' && ltp <= order.limitPrice) || (order.type === 'SELL' && ltp >= order.limitPrice)) {
+                           shouldExecute = true;
+                           executionPrice = order.limitPrice;
+                        }
+                    }
+                } 
+                else if (order.orderMethod === "SL-M") {
+                    if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                        shouldExecute = true;
+                    }
+                }
+                
+                if (shouldExecute) {
+                    executeOrder(order, executionPrice, user.id);
+                }
+            }
+        } catch (error) {
+            console.error("Error in checkPendingOrders:", error);
+        }
+    };
+    
+    // Set up global order execution loop
+    const orderInterval = setInterval(checkPendingOrders, 5000);
+
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
         const loggedIn = !!session;
@@ -129,7 +324,6 @@ export default function BottomNav() {
         }
     });
     
-    // Set up hourly news fetch
     const newsInterval = setInterval(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session?.user) {
@@ -141,9 +335,10 @@ export default function BottomNav() {
     return () => {
       authListener.subscription.unsubscribe();
       clearInterval(newsInterval);
+      clearInterval(orderInterval);
     };
 
-  }, [pathname, router, fetchAndCacheNews]);
+  }, [pathname, router, fetchAndCacheNews, executeOrder, cancelOrder]);
 
   if (pathname === '/' || isLoading || !isLoggedIn) {
     return null;
