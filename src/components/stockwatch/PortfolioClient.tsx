@@ -360,7 +360,7 @@ export function PortfolioClient() {
   const handlePositionClick = (position: Position) => {
      const stockData = stocksMap[position.ticker];
     if (stockData) {
-      setSelectedStock(stockData);
+      setSelectedStock({ ...stockData, product: position.product as 'MIS' | 'CNC' });
       setActionSheetContext('position');
       setIsActionSheetOpen(true);
     }
@@ -587,3 +587,5 @@ export function PortfolioClient() {
     </div>
   );
 }
+
+    
