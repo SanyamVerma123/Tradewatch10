@@ -62,16 +62,21 @@ export function OrdersClient() {
 
   useEffect(() => {
     const updateLivePrices = async () => {
-        const pending = orders.filter(o => o.status === 'Pending');
-        if (pending.length > 0) {
+        setOrders(currentOrders => {
+            const pending = currentOrders.filter(o => o.status === 'Pending');
+            if (pending.length === 0) {
+                return currentOrders; // No need to fetch if no pending orders
+            }
+            
             const tickers = [...new Set(pending.map(o => o.ticker))];
-            try {
-                const stockData = await getStockData(tickers);
+            if (tickers.length === 0) return currentOrders;
+
+            getStockData(tickers).then(stockData => {
                 const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
                 
-                setOrders(currentOrders => {
+                setOrders(prevOrders => {
                     let wasUpdated = false;
-                    const updatedOrders = currentOrders.map(order => {
+                     const newOrders = prevOrders.map(order => {
                         if (order.status === 'Pending' && stockPriceMap.has(order.ticker)) {
                             const newLtp = stockPriceMap.get(order.ticker)!;
                             if (order.ltp !== newLtp) {
@@ -81,21 +86,26 @@ export function OrdersClient() {
                         }
                         return order;
                     });
-
-                    // Only update state if there's a change to prevent infinite loops
-                    return wasUpdated ? updatedOrders : currentOrders;
+                    
+                    // By returning a new array, we ensure React re-renders.
+                    // The wasUpdated flag is now just for optimization if we wanted to avoid the setOrders call, but it's safer to always call it.
+                    return newOrders;
                 });
 
-            } catch (error) {
+            }).catch(error => {
                 console.error("Failed to fetch live prices for orders:", error);
-            }
-        }
+            });
+            
+            return currentOrders; // Return original orders immediately, update will happen in .then()
+        });
     };
+    
+    // Run once immediately and then set interval
+    updateLivePrices();
+    const interval = setInterval(updateLivePrices, 5000); 
 
-    const interval = setInterval(updateLivePrices, 5000);
     return () => clearInterval(interval);
-
-  }, [orders]);
+  }, []); // Empty dependency array ensures this effect runs only once to set up the interval
 
 
   const handleEditClick = (order: Order) => {
@@ -245,5 +255,3 @@ export function OrdersClient() {
     </div>
   );
 }
-
-    
