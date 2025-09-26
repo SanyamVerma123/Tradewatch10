@@ -17,6 +17,7 @@ import type { Portfolio } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { useMarket } from "@/hooks/use-market";
 
 interface FundsData {
   balance: number;
@@ -33,6 +34,7 @@ export function FundsClient() {
   const [currentValue, setCurrentValue] = useState<number>(0);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { currencySymbol, currency } = useMarket();
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -48,7 +50,7 @@ export function FundsClient() {
       if (storedFunds) {
         setFunds(JSON.parse(storedFunds));
       } else {
-        const initialFunds = { balance: 500000, canAddMore: true, lastProfitCheck: 0 };
+        const initialFunds = { balance: currency === 'INR' ? 500000 : 5000, canAddMore: true, lastProfitCheck: 0 };
         setFunds(initialFunds);
         localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
       }
@@ -81,14 +83,16 @@ export function FundsClient() {
     };
 
     fetchUserAndData();
-  }, [router]);
+  }, [router, currency]);
 
   useEffect(() => {
     const checkAndUnlockFunds = () => {
-      if (user && funds && pnl - funds.lastProfitCheck >= 10000 && funds.canAddMore) {
+      const profitTarget = currency === 'INR' ? 10000 : 100;
+      const bonusAmount = currency === 'INR' ? 500000 : 5000;
+      if (user && funds && pnl - funds.lastProfitCheck >= profitTarget && funds.canAddMore) {
           const newFunds = {
               ...funds,
-              balance: funds.balance + 500000,
+              balance: funds.balance + bonusAmount,
               canAddMore: false, // One time bonus
               lastProfitCheck: pnl
           };
@@ -96,7 +100,7 @@ export function FundsClient() {
           localStorage.setItem(`funds_${user.id}`, JSON.stringify(newFunds));
           toast({
               title: "Congratulations!",
-              description: "You've earned a ₹10,000 profit! You can now add an additional ₹5,00,000 to your funds.",
+              description: `You've earned a ${currencySymbol}${profitTarget} profit! You can now add an additional ${currencySymbol}${bonusAmount} to your funds.`,
           });
       }
     }
@@ -104,16 +108,17 @@ export function FundsClient() {
     if (funds) { // Only run if funds have been loaded
         checkAndUnlockFunds();
     }
-  }, [pnl, funds, user, toast]);
+  }, [pnl, funds, user, toast, currency, currencySymbol]);
 
 
   const handleAddFunds = () => {
     if(!funds) return;
-
+    const profitTarget = currency === 'INR' ? 10000 : 100;
+    
     if(funds.canAddMore) {
         toast({
             title: "Profit Target Not Met",
-            description: `You need to make a profit of ₹10,000 to add more funds. Current profit since last check: ₹${(pnl - (funds?.lastProfitCheck || 0)).toFixed(2)}`,
+            description: `You need to make a profit of ${currencySymbol}${profitTarget} to add more funds. Current profit since last check: ${currencySymbol}${(pnl - (funds?.lastProfitCheck || 0)).toFixed(2)}`,
             variant: "destructive"
         });
     } else {
@@ -134,6 +139,8 @@ export function FundsClient() {
   if (isLoading) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
+  
+  const openingBalance = currency === 'INR' ? 500000 : 5000;
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -151,7 +158,7 @@ export function FundsClient() {
         </CardHeader>
         <CardContent>
           <p className="text-4xl font-bold">
-            ₹{funds?.balance.toLocaleString("en-IN", {
+            {currencySymbol}{funds?.balance.toLocaleString("en-IN", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             }) || "0.00"}
@@ -178,16 +185,16 @@ export function FundsClient() {
            <div className="flex justify-between font-semibold text-base">
             <span>Overall P&amp;L</span>
             <span className={cn(pnl >= 0 ? 'text-positive' : 'text-destructive')}>
-                {pnl >= 0 ? '+' : ''}₹{pnl.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                {pnl >= 0 ? '+' : ''}{currencySymbol}{pnl.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Total Investment</span>
-            <span>₹{totalInvested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            <span>{currencySymbol}{totalInvested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Current Value</span>
-            <span>₹{currentValue.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+            <span>{currencySymbol}{currentValue.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
           </div>
         </CardContent>
       </Card>
@@ -202,22 +209,22 @@ export function FundsClient() {
         <CardContent className="space-y-4 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Opening Balance</span>
-            <span>₹5,00,000.00</span>
+            <span>{currencySymbol}{openingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Payin/Payout</span>
             <span className={cn(pnl >= 0 ? 'text-positive' : 'text-destructive')}>
-                {pnl >= 0 ? '+' : '-'}₹{Math.abs(pnl).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                {pnl >= 0 ? '+' : '-'}{currencySymbol}{Math.abs(pnl).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Used Margin</span>
-            <span>₹0.00</span>
+            <span>{currencySymbol}0.00</span>
           </div>
           <div className="flex justify-between font-semibold">
             <span>Available Cash</span>
              <span>
-                ₹{funds?.balance.toLocaleString("en-IN", {
+                {currencySymbol}{funds?.balance.toLocaleString("en-IN", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
                 }) || "0.00"}

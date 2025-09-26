@@ -35,6 +35,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useMarket } from "@/hooks/use-market";
 
 const PageLoader = () => (
     <div className="flex justify-center items-center h-screen">
@@ -209,6 +210,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
   const [portfolio, setPortfolio] = useState<Portfolio>({ holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 });
+  const { currencySymbol } = useMarket();
 
   // One-time setup effect for form state from props
 useEffect(() => {
@@ -375,7 +377,7 @@ useEffect(() => {
     return 0; // Not a sell or no holdings
   }, [isExiting, product, orderType, holdingForTicker, positionForTicker]);
   
-  const showAvailableQuantity = (orderType === 'SELL' && !isNewShortSell) || isExiting;
+  const showAvailableQuantity = (orderType === 'SELL' && !isNewShortSell) || isExiting || isAdding;
 
 
   const handlePlaceOrder = () => {
@@ -414,7 +416,7 @@ useEffect(() => {
     }
 
     if (orderType === 'BUY' && requiredFunds > availableFunds) {
-      toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~₹${requiredFunds.toFixed(2)}. Available: ₹${availableFunds.toFixed(2)}.` });
+      toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~${currencySymbol}${requiredFunds.toFixed(2)}. Available: ${currencySymbol}${availableFunds.toFixed(2)}.` });
       // Re-add the refunded margin if the new order fails
        if (isEditing && orderToEdit?.type === 'BUY') {
             const fundsKey = `funds_${user.id}`;
@@ -451,7 +453,7 @@ useEffect(() => {
         setAvailableFunds(newBalance);
     }
 
-    const finalProduct = isNewShortSell ? 'MIS' : product;
+    const finalProduct = isNewShortSell ? 'MIS' : (isExiting && positionForTicker && positionForTicker.quantity < 0 ? 'MIS' : product);
 
     const newOrder: Order = {
         id: isEditing ? orderToEdit.id : `order-${Date.now()}`,
@@ -486,7 +488,7 @@ useEffect(() => {
 
     toast({
         title: `Order ${isEditing ? 'Modified' : 'Placed'} (${orderType})`,
-        description: `${quantity} shares of ${ticker} at ${orderMethod.includes('MARKET') ? 'Market Price' : `₹${price}`}. ${!marketIsOpen ? '(AMO)' : ''}`,
+        description: `${quantity} shares of ${ticker} at ${orderMethod.includes('MARKET') ? 'Market Price' : `${currencySymbol}${price}`}. ${!marketIsOpen ? '(AMO)' : ''}`,
     });
 
     router.push('/orders');
@@ -594,7 +596,7 @@ useEffect(() => {
 
         {(!stock) ? <div className="px-4 my-4"><Loader2 className="h-6 w-6 animate-spin"/></div> : (
              <div className="px-4 my-4 flex items-baseline gap-x-2">
-                <p className="text-2xl font-bold">₹{stock?.price.toFixed(2)}</p>
+                <p className="text-2xl font-bold">{currencySymbol}{stock?.price.toFixed(2)}</p>
                 <p className={cn("font-semibold text-base", stock?.change && stock.change >= 0 ? "text-positive" : "text-destructive")}>
                   {stock?.change && stock.change >= 0 ? '+' : ''}{stock?.change.toFixed(2)} ({stock?.changePercent.toFixed(2)}%)
                 </p>
@@ -741,13 +743,13 @@ useEffect(() => {
               <div className="flex justify-between items-center text-xs mb-2">
                   <div className="flex items-center gap-2">
                       <span className="text-muted-foreground">Approx. margin</span>
-                      <span className="font-semibold">₹{approxMargin.toFixed(2)}</span>
+                      <span className="font-semibold">{currencySymbol}{approxMargin.toFixed(2)}</span>
                        {product === 'MIS' && <Badge variant="outline">5x leverage</Badge>}
                       <RefreshCcw className="h-3 w-3 text-primary" />
                   </div>
                   <div className="flex items-center gap-1">
                       <span className="text-muted-foreground">Avail.</span>
-                      <span className="font-semibold">₹{availableFunds.toFixed(2)}</span>
+                      <span className="font-semibold">{currencySymbol}{availableFunds.toFixed(2)}</span>
                   </div>
               </div>
                <SwipeButton onSwipe={handlePlaceOrder} orderType={orderType} disabled={!isDataInitialized} buttonText={swipeText} />

@@ -112,13 +112,28 @@ export async function getHistoricalData(ticker: string, period: '5d' | '1mo' | '
   }
 }
 
-export async function searchStocks(query: string) {
+export async function searchStocks(query: string, market: 'IN' | 'US' = 'IN') {
     if (!query) {
         return [];
     }
     try {
         const searchResult = await yahooFinance.search(query, { newsCount: 0 }, yahooFinanceOptions);
-        return searchResult.quotes.filter(q => q.symbol && (q.exchange.includes('NMS') || q.exchange.includes('NYQ') || q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO'))).map(stock => ({
+        
+        const indianExchanges = ['NSI', 'BSE'];
+        const usExchanges = ['NMS', 'NYQ'];
+
+        const relevantQuotes = searchResult.quotes.filter(q => {
+            if (q.symbol && q.exchange) {
+                if (market === 'IN') {
+                    return indianExchanges.includes(q.exchange) || q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO');
+                } else { // 'US'
+                    return usExchanges.includes(q.exchange);
+                }
+            }
+            return false;
+        });
+        
+        return relevantQuotes.map(stock => ({
             ticker: stock.symbol,
             name: stock.longname || stock.shortname || stock.symbol,
             exchange: stock.exchange,

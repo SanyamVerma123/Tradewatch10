@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -17,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { useMarket } from "@/hooks/use-market";
 
 export function OrdersClient() {
   const router = useRouter();
@@ -26,6 +28,7 @@ export function OrdersClient() {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { currencySymbol } = useMarket();
 
   // Effect to fetch user and redirect if not logged in
   useEffect(() => {
@@ -182,8 +185,8 @@ export function OrdersClient() {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
                     </div>
                     <div className="text-right">
-                        <p className="font-semibold">₹{order.limitPrice.toFixed(2)}</p>
-                        <p className="text-xs text-muted-foreground">LTP ₹{order.ltp.toFixed(2)}</p>
+                        <p className="font-semibold">{currencySymbol}{order.limitPrice.toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">LTP {currencySymbol}{order.ltp.toFixed(2)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -212,10 +215,10 @@ export function OrdersClient() {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
                     </div>
                      <div className="text-right">
-                        <p className="font-semibold">Avg. ₹{order.ltp.toFixed(2)}</p>
+                        <p className="font-semibold">Avg. {currencySymbol}{order.ltp.toFixed(2)}</p>
                         {order.realizedPnl !== undefined && (
                             <p className={cn("text-xs font-semibold", order.realizedPnl >= 0 ? "text-positive" : "text-destructive")}>
-                                P&L: {order.realizedPnl >= 0 ? '+' : ''}₹{order.realizedPnl.toFixed(2)}
+                                P&L: {order.realizedPnl >= 0 ? '+' : ''}{currencySymbol}{order.realizedPnl.toFixed(2)}
                             </p>
                         )}
                     </div>
@@ -245,7 +248,7 @@ export function OrdersClient() {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
                     </div>
                      <div className="text-right">
-                        <p className="font-semibold">₹{order.limitPrice.toFixed(2)}</p>                    </div>
+                        <p className="font-semibold">{currencySymbol}{order.limitPrice.toFixed(2)}</p>                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -261,5 +264,3 @@ export function OrdersClient() {
     </div>
   );
 }
-
-    

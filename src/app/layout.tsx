@@ -1,3 +1,4 @@
+
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
@@ -6,6 +7,7 @@ import BottomNav from "@/components/stockwatch/BottomNav";
 import { Toaster } from "@/components/ui/toaster";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { MarketProvider } from "@/hooks/use-market";
 
 
 const inter = Inter({ subsets: ["latin"] });
@@ -32,11 +34,13 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
         >
+          <MarketProvider>
             <div className="relative flex min-h-screen w-full flex-col">
               <main className="flex-1 pb-16">{children}</main>
               <BottomNav />
             </div>
             <Toaster />
+          </MarketProvider>
         </ThemeProvider>
         <SpeedInsights />
         <Analytics />

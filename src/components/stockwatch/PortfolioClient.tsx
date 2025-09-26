@@ -19,6 +19,7 @@ import { StockActionSheet } from "./StockActionSheet";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { useMarket } from "@/hooks/use-market";
 
 const isToday = (someDate: Date) => {
     const today = new Date();
@@ -58,6 +59,8 @@ export function PortfolioClient() {
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   const [actionSheetContext, setActionSheetContext] = useState<'holding' | 'position' | 'watchlist'>('watchlist');
+
+  const { currencySymbol } = useMarket();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -441,24 +444,24 @@ export function PortfolioClient() {
             <div className="grid grid-cols-2 gap-4 text-center">
                 <div>
                     <div className="text-sm text-muted-foreground">Invested</div>
-                    <div className="text-lg font-semibold">₹{(portfolio.investedValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                    <div className="text-lg font-semibold">{currencySymbol}{(portfolio.investedValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
                 </div>
                 <div>
                     <div className="text-sm text-muted-foreground">Current</div>
-                    <div className="text-lg font-semibold">₹{(portfolio.currentValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
+                    <div className="text-lg font-semibold">{currencySymbol}{(portfolio.currentValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</div>
                 </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-4 text-center">
                 <div>
                     <div className="text-sm text-muted-foreground">Overall P&L</div>
                     <div className={cn("text-lg font-semibold", portfolio.totalPnl >= 0 ? "text-positive" : "text-destructive")}>
-                        {portfolio.totalPnl >= 0 ? '+' : ''}{(portfolio.totalPnl || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                        {portfolio.totalPnl >= 0 ? '+' : ''}{currencySymbol}{(portfolio.totalPnl || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
                     </div>
                 </div>
                 <div>
                     <div className="text-sm text-muted-foreground">Day's P&L</div>
                     <div className={cn("text-lg font-semibold", portfolio.dayPnl >= 0 ? "text-positive" : "text-destructive")}>
-                        {portfolio.dayPnl >= 0 ? '+' : ''}{(portfolio.dayPnl || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                        {portfolio.dayPnl >= 0 ? '+' : ''}{currencySymbol}{(portfolio.dayPnl || 0).toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
                     </div>
                 </div>
             </div>
@@ -531,7 +534,7 @@ export function PortfolioClient() {
              <Card className="mb-4">
                 <CardContent className="p-3 flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Total Invested</span>
-                  <span className="font-semibold">₹{totalPositionsInvested.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</span>
+                  <span className="font-semibold">{currencySymbol}{totalPositionsInvested.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}</span>
                 </CardContent>
              </Card>
           )}

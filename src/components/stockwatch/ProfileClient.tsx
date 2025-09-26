@@ -8,10 +8,12 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ChevronDown, ChevronRight, Settings, Info, User as UserIcon, HelpCircle, Gift, LogOut } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings, Info, User as UserIcon, HelpCircle, Gift, LogOut, SwitchIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { useMarket } from "@/hooks/use-market";
+import { Button } from "@/components/ui/button";
 
 const menuItems = [
     { label: "Funds", icon: () => <span className="font-bold text-lg">₹</span>, href: "/funds" },
@@ -25,6 +27,7 @@ const menuItems = [
 export function ProfileClient() {
   const router = useRouter();
   const [user, setUser] = useState<AppUser | null>(null);
+  const { market, setMarket } = useMarket();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -52,6 +55,11 @@ export function ProfileClient() {
     await supabase.auth.signOut();
     router.push('/');
   };
+  
+  const handleMarketToggle = () => {
+    const newMarket = market === 'IN' ? 'US' : 'IN';
+    setMarket(newMarket);
+  }
 
   if (!user) {
     return null; // Or a loading spinner
@@ -95,6 +103,17 @@ export function ProfileClient() {
             </Link>
         ))}
       </div>
+      
+       <Card className="mt-4 hover:bg-muted/50 transition-colors" onClick={handleMarketToggle}>
+          <CardContent className="p-4 flex justify-between items-center cursor-pointer">
+              <div className="flex items-center gap-4">
+                  <SwitchIcon className="h-5 w-5 text-muted-foreground" />
+                  <p className="font-semibold">Switch Market</p>
+              </div>
+              <Button variant="outline" size="sm">{market === 'IN' ? 'Indian' : 'US'} Market</Button>
+          </CardContent>
+      </Card>
+
 
        <Card className="mt-4 hover:bg-destructive/10 transition-colors" onClick={handleLogout}>
           <CardContent className="p-4 flex justify-between items-center cursor-pointer">

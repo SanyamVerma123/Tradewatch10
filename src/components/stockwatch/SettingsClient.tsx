@@ -27,11 +27,14 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabase/client";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useMarket } from "@/hooks/use-market";
 
 export function SettingsClient() {
   const router = useRouter();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
+  const { currency, setCurrency } = useMarket();
 
   const handleClearData = async () => {
     try {
@@ -43,7 +46,10 @@ export function SettingsClient() {
             if (key.startsWith(`funds_${user.id}`) || 
                 key.startsWith(`watchlists_${user.id}`) ||
                 key.startsWith(`orders_${user.id}`) ||
-                key.startsWith(`portfolioData_${user.id}`)) {
+                key.startsWith(`portfolioData_${user.id}`) ||
+                key === 'market' ||
+                key === 'currency'
+                ) {
                 localStorage.removeItem(key);
             }
         });
@@ -78,8 +84,49 @@ export function SettingsClient() {
         </Button>
         <h1 className="text-2xl font-bold">Settings</h1>
       </header>
-
+      
       <Card>
+        <CardHeader>
+          <CardTitle>Preferences</CardTitle>
+          <CardDescription>
+            Customize your app experience.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+            <div className="flex items-center justify-between rounded-lg border p-4">
+                <Label htmlFor="dark-mode" className="flex flex-col space-y-1">
+                    <span>Dark Mode</span>
+                    <span className="font-normal leading-snug text-muted-foreground">
+                        Reduces eye strain in low light.
+                    </span>
+                </Label>
+                <Switch 
+                  id="dark-mode"
+                  checked={theme === 'dark'}
+                  onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+                />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-4">
+                <Label htmlFor="currency" className="flex flex-col space-y-1">
+                    <span>Currency</span>
+                    <span className="font-normal leading-snug text-muted-foreground">
+                        Choose your preferred display currency.
+                    </span>
+                </Label>
+                 <Select value={currency} onValueChange={(value) => setCurrency(value as 'INR' | 'USD')}>
+                    <SelectTrigger className="w-[120px]">
+                        <SelectValue placeholder="Select currency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="INR">INR (₹)</SelectItem>
+                        <SelectItem value="USD">USD ($)</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
         <CardHeader>
           <CardTitle>Notifications</CardTitle>
           <CardDescription>
@@ -96,30 +143,6 @@ export function SettingsClient() {
                 </span>
             </Label>
             <Switch id="email-notifications" />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Theme</CardTitle>
-          <CardDescription>
-            Choose your preferred interface theme.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border p-4">
-                <Label htmlFor="dark-mode" className="flex flex-col space-y-1">
-                    <span>Dark Mode</span>
-                    <span className="font-normal leading-snug text-muted-foreground">
-                        Reduces eye strain in low light.
-                    </span>
-                </Label>
-                <Switch 
-                  id="dark-mode"
-                  checked={theme === 'dark'}
-                  onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
-                />
           </div>
         </CardContent>
       </Card>

@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Sparkles } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { useMarket } from "@/hooks/use-market";
 
 interface AIAnalysisDialogProps {
   stocks: Stock[];
@@ -32,6 +33,7 @@ export function AIAnalysisDialog({ stocks, onClose }: AIAnalysisDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const { toast } = useToast();
+  const { currencySymbol } = useMarket();
 
   const handleCheckboxChange = (ticker: string, checked: boolean) => {
     setSelectedTickers((prev) =>
@@ -117,7 +119,7 @@ export function AIAnalysisDialog({ stocks, onClose }: AIAnalysisDialogProps) {
                         <div>
                             <h4 className="font-semibold mb-1">Suggested Price Alert</h4>
                             <div className="flex justify-between items-center bg-muted/50 p-2 rounded-md">
-                                <span className="text-primary font-bold text-lg">₹{result.priceAlert.suggestedAlertPrice.toFixed(2)}</span>
+                                <span className="text-primary font-bold text-lg">{currencySymbol}{result.priceAlert.suggestedAlertPrice.toFixed(2)}</span>
                                 <p className="text-sm text-muted-foreground italic max-w-[70%]">{result.priceAlert.reason}</p>
                             </div>
                         </div>
@@ -149,7 +151,7 @@ export function AIAnalysisDialog({ stocks, onClose }: AIAnalysisDialogProps) {
                         />
                         <Label htmlFor={stock.ticker} className="w-full flex justify-between cursor-pointer">
                             <div className="font-semibold">{stock.ticker}</div>
-                            <div className="text-muted-foreground text-sm">₹{stock.price.toFixed(2)}</div>
+                            <div className="text-muted-foreground text-sm">{currencySymbol}{stock.price.toFixed(2)}</div>
                         </Label>
                     </div>
                 ))}

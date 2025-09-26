@@ -42,6 +42,7 @@ import { StockActionSheet } from "./StockActionSheet";
 import { AIAnalysisDialog } from "./AIAnalysisDialog";
 import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { useMarket } from "@/hooks/use-market";
 
 
 const getStockStatusMessage = (changePercent: number): string => {
@@ -80,6 +81,8 @@ export function WatchlistDashboard() {
   const [editingWatchlistName, setEditingWatchlistName] = useState("");
   const [news, setNews] = useState<NewsArticle[]>([]);
   
+  const { market, currencySymbol } = useMarket();
+
   const activeWatchlist = useMemo(() => {
     return watchlists.find((w) => w.id === activeTab);
   }, [activeTab, watchlists]);
@@ -201,7 +204,7 @@ export function WatchlistDashboard() {
     setSearchQuery(e.target.value);
     if (e.target.value.length > 1) {
       setIsSearching(true);
-      const results = await searchStocks(e.target.value);
+      const results = await searchStocks(e.target.value, market);
       setSearchResults(results);
       setIsSearching(false);
     } else {
@@ -368,12 +371,15 @@ export function WatchlistDashboard() {
     <div className="container mx-auto max-w-4xl px-4 py-6">
       <header className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Watchlists</h1>
-        <Link href="/settings">
-          <Button variant="ghost" size="icon">
-            <Settings className="h-5 w-5" />
-            <span className="sr-only">Settings</span>
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-muted-foreground">{market}</span>
+            <Link href="/settings">
+            <Button variant="ghost" size="icon">
+                <Settings className="h-5 w-5" />
+                <span className="sr-only">Settings</span>
+            </Button>
+            </Link>
+        </div>
       </header>
       
       {isSearchMode ? (
@@ -491,7 +497,7 @@ export function WatchlistDashboard() {
                                      <p className="text-xs text-primary/80 mt-1 italic">{getStockStatusMessage(stock.changePercent)}</p>
                                  </div>
                                  <div className={cn("text-right font-medium", stock.change >= 0 ? "text-positive" : "text-destructive")}>
-                                     <p className="text-base">₹{stock.price.toFixed(2)}</p>
+                                     <p className="text-base">{currencySymbol}{stock.price.toFixed(2)}</p>
                                      <p className="text-xs">{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)</p>
                                  </div>
                                </div>
