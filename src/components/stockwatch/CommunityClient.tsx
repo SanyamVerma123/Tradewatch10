@@ -16,22 +16,73 @@ import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
-// Mock messages for UI purposes
-const mockMessages = [
-    { id: 1, user: { name: "Trader Joe", avatar: "https://github.com/shadcn.png" }, text: "Anyone watching $AAPL today? Looks like it's ready to pop!", time: "10:30 AM" },
-    { id: 2, user: { name: "You", avatar: "" }, text: "I am! Thinking of buying some calls.", time: "10:31 AM" },
-    { id: 3, user: { name: "CryptoKate", avatar: "https://github.com/vercel.png" }, text: "I'd be careful, RSI is looking a bit overbought.", time: "10:32 AM" },
-];
-
+interface Message {
+  id: number;
+  created_at: string;
+  content: string;
+  user_id: string;
+  user_name: string;
+}
 
 export function CommunityClient() {
   const router = useRouter();
   const { toast } = useToast();
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState(mockMessages);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchUserAndMessages = async () => {
+      setIsLoading(true);
+      const { data: { user: sbUser }, error: userError } = await supabase.auth.getUser();
+      if (userError || !sbUser) {
+        router.replace('/');
+        return;
+      }
+      setUser(sbUser);
+
+      const { data: initialMessages, error: messagesError } = await supabase
+        .from('messages')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (messagesError) {
+        toast({
+          variant: 'destructive',
+          title: 'Error fetching messages',
+          description: 'Could not load chat history. Please ensure the \'messages\' table is created in Supabase.',
+        });
+        console.error("Error fetching messages:", messagesError);
+      } else {
+        setMessages(initialMessages || []);
+      }
+      setIsLoading(false);
+    };
+
+    fetchUserAndMessages();
+
+    const channel = supabase
+      .channel('public:messages')
+      .on<Message>(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          setMessages((prevMessages) => [...prevMessages, payload.new]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [router, toast]);
+
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -39,25 +90,25 @@ export function CommunityClient() {
     }
   }, [messages]);
   
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
+    if (!message.trim() || !user) return;
 
     setIsSending(true);
+
+    const { error } = await supabase.from('messages').insert({
+      content: message.trim(),
+      user_id: user.id,
+      user_name: user.user_metadata.full_name || 'Anonymous',
+    });
+
+    if (error) {
+      toast({ variant: 'destructive', title: 'Could not send message', description: error.message });
+    } else {
+      setMessage("");
+    }
     
-    // In a real app, you would send the message to your backend here.
-    // For this UI demo, we just add it to the local state.
-    setTimeout(() => {
-        const newMessage = {
-            id: messages.length + 1,
-            user: { name: "You", avatar: "" },
-            text: message,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages([...messages, newMessage]);
-        setMessage("");
-        setIsSending(false);
-    }, 500);
+    setIsSending(false);
   };
   
   const handleFileUpload = () => {
@@ -81,29 +132,27 @@ export function CommunityClient() {
           <CardTitle>#general</CardTitle>
         </CardHeader>
         <CardContent ref={scrollAreaRef} className="flex-1 overflow-y-auto space-y-6 pr-2">
-          {messages.map((msg, index) => (
-            <div key={msg.id} className={cn("flex items-start gap-3", msg.user.name === "You" ? "flex-row-reverse" : "")}>
-                <Avatar>
-                    <AvatarImage src={msg.user.name !== "You" ? msg.user.avatar : undefined} />
-                    <AvatarFallback>
-                        {msg.user.name === 'You' ? 'ME' : msg.user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                    </AvatarFallback>
-                </Avatar>
-              <div className={cn("p-3 rounded-lg max-w-[75%]", msg.user.name === "You" ? "bg-primary text-primary-foreground" : "bg-muted")}>
-                {msg.user.name !== 'You' && <p className="font-bold text-xs mb-1">{msg.user.name}</p>}
-                <p className="text-sm">{msg.text}</p>
-                <p className="text-xs text-right mt-1 opacity-70">{msg.time}</p>
-              </div>
+          {isLoading ? (
+            <div className="flex justify-center items-center h-full">
+              <Loader2 className="h-8 w-8 animate-spin" />
             </div>
-          ))}
-           {isSending && (
-                 <div className="flex items-start gap-3 flex-row-reverse">
-                    <Avatar><AvatarFallback>ME</AvatarFallback></Avatar>
-                    <div className="p-3 rounded-lg bg-primary text-primary-foreground flex items-center">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                    </div>
+          ) : (
+            messages.map((msg) => (
+              <div key={msg.id} className={cn("flex items-start gap-3", msg.user_id === user?.id ? "flex-row-reverse" : "")}>
+                  <Avatar>
+                      <AvatarImage src={undefined} />
+                      <AvatarFallback>
+                          {msg.user_id === user?.id ? 'ME' : (msg.user_name || 'U').substring(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                  </Avatar>
+                <div className={cn("p-3 rounded-lg max-w-[75%]", msg.user_id === user?.id ? "bg-primary text-primary-foreground" : "bg-muted")}>
+                  {msg.user_id !== user?.id && <p className="font-bold text-xs mb-1">{msg.user_name}</p>}
+                  <p className="text-sm">{msg.content}</p>
+                  <p className="text-xs text-right mt-1 opacity-70">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
-            )}
+              </div>
+            ))
+          )}
         </CardContent>
         <CardFooter className="pt-4 border-t">
           <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
@@ -124,7 +173,7 @@ export function CommunityClient() {
               rows={1}
             />
             <Button type="submit" size="icon" disabled={!message.trim() || isSending}>
-              <Send className="h-4 w-4" />
+              {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
         </CardFooter>
