@@ -8,9 +8,10 @@ import type { HistoricalHistoryResult } from "yahoo-finance2/dist/esm/src/module
 interface StockChartProps {
     data: HistoricalHistoryResult | null;
     isPositive: boolean;
+    currencySymbol: string;
 }
 
-export function StockChart({ data, isPositive }: StockChartProps) {
+export function StockChart({ data, isPositive, currencySymbol }: StockChartProps) {
   if (!data) return <div className="flex justify-center items-center h-full text-muted-foreground">Loading chart...</div>;
 
   const chartData = data.map(item => ({
@@ -39,7 +40,7 @@ export function StockChart({ data, isPositive }: StockChartProps) {
                     borderRadius: 'var(--radius)',
                 }}
                 labelStyle={{ fontWeight: 'bold' }}
-                formatter={(value: number) => [`₹${value.toFixed(2)}`, "Price"]}
+                formatter={(value: number) => [`${currencySymbol}${value.toFixed(2)}`, "Price"]}
                 labelFormatter={(label) => format(new Date(label), "MMM dd, yyyy")}
                 position={{ y: 0 }}
                 isAnimationActive={false}
@@ -49,10 +50,9 @@ export function StockChart({ data, isPositive }: StockChartProps) {
             />
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
             <XAxis dataKey="date" tickFormatter={(date) => format(date, "MMM dd")} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <YAxis domain={['dataMin', 'dataMax']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${Number(value).toFixed(0)}`} />
+            <YAxis domain={['dataMin', 'dataMax']} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={(value) => `${currencySymbol}${Number(value).toFixed(0)}`} />
             <Area type="monotone" dataKey="price" stroke={strokeColor} fillOpacity={1} fill="url(#colorPrice)" strokeWidth={2} />
         </AreaChart>
     </ResponsiveContainer>
   );
 }
-

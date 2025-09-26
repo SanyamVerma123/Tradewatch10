@@ -19,6 +19,7 @@ import { getHistoricalData } from "@/app/actions";
 import type { HistoricalHistoryResult } from "yahoo-finance2/dist/esm/src/modules/historical";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { useMarket } from "@/hooks/use-market";
 
 
 interface StockActionSheetProps {
@@ -40,6 +41,11 @@ const timeframes: { label: string; value: Timeframe }[] = [
 ];
 
 const Fundamentals = ({ stock }: { stock: Stock }) => {
+    const { currencySymbol } = useMarket();
+    const marketCapCr = stock.marketCap && typeof stock.marketCap === 'number'
+    ? (stock.marketCap / 10000000).toFixed(2)
+    : null;
+
   const data = [
     { label: "Open", value: stock.open?.toFixed(2) },
     { label: "Day's High", value: stock.dayHigh?.toFixed(2) },
@@ -50,7 +56,7 @@ const Fundamentals = ({ stock }: { stock: Stock }) => {
     { label: "52W High", value: stock.fiftyTwoWeekHigh?.toFixed(2) },
     { label: "52W Low", value: stock.fiftyTwoWeekLow?.toFixed(2) },
     { label: "Volume", value: stock.volume?.toLocaleString('en-IN') },
-    { label: "Market Cap", value: typeof stock.marketCap === 'number' ? `₹${(stock.marketCap / 10000000).toFixed(2)}Cr` : stock.marketCap },
+    { label: "Market Cap", value: marketCapCr ? `${currencySymbol}${marketCapCr}Cr` : stock.marketCap },
   ];
 
   return (
@@ -79,6 +85,7 @@ const MemoizedStockChart = memo(StockChart);
 export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeButtonVariant = 'long-short' }: StockActionSheetProps) {
     const [historicalData, setHistoricalData] = useState<HistoricalHistoryResult | null>(null);
     const [timeframe, setTimeframe] = useState<Timeframe>('3mo');
+    const { currencySymbol, market } = useMarket();
 
     const fetchHistorical = useCallback(async () => {
         if (stock) {
@@ -133,7 +140,7 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
         </SheetHeader>
         
         <div className="h-64 my-4">
-          <MemoizedStockChart data={historicalData} isPositive={stock.change >= 0} />
+          <MemoizedStockChart data={historicalData} isPositive={stock.change >= 0} currencySymbol={currencySymbol} />
         </div>
         
         <div className="flex justify-center mb-4">
@@ -160,7 +167,7 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
         </div>
 
         <div className="flex justify-center mb-4">
-             <a href={`https://in.tradingview.com/chart/?symbol=NSE:${stock.ticker.replace('.NS', '')}`} target="_blank" rel="noopener noreferrer" className="text-primary text-sm font-medium flex items-center gap-2">
+             <a href={`https://in.tradingview.com/chart/?symbol=${market}:${stock.ticker.replace('.NS', '')}`} target="_blank" rel="noopener noreferrer" className="text-primary text-sm font-medium flex items-center gap-2">
                 View full chart <ExternalLink className="h-4 w-4" />
             </a>
         </div>
