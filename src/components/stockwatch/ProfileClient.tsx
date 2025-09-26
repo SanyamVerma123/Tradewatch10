@@ -12,8 +12,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Card,
   CardContent,
@@ -23,7 +28,7 @@ import { ChevronDown, ChevronRight, Settings, Info, User as UserIcon, HelpCircle
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { useMarket } from "@/hooks/use-market";
+import { useMarket, marketDetails, Market } from "@/hooks/use-market";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -41,6 +46,8 @@ export function ProfileClient() {
   const { toast } = useToast();
   const [user, setUser] = useState<AppUser | null>(null);
   const { market, setMarket } = useMarket();
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const [selectedMarket, setSelectedMarket] = useState<Market>(market);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -69,24 +76,28 @@ export function ProfileClient() {
     router.push('/');
   };
   
-  const handleMarketToggle = async () => {
-    const newMarket = market === 'IN' ? 'US' : 'IN';
-    setMarket(newMarket);
+  const handleMarketSwitchConfirm = async () => {
+    setMarket(selectedMarket);
     
     toast({
         title: "Market Switched",
-        description: `Market has been changed to ${newMarket}. Please log in again.`,
+        description: `Market has been changed to ${marketDetails[selectedMarket].name}. Please log in again.`,
     });
     
     await supabase.auth.signOut();
     router.push('/');
   }
 
+  const handleMarketSelect = (newMarket: Market) => {
+    if (newMarket !== market) {
+        setSelectedMarket(newMarket);
+        setIsAlertOpen(true);
+    }
+  }
+
   if (!user) {
     return null; // Or a loading spinner
   }
-  
-  const nextMarket = market === 'IN' ? 'US' : 'Indian';
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 bg-background">
@@ -127,32 +138,45 @@ export function ProfileClient() {
         ))}
       </div>
       
-       <AlertDialog>
-        <AlertDialogTrigger asChild>
-           <Card className="mt-4 hover:bg-muted/50 transition-colors">
-              <CardContent className="p-4 flex justify-between items-center cursor-pointer">
-                  <div className="flex items-center gap-4">
-                      <ArrowRightLeft className="h-5 w-5 text-muted-foreground" />
-                      <p className="font-semibold">Switch Market</p>
-                  </div>
-                  <Button variant="outline" size="sm">{market === 'IN' ? 'Indian' : 'US'} Market</Button>
-              </CardContent>
-          </Card>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-            <AlertDialogHeader>
-            <AlertDialogTitle>Switch to {nextMarket} Market?</AlertDialogTitle>
-            <AlertDialogDescription>
-                This action will switch your active market and log you out. You will need to sign in again to see the changes. Are you sure?
-            </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleMarketToggle}>
-                Yes, Switch & Logout
-            </AlertDialogAction>
-            </AlertDialogFooter>
-        </AlertDialogContent>
+       <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Card className="mt-4 hover:bg-muted/50 transition-colors cursor-pointer">
+                        <CardContent className="p-4 flex justify-between items-center">
+                            <div className="flex items-center gap-4">
+                                <ArrowRightLeft className="h-5 w-5 text-muted-foreground" />
+                                <p className="font-semibold">Switch Market</p>
+                            </div>
+                            <Button variant="outline" size="sm" className="gap-2">
+                                {marketDetails[market].name}
+                                <ChevronDown className="h-4 w-4" />
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                    {Object.entries(marketDetails).map(([key, details]) => (
+                        <DropdownMenuItem key={key} onSelect={() => handleMarketSelect(key as Market)}>
+                            {details.name}
+                        </DropdownMenuItem>
+                    ))}
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                <AlertDialogTitle>Switch to {marketDetails[selectedMarket].name} Market?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This action will switch your active market and log you out. You will need to sign in again to see the changes. Are you sure?
+                </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleMarketSwitchConfirm}>
+                    Yes, Switch & Logout
+                </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
        </AlertDialog>
 
 
@@ -167,10 +191,6 @@ export function ProfileClient() {
       </Card>
       
       <footer className="mt-12 text-center text-xs text-muted-foreground space-y-2">
-        <div className="flex items-center justify-center gap-2">
-            <span>Made in India, Made for India</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 21 15"><path fill="#f93" d="M0 0h21v5H0z"/><path fill="#fff" d="M0 5h21v5H0z"/><path fill="#128807" d="M0 10h21v5H0z"/><g transform="translate(10.5 7.5)"><circle r="2" fill="#008"/><path stroke="#008" strokeWidth=".2" d="m0 2l-.12-.3a.32.32 0 1 1 .24 0M.97.16l-.42-.2a.32.32 0 1 1 .48.33M.8.8l-.5-.04a.32.32 0 1 1 .16.48M.16.97l-.2-.42a.32.32 0 1 1 .33.48M-.6.8l-.04-.5a.32.32 0 1 1 .48.16M-1 .16l-.42.2a.32.32 0 1 1 .33-.48M-.8-.6.04-.5a.32.32 0 1 1-.48-.16M-.16-.97l.2-.42a.32.32 0 1 1-.33.48"/></g></svg>
-        </div>
         <p>© Powered by Sanyam Verma</p>
       </footer>
 

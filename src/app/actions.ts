@@ -5,6 +5,7 @@ import { suggestPriceAlerts, SuggestPriceAlertsInput } from "@/ai/flows/suggest-
 import { getStockAnalysis, GetStockAnalysisInput } from "@/ai/flows/stock-analysis";
 import yahooFinance from 'yahoo-finance2';
 import type { HistoricalHistoryResult } from 'yahoo-finance2/dist/esm/src/modules/historical';
+import type { Market } from "@/hooks/use-market";
 
 const yahooFinanceOptions = {
     validateResult: false
@@ -112,23 +113,45 @@ export async function getHistoricalData(ticker: string, period: '5d' | '1mo' | '
   }
 }
 
-export async function searchStocks(query: string, market: 'IN' | 'US' = 'IN') {
+export async function searchStocks(query: string, market: Market = 'IN') {
     if (!query) {
         return [];
     }
+    
+    // Exchange codes for different markets
+    const marketExchanges: Record<Market, string[]> = {
+        'IN': ['NSI', 'BSE'],
+        'US': ['NMS', 'NYQ'],
+        'GB': ['LSE'],
+        'DE': ['GER', 'FKA'], // GER for XETRA, FKA for Frankfurt
+        'JP': ['JPX'],
+        'HK': ['HKG'],
+        'CA': ['TOR'],
+    };
+    
+    // Ticker suffixes for different markets
+    const marketSuffixes: Record<Market, string[]> = {
+        'IN': ['.NS', '.BO'],
+        'US': [],
+        'GB': ['.L'],
+        'DE': ['.DE', '.F'],
+        'JP': ['.T'],
+        'HK': [],
+        'CA': ['.TO'],
+    };
+
     try {
         const searchResult = await yahooFinance.search(query, { newsCount: 0 }, yahooFinanceOptions);
         
-        const indianExchanges = ['NSI', 'BSE'];
-        const usExchanges = ['NMS', 'NYQ'];
+        const exchanges = marketExchanges[market] || [];
+        const suffixes = marketSuffixes[market] || [];
 
         const relevantQuotes = searchResult.quotes.filter(q => {
             if (q.symbol && q.exchange) {
-                if (market === 'IN') {
-                    return indianExchanges.includes(q.exchange) || q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO');
-                } else { // 'US'
-                    return usExchanges.includes(q.exchange);
-                }
+                // Check if exchange matches
+                if (exchanges.includes(q.exchange)) return true;
+                // Check if ticker has the correct suffix
+                if (suffixes.some(suffix => q.symbol.endsWith(suffix))) return true;
             }
             return false;
         });

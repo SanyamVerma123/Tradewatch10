@@ -54,16 +54,13 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
     } else if (user) {
       // Initialize app-specific data in local storage, namespaced by user ID and market
       const userId = user.id;
-      // Initialize for both IN and US markets
-      localStorage.setItem(`watchlists_${userId}_IN`, JSON.stringify(initialWatchlistsData.IN));
-      localStorage.setItem(`watchlists_${userId}_US`, JSON.stringify(initialWatchlistsData.US));
+      
+      (Object.keys(initialWatchlistsData) as (keyof typeof initialWatchlistsData)[]).forEach(market => {
+        localStorage.setItem(`watchlists_${userId}_${market}`, JSON.stringify(initialWatchlistsData[market]));
+        localStorage.setItem(`orders_${userId}_${market}`, '[]');
+        localStorage.setItem(`portfolioData_${userId}_${market}`, '{"holdings":[],"positions":[]}');
+      });
 
-      localStorage.setItem(`orders_${userId}_IN`, '[]');
-      localStorage.setItem(`orders_${userId}_US`, '[]');
-      
-      localStorage.setItem(`portfolioData_${userId}_IN`, '{"holdings":[],"positions":[]}');
-      localStorage.setItem(`portfolioData_${userId}_US`, '{"holdings":[],"positions":[]}');
-      
       toast({
         title: "Account Created!",
         description: "Please check your email to confirm your account and sign in.",
@@ -135,5 +132,3 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
     </Card>
   );
 }
-
-    

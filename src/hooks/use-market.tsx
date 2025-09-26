@@ -3,15 +3,24 @@
 
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 
-type Market = 'IN' | 'US';
-type Currency = 'INR' | 'USD';
+export type Market = 'IN' | 'US' | 'GB' | 'DE' | 'JP' | 'HK' | 'CA';
+export type Currency = 'INR' | 'USD' | 'GBP' | 'EUR' | 'JPY' | 'HKD' | 'CAD';
+
+export const marketDetails: Record<Market, { name: string, currency: Currency, symbol: string }> = {
+  IN: { name: 'India', currency: 'INR', symbol: '₹' },
+  US: { name: 'United States', currency: 'USD', symbol: '$' },
+  GB: { name: 'United Kingdom', currency: 'GBP', symbol: '£' },
+  DE: { name: 'Germany', currency: 'EUR', symbol: '€' },
+  JP: { name: 'Japan', currency: 'JPY', symbol: '¥' },
+  HK: { name: 'Hong Kong', currency: 'HKD', symbol: 'HK$' },
+  CA: { name: 'Canada', currency: 'CAD', symbol: '$' },
+};
 
 interface MarketContextType {
   market: Market;
   setMarket: (market: Market) => void;
   currency: Currency;
   currencySymbol: string;
-  setCurrency: (currency: Currency) => void;
 }
 
 const MarketContext = createContext<MarketContextType | undefined>(undefined);
@@ -19,21 +28,16 @@ const MarketContext = createContext<MarketContextType | undefined>(undefined);
 export const MarketProvider = ({ children }: { children: ReactNode }) => {
   const [market, setMarketState] = useState<Market>('IN');
   const [currency, setCurrencyState] = useState<Currency>('INR');
+  const [currencySymbol, setCurrencySymbolState] = useState('₹');
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     const storedMarket = localStorage.getItem('market') as Market | null;
-    const storedCurrency = localStorage.getItem('currency') as Currency | null;
-    if (storedMarket) {
+    if (storedMarket && marketDetails[storedMarket]) {
       setMarketState(storedMarket);
-    }
-    if (storedCurrency) {
-      setCurrencyState(storedCurrency);
-    } else {
-        // Infer currency from market if not set
-        if (storedMarket === 'US') {
-            setCurrencyState('USD');
-        }
+      const details = marketDetails[storedMarket];
+      setCurrencyState(details.currency);
+      setCurrencySymbolState(details.symbol);
     }
     setIsInitialized(true);
   }, []);
@@ -41,32 +45,20 @@ export const MarketProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (isInitialized) {
       localStorage.setItem('market', market);
-      // Auto-switch currency when market changes
-      const newCurrency = market === 'IN' ? 'INR' : 'USD';
-      setCurrencyState(newCurrency);
-      localStorage.setItem('currency', newCurrency);
+      const details = marketDetails[market];
+      setCurrencyState(details.currency);
+      setCurrencySymbolState(details.symbol);
     }
   }, [market, isInitialized]);
-  
-  useEffect(() => {
-    if (isInitialized) {
-        localStorage.setItem('currency', currency);
-    }
-  }, [currency, isInitialized]);
-
 
   const setMarket = (newMarket: Market) => {
-    setMarketState(newMarket);
+    if (marketDetails[newMarket]) {
+      setMarketState(newMarket);
+    }
   };
-  
-  const setCurrency = (newCurrency: Currency) => {
-    setCurrencyState(newCurrency);
-  }
-
-  const currencySymbol = currency === 'INR' ? '₹' : '$';
 
   return (
-    <MarketContext.Provider value={{ market, setMarket, currency, setCurrency, currencySymbol }}>
+    <MarketContext.Provider value={{ market, setMarket, currency, currencySymbol }}>
       {children}
     </MarketContext.Provider>
   );

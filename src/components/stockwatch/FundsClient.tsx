@@ -35,7 +35,7 @@ export function FundsClient() {
   const [currentValue, setCurrentValue] = useState<number>(0);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { currencySymbol, currency, market } = useMarket();
+  const { currencySymbol, market, currency } = useMarket();
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -48,10 +48,24 @@ export function FundsClient() {
 
       const fundsKey = `funds_${sbUser.id}_${market}`;
       const storedFunds = localStorage.getItem(fundsKey);
+      
+      const getInitialBalance = () => {
+        switch (currency) {
+            case 'INR': return 500000;
+            case 'USD': return 5000;
+            case 'GBP': return 4000;
+            case 'EUR': return 4500;
+            case 'JPY': return 750000;
+            case 'HKD': return 40000;
+            case 'CAD': return 6500;
+            default: return 5000;
+        }
+      }
+
       if (storedFunds) {
         setFunds(JSON.parse(storedFunds));
       } else {
-        const initialFunds = { balance: currency === 'INR' ? 500000 : 5000, canAddMore: true, lastProfitCheck: 0 };
+        const initialFunds = { balance: getInitialBalance(), canAddMore: true, lastProfitCheck: 0 };
         setFunds(initialFunds);
         localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
       }
@@ -141,7 +155,7 @@ export function FundsClient() {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   
-  const openingBalance = currency === 'INR' ? 500000 : 5000;
+  const openingBalance = funds?.balance ? funds.balance - pnl : 0;
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -236,5 +250,3 @@ export function FundsClient() {
     </div>
   );
 }
-
-    

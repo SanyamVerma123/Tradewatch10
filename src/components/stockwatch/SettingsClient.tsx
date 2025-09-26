@@ -28,33 +28,33 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabase/client";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useMarket } from "@/hooks/use-market";
 
 export function SettingsClient() {
   const router = useRouter();
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
-  const { currency, setCurrency } = useMarket();
 
   const handleClearData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // Clear all app-related keys from localStorage for both markets
-        Object.keys(localStorage).forEach(key => {
-            if ((key.startsWith(`funds_${user.id}`) || 
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (
+                key.startsWith(`funds_${user.id}`) ||
                 key.startsWith(`watchlists_${user.id}`) ||
                 key.startsWith(`orders_${user.id}`) ||
                 key.startsWith(`portfolioData_${user.id}`) ||
-                key.startsWith(`newsCache_${user.id}`) ||
-                key === 'market' ||
-                key === 'currency')
-                ) {
-                localStorage.removeItem(key);
+                key.startsWith(`newsCache_${user.id}`)
+            )) {
+                keysToRemove.push(key);
             }
-        });
+        }
+        keysToRemove.push('market'); // Also clear the selected market
+        
+        keysToRemove.forEach(key => localStorage.removeItem(key));
       }
       
       // Sign the user out
@@ -108,23 +108,6 @@ export function SettingsClient() {
                   onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
                 />
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-4">
-                <Label htmlFor="currency" className="flex flex-col space-y-1">
-                    <span>Currency</span>
-                    <span className="font-normal leading-snug text-muted-foreground">
-                        Choose your preferred display currency.
-                    </span>
-                </Label>
-                 <Select value={currency} onValueChange={(value) => setCurrency(value as 'INR' | 'USD')}>
-                    <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder="Select currency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="INR">INR (₹)</SelectItem>
-                        <SelectItem value="USD">USD ($)</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
         </CardContent>
       </Card>
 
@@ -153,7 +136,7 @@ export function SettingsClient() {
         <CardHeader>
           <CardTitle>Data Management</CardTitle>
           <CardDescription>
-            Clear your local application data (watchlists, portfolio, etc.) from this device. You will be logged out.
+            Clear all your local application data (watchlists, portfolio, etc.) for all markets from this device. You will be logged out.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -184,5 +167,3 @@ export function SettingsClient() {
     </div>
   );
 }
-
-    

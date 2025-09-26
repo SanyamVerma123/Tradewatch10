@@ -7,18 +7,36 @@ import type { Watchlist, NewsArticle } from './types';
 interface InitialWatchlistData {
   IN: Watchlist[];
   US: Watchlist[];
+  GB: Watchlist[];
+  DE: Watchlist[];
+  JP: Watchlist[];
+  HK: Watchlist[];
+  CA: Watchlist[];
 }
 
 export const watchlists: InitialWatchlistData = {
   IN: [
     { id: 'watchlist-in-1', name: 'Nifty 50', stocks: ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS'] },
     { id: 'watchlist-in-2', name: 'IT Sector', stocks: ['TCS.NS', 'INFY.NS', 'WIPRO.NS', 'HCLTECH.NS'] },
-    { id: 'watchlist-in-3', name: 'My Favorites', stocks: ['ITC.NS', 'TATAMOTORS.NS'] },
   ],
   US: [
     { id: 'watchlist-us-1', name: 'Tech Giants', stocks: ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META'] },
     { id: 'watchlist-us-2', name: 'EV Stocks', stocks: ['TSLA', 'RIVN', 'LCID'] },
-    { id: 'watchlist-us-3', name: 'My US Stocks', stocks: ['NVDA', 'PFE'] },
+  ],
+  GB: [
+    { id: 'watchlist-gb-1', name: 'FTSE 100', stocks: ['SHEL.L', 'AZN.L', 'HSBA.L', 'ULVR.L'] },
+  ],
+  DE: [
+    { id: 'watchlist-de-1', name: 'DAX Leaders', stocks: ['SAP.DE', 'SIE.DE', 'VOW3.DE', 'MBG.DE'] },
+  ],
+  JP: [
+    { id: 'watchlist-jp-1', name: 'Nikkei 225', stocks: ['7203.T', '6758.T', '9984.T', '9432.T'] },
+  ],
+  HK: [
+    { id: 'watchlist-hk-1', name: 'Hang Seng', stocks: ['0700.HK', '9988.HK', '1299.HK', '0005.HK'] },
+  ],
+  CA: [
+    { id: 'watchlist-ca-1', name: 'TSX Composite', stocks: ['SHOP.TO', 'RY.TO', 'ENB.TO', 'BNS.TO'] },
   ],
 };
 
@@ -34,5 +52,3 @@ export const news: NewsArticle[] = [
   { id: 'news-8', ticker: 'TCS.NS', headline: 'TCS partners with a leading US retailer for digital transformation.', source: 'Economic Times', time: '6h ago', image: 'https://picsum.photos/seed/news8/400/200' },
   { id: 'news-9', ticker: 'NIFTYBEES.NS', headline: 'Market analysts predict bullish trend for the upcoming week.', source: 'Reuters', time: '9h ago', image: 'https://picsum.photos/seed/news9/400/200' },
 ];
-
-    
