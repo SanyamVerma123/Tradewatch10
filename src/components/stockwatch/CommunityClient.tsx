@@ -102,7 +102,7 @@ export function CommunityClient() {
                 if (prevMessages.length === 1 && prevMessages[0].id === 0) {
                     return [payload.new];
                 }
-                // Prevent adding duplicates
+                // Prevent adding duplicates from optimistic update
                 if (prevMessages.some(m => m.id === payload.new.id)) {
                     return prevMessages;
                 }
@@ -139,11 +139,26 @@ export function CommunityClient() {
     if (!message.trim() || !user) return;
 
     setIsSending(true);
+    
+    // Optimistic update
+    const optimisticMessage: Message = {
+        id: Date.now(), // Temporary ID
+        created_at: new Date().toISOString(),
+        content: message.trim(),
+        user_id: user.id,
+        user_name: user.user_metadata.full_name || 'Anonymous'
+    };
+    
+    setMessages(prev => {
+        if (prev.length === 1 && prev[0].id === 0) return [optimisticMessage];
+        return [...prev, optimisticMessage]
+    });
+    setMessage("");
 
     const { error } = await supabase.from('messages').insert({
-      content: message.trim(),
-      user_id: user.id,
-      user_name: user.user_metadata.full_name || 'Anonymous',
+      content: optimisticMessage.content,
+      user_id: optimisticMessage.user_id,
+      user_name: optimisticMessage.user_name,
     });
 
     if (error) {
@@ -152,8 +167,8 @@ export function CommunityClient() {
       } else {
         toast({ variant: 'destructive', title: 'Could not send message', description: error.message });
       }
-    } else {
-      setMessage("");
+      // Revert optimistic update on error
+      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
     }
     
     setIsSending(false);
@@ -167,76 +182,76 @@ export function CommunityClient() {
   }
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-6">
-      <header className="mb-6 flex items-center gap-4">
+    <div className="flex flex-col h-screen bg-background">
+      <header className="p-4 border-b flex items-center gap-4 sticky top-0 bg-background z-10">
         <Button variant="ghost" size="icon" onClick={() => router.back()}>
           <ArrowLeft />
         </Button>
-        <h1 className="text-2xl font-bold">Community Chat</h1>
+        <div>
+            <h1 className="text-xl font-bold">Community Chat</h1>
+            <p className="text-xs text-muted-foreground">#general</p>
+        </div>
       </header>
       
-      <Card className="flex flex-col h-[75vh]">
-        <CardHeader>
-          <CardTitle>#general</CardTitle>
-        </CardHeader>
-        <CardContent ref={scrollAreaRef} className="flex-1 overflow-y-auto space-y-6 pr-2">
-          {isLoading ? (
-            <div className="flex justify-center items-center h-full">
-              <Loader2 className="h-8 w-8 animate-spin" />
+      <div ref={scrollAreaRef} className="flex-1 overflow-y-auto p-4 space-y-6">
+        {isLoading ? (
+          <div className="flex justify-center items-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        ) : dbError ? (
+            <div className="flex h-full items-center justify-center p-4">
+              <Alert variant="destructive" className="max-w-md">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Database Setup Required</AlertTitle>
+                  <AlertDescription>
+                      {dbError}
+                  </AlertDescription>
+              </Alert>
             </div>
-          ) : dbError ? (
-             <div className="flex h-full items-center justify-center">
-                <Alert variant="destructive" className="max-w-md">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Database Setup Required</AlertTitle>
-                    <AlertDescription>
-                        {dbError}
-                    </AlertDescription>
-                </Alert>
-             </div>
-          ) : (
-            messages.map((msg) => (
-              <div key={msg.id} className={cn("flex items-start gap-3", msg.user_id === user?.id ? "flex-row-reverse" : "")}>
-                  <Avatar>
-                      <AvatarImage src={undefined} />
-                      <AvatarFallback>
-                          {msg.user_id === user?.id ? 'ME' : (msg.user_name || 'U').substring(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                  </Avatar>
-                <div className={cn("p-3 rounded-lg max-w-[75%]", msg.user_id === user?.id ? "bg-primary text-primary-foreground" : "bg-muted")}>
-                  {msg.user_id !== user?.id && <p className="font-bold text-xs mb-1">{msg.user_name}</p>}
-                  <p className="text-sm">{msg.content}</p>
-                  <p className="text-xs text-right mt-1 opacity-70">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                </div>
+        ) : (
+          messages.map((msg) => (
+            <div key={msg.id} className={cn("flex items-start gap-3", msg.user_id === user?.id ? "flex-row-reverse" : "")}>
+                <Avatar>
+                    <AvatarImage src={undefined} />
+                    <AvatarFallback>
+                        {msg.user_id === user?.id ? 'ME' : (msg.user_name || 'U').substring(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                </Avatar>
+              <div className={cn("p-3 rounded-lg max-w-[75%]", msg.user_id === user?.id ? "bg-primary text-primary-foreground" : "bg-muted")}>
+                {msg.user_id !== user?.id && <p className="font-bold text-xs mb-1">{msg.user_name}</p>}
+                <p className="text-sm">{msg.content}</p>
+                <p className="text-xs text-right mt-1 opacity-70">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
               </div>
-            ))
-          )}
-        </CardContent>
-        <CardFooter className="pt-4 border-t">
-          <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
-             <Button type="button" variant="ghost" size="icon" onClick={handleFileUpload} disabled={!!dbError}>
-                <Paperclip className="h-5 w-5" />
-             </Button>
-            <Textarea
-              placeholder={dbError ? "Database connection failed" : "Send a message..."}
-              className="flex-1 resize-none"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage(e);
-                }
-              }}
-              rows={1}
-              disabled={!!dbError}
-            />
-            <Button type="submit" size="icon" disabled={!message.trim() || isSending || !!dbError}>
-              {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </div>
+          ))
+        )}
+      </div>
+      <div className="p-4 border-t sticky bottom-0 bg-background">
+        <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
+            <Button type="button" variant="ghost" size="icon" onClick={handleFileUpload} disabled={!!dbError}>
+              <Paperclip className="h-5 w-5" />
             </Button>
-          </form>
-        </CardFooter>
-      </Card>
+          <Textarea
+            placeholder={dbError ? "Database connection failed" : "Send a message..."}
+            className="flex-1 resize-none"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage(e);
+              }
+            }}
+            rows={1}
+            disabled={!!dbError || isSending}
+          />
+          <Button type="submit" size="icon" disabled={!message.trim() || isSending || !!dbError}>
+            {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }
+
+    

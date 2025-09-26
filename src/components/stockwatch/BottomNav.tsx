@@ -364,9 +364,11 @@ export default function BottomNav() {
 
   }, [pathname, router, fetchAndCacheNews, executeOrder, cancelOrder, market]);
 
-  if (pathname === '/' || isLoading || !isLoggedIn) {
+  const hideOnPages = ['/', '/community'];
+  if (hideOnPages.includes(pathname) || isLoading || !isLoggedIn) {
     return null;
   }
+
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/80 bg-background/80 backdrop-blur-lg">
@@ -391,5 +393,7 @@ export default function BottomNav() {
     </nav>
   );
 }
+
+    
 
     
