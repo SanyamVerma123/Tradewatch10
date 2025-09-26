@@ -3,6 +3,7 @@
 
 import { suggestPriceAlerts, SuggestPriceAlertsInput } from "@/ai/flows/suggest-price-alerts";
 import { getStockAnalysis, GetStockAnalysisInput } from "@/ai/flows/stock-analysis";
+import { getStockOfTheDay } from "@/ai/flows/stock-of-the-day";
 import yahooFinance from 'yahoo-finance2';
 import type { HistoricalHistoryResult } from 'yahoo-finance2/dist/esm/src/modules/historical';
 import type { Market } from "@/hooks/use-market";
@@ -10,6 +11,17 @@ import type { Market } from "@/hooks/use-market";
 const yahooFinanceOptions = {
     validateResult: false
 };
+
+export async function getStockOfTheDayAction() {
+    try {
+        const analysis = await getStockOfTheDay();
+        return analysis;
+    } catch (error) {
+        console.error("Error getting stock of the day:", error);
+        return null;
+    }
+}
+
 
 export async function getPriceAlertSuggestions(watchlist: { ticker: string; currentPrice: number }[]) {
   try {
@@ -167,9 +179,19 @@ export async function searchStocks(query: string, market: Market = 'IN') {
     }
 }
 
-export async function getMarketNews() {
+export async function getMarketNews(market: Market = 'IN') {
+     const queries: Record<Market, string> = {
+        'IN': 'NIFTY 50',
+        'US': 'S&P 500',
+        'GB': 'FTSE 100',
+        'DE': 'DAX',
+        'JP': 'Nikkei 225',
+        'HK': 'Hang Seng',
+        'CA': 'TSX Composite',
+    };
+    
     try {
-        const searchResult = await yahooFinance.search('NIFTY 50', { newsCount: 10,  }, yahooFinanceOptions);
+        const searchResult = await yahooFinance.search(queries[market], { newsCount: 10,  }, yahooFinanceOptions);
         if (!searchResult.news) return null;
         
         return searchResult.news.map((article: any, index: number) => {

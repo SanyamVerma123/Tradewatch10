@@ -26,14 +26,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import { getStockData, searchStocks } from "@/app/actions";
+import { getStockData, searchStocks, getStockOfTheDayAction, getMarketNews } from "@/app/actions";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
-import { Search, Sparkles, Settings, Loader2, PlusCircle, X } from "lucide-react";
+import { Search, Sparkles, Settings, Loader2, PlusCircle, X, Newspaper, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,6 +54,8 @@ const getStockStatusMessage = (changePercent: number): string => {
     if (changePercent < 0) return "Seeing a slight dip in price.";
     return "Market appears stable for this stock.";
 };
+
+type StockOfTheDay = Awaited<ReturnType<typeof getStockOfTheDayAction>>;
 
 
 export function WatchlistDashboard() {
@@ -80,6 +82,7 @@ export function WatchlistDashboard() {
   const [editingWatchlistId, setEditingWatchlistId] = useState<string | null>(null);
   const [editingWatchlistName, setEditingWatchlistName] = useState("");
   const [news, setNews] = useState<NewsArticle[]>([]);
+  const [stockOfTheDay, setStockOfTheDay] = useState<StockOfTheDay>(null);
   
   const { market, currencySymbol } = useMarket();
 
@@ -118,7 +121,7 @@ export function WatchlistDashboard() {
     fetchUserAndData();
   }, [router, activeTab, market]);
 
-  const loadNewsFromCache = useCallback(() => {
+  const loadNewsFromCache = useCallback(async () => {
     if (!user) return;
     const newsCacheKey = `newsCache_${user.id}_${market}`;
     const cachedNewsData = localStorage.getItem(newsCacheKey);
@@ -134,7 +137,14 @@ export function WatchlistDashboard() {
             setNews(articles);
         }
     } else {
-        setNews([]);
+        const liveNews = await getMarketNews(market);
+        if(liveNews) {
+            setNews(liveNews as NewsArticle[]);
+            const newsCache = { date: new Date().toDateString(), articles: liveNews };
+            localStorage.setItem(newsCacheKey, JSON.stringify(newsCache));
+        } else {
+            setNews([]);
+        }
     }
   }, [user, market]);
 
@@ -192,6 +202,15 @@ export function WatchlistDashboard() {
       return () => clearInterval(interval);
     }
   }, [activeWatchlist, fetchStockData]);
+
+  // Fetch Stock of the Day
+  useEffect(() => {
+    const fetchStockOfTheDay = async () => {
+        const result = await getStockOfTheDayAction();
+        setStockOfTheDay(result);
+    }
+    fetchStockOfTheDay();
+  }, [])
 
   const filteredStocks = useMemo(() => {
     if (!activeWatchlist) return [];
@@ -382,7 +401,6 @@ export function WatchlistDashboard() {
       <header className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Watchlists</h1>
         <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-muted-foreground">{market}</span>
             <Link href="/settings">
             <Button variant="ghost" size="icon">
                 <Settings className="h-5 w-5" />
@@ -391,13 +409,34 @@ export function WatchlistDashboard() {
             </Link>
         </div>
       </header>
+
+      {stockOfTheDay && (
+        <Card className="mb-6 bg-gradient-to-r from-primary/80 to-primary text-primary-foreground shadow-lg">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="h-5 w-5" />
+              <h3 className="font-bold text-lg">Stock of the Day</h3>
+            </div>
+            <p className="text-sm font-semibold mb-2">{stockOfTheDay.headline}</p>
+            <p className="text-xs opacity-90 mb-4">{stockOfTheDay.analysis}</p>
+            <Button 
+                variant="secondary" 
+                size="sm" 
+                className="w-full"
+                onClick={() => router.push(`/trade/${encodeURIComponent(stockOfTheDay.ticker)}`)}
+            >
+                View {stockOfTheDay.ticker}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       
       {isSearchMode ? (
         <div className="mb-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
-              placeholder="Search stocks to add (e.g., INFY.NS)"
+              placeholder={`Search to add... e.g. ${market === 'IN' ? 'RELIANCE.NS' : 'AAPL'}`}
               className="pl-10"
               value={searchQuery}
               onChange={handleSearchQueryChange}
@@ -542,7 +581,7 @@ export function WatchlistDashboard() {
 
           <section className="mt-8">
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Related News</h2>
+                <h2 className="text-xl font-bold flex items-center gap-2"><Newspaper className="h-5 w-5" /> Related News</h2>
                 {news.length > 6 && (
                     <Dialog open={isSeeMoreNewsOpen} onOpenChange={setIsSeeMoreNewsOpen}>
                         <DialogTrigger asChild>
