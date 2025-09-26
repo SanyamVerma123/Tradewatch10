@@ -8,7 +8,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ChevronDown, ChevronRight, Settings, Info, User as UserIcon, HelpCircle, Gift, LogOut, SwitchIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings, Info, User as UserIcon, HelpCircle, Gift, LogOut, ArrowRightLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
@@ -107,7 +107,7 @@ export function ProfileClient() {
        <Card className="mt-4 hover:bg-muted/50 transition-colors" onClick={handleMarketToggle}>
           <CardContent className="p-4 flex justify-between items-center cursor-pointer">
               <div className="flex items-center gap-4">
-                  <SwitchIcon className="h-5 w-5 text-muted-foreground" />
+                  <ArrowRightLeft className="h-5 w-5 text-muted-foreground" />
                   <p className="font-semibold">Switch Market</p>
               </div>
               <Button variant="outline" size="sm">{market === 'IN' ? 'Indian' : 'US'} Market</Button>
