@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
-import { Search, Sparkles, Settings, Loader2, PlusCircle, X, Newspaper, TrendingUp } from "lucide-react";
+import { Search, Sparkles, Users, Loader2, PlusCircle, X, Newspaper, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -401,10 +401,10 @@ export function WatchlistDashboard() {
       <header className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Watchlists</h1>
         <div className="flex items-center gap-2">
-            <Link href="/settings">
+            <Link href="/community">
             <Button variant="ghost" size="icon">
-                <Settings className="h-5 w-5" />
-                <span className="sr-only">Settings</span>
+                <Users className="h-5 w-5" />
+                <span className="sr-only">Community</span>
             </Button>
             </Link>
         </div>
