@@ -11,13 +11,14 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Send, Paperclip, Loader2, User as UserIcon } from "lucide-react";
+import { ArrowLeft, Send, Paperclip, Loader2, User as UserIcon, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Message {
   id: number;
@@ -25,6 +26,10 @@ interface Message {
   content: string;
   user_id: string;
   user_name: string;
+}
+
+const isMissingTableError = (errorMessage: string) => {
+    return errorMessage.includes("relation \"public.messages\" does not exist") || errorMessage.includes("Could not find the table 'public.messages'");
 }
 
 export function CommunityClient() {
@@ -35,11 +40,13 @@ export function CommunityClient() {
   const [isSending, setIsSending] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [dbError, setDbError] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchUserAndMessages = async () => {
       setIsLoading(true);
+      setDbError(null);
       const { data: { user: sbUser }, error: userError } = await supabase.auth.getUser();
       if (userError || !sbUser) {
         router.replace('/');
@@ -53,11 +60,15 @@ export function CommunityClient() {
         .order('created_at', { ascending: true });
 
       if (messagesError && messagesError.message) {
-        toast({
-          variant: 'destructive',
-          title: 'Error fetching messages',
-          description: 'Could not load chat history. Please ensure the \'messages\' table is created in Supabase.',
-        });
+        if (isMissingTableError(messagesError.message)) {
+            setDbError("The 'messages' table is not set up in your database. Please run the SQL code in `src/lib/supabase/schema.sql` in your Supabase SQL Editor to create the table and enable the chat feature.");
+        } else {
+            toast({
+              variant: 'destructive',
+              title: 'Error fetching messages',
+              description: messagesError.message,
+            });
+        }
         console.error("Error fetching messages:", messagesError);
       } else {
         setMessages(initialMessages || []);
@@ -76,7 +87,17 @@ export function CommunityClient() {
           setMessages((prevMessages) => [...prevMessages, payload.new]);
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+            console.log('Connected to messages channel');
+        }
+        if (status === 'CHANNEL_ERROR' || err) {
+            const errorMessage = (err as any)?.message || 'An unknown error occurred.';
+            if (isMissingTableError(errorMessage)) {
+                 setDbError("The 'messages' table is not set up in your database. Please run the SQL code in `src/lib/supabase/schema.sql` in your Supabase SQL Editor to create the table and enable the chat feature.");
+            }
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -103,7 +124,11 @@ export function CommunityClient() {
     });
 
     if (error) {
-      toast({ variant: 'destructive', title: 'Could not send message', description: error.message });
+      if (isMissingTableError(error.message)) {
+        setDbError("The 'messages' table is not set up in your database. Please run the SQL code in `src/lib/supabase/schema.sql` in your Supabase SQL Editor to create the table and enable the chat feature.");
+      } else {
+        toast({ variant: 'destructive', title: 'Could not send message', description: error.message });
+      }
     } else {
       setMessage("");
     }
@@ -136,6 +161,16 @@ export function CommunityClient() {
             <div className="flex justify-center items-center h-full">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
+          ) : dbError ? (
+             <div className="flex h-full items-center justify-center">
+                <Alert variant="destructive" className="max-w-md">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Database Setup Required</AlertTitle>
+                    <AlertDescription>
+                        {dbError}
+                    </AlertDescription>
+                </Alert>
+             </div>
           ) : (
             messages.map((msg) => (
               <div key={msg.id} className={cn("flex items-start gap-3", msg.user_id === user?.id ? "flex-row-reverse" : "")}>
@@ -156,11 +191,11 @@ export function CommunityClient() {
         </CardContent>
         <CardFooter className="pt-4 border-t">
           <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
-             <Button type="button" variant="ghost" size="icon" onClick={handleFileUpload}>
+             <Button type="button" variant="ghost" size="icon" onClick={handleFileUpload} disabled={!!dbError}>
                 <Paperclip className="h-5 w-5" />
              </Button>
             <Textarea
-              placeholder="Send a message..."
+              placeholder={dbError ? "Database connection failed" : "Send a message..."}
               className="flex-1 resize-none"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -171,8 +206,9 @@ export function CommunityClient() {
                 }
               }}
               rows={1}
+              disabled={!!dbError}
             />
-            <Button type="submit" size="icon" disabled={!message.trim() || isSending}>
+            <Button type="submit" size="icon" disabled={!message.trim() || isSending || !!dbError}>
               {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
