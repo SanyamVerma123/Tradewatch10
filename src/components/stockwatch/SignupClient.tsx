@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState } from "react";
@@ -51,12 +52,17 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
         description: error.message,
       });
     } else if (user) {
-      // Initialize app-specific data in local storage, namespaced by user ID
+      // Initialize app-specific data in local storage, namespaced by user ID and market
       const userId = user.id;
-      // Do not initialize funds here. It will be done post-login via notification.
-      localStorage.setItem(`watchlists_${userId}`, JSON.stringify(initialWatchlistsData));
-      localStorage.setItem(`orders_${userId}`, '[]');
-      localStorage.setItem(`portfolioData_${userId}`, '{"holdings":[],"positions":[]}');
+      // Initialize for both IN and US markets
+      localStorage.setItem(`watchlists_${userId}_IN`, JSON.stringify(initialWatchlistsData.IN));
+      localStorage.setItem(`watchlists_${userId}_US`, JSON.stringify(initialWatchlistsData.US));
+
+      localStorage.setItem(`orders_${userId}_IN`, '[]');
+      localStorage.setItem(`orders_${userId}_US`, '[]');
+      
+      localStorage.setItem(`portfolioData_${userId}_IN`, '{"holdings":[],"positions":[]}');
+      localStorage.setItem(`portfolioData_${userId}_US`, '{"holdings":[],"positions":[]}');
       
       toast({
         title: "Account Created!",
@@ -129,3 +135,5 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
     </Card>
   );
 }
+
+    

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import {
@@ -41,14 +42,15 @@ export function SettingsClient() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // Clear all app-related keys from localStorage
+        // Clear all app-related keys from localStorage for both markets
         Object.keys(localStorage).forEach(key => {
-            if (key.startsWith(`funds_${user.id}`) || 
+            if ((key.startsWith(`funds_${user.id}`) || 
                 key.startsWith(`watchlists_${user.id}`) ||
                 key.startsWith(`orders_${user.id}`) ||
                 key.startsWith(`portfolioData_${user.id}`) ||
+                key.startsWith(`newsCache_${user.id}`) ||
                 key === 'market' ||
-                key === 'currency'
+                key === 'currency')
                 ) {
                 localStorage.removeItem(key);
             }
@@ -182,3 +184,5 @@ export function SettingsClient() {
     </div>
   );
 }
+
+    

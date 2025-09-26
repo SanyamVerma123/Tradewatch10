@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -34,7 +35,7 @@ export function FundsClient() {
   const [currentValue, setCurrentValue] = useState<number>(0);
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { currencySymbol, currency } = useMarket();
+  const { currencySymbol, currency, market } = useMarket();
 
   useEffect(() => {
     const fetchUserAndData = async () => {
@@ -45,7 +46,7 @@ export function FundsClient() {
       }
       setUser(sbUser);
 
-      const fundsKey = `funds_${sbUser.id}`;
+      const fundsKey = `funds_${sbUser.id}_${market}`;
       const storedFunds = localStorage.getItem(fundsKey);
       if (storedFunds) {
         setFunds(JSON.parse(storedFunds));
@@ -55,7 +56,7 @@ export function FundsClient() {
         localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
       }
 
-      const portfolioKey = `portfolioData_${sbUser.id}`;
+      const portfolioKey = `portfolioData_${sbUser.id}_${market}`;
       const updateDataFromPortfolio = () => {
         const portfolioData: Portfolio | null = JSON.parse(localStorage.getItem(portfolioKey) || "null");
         if (portfolioData) {
@@ -83,7 +84,7 @@ export function FundsClient() {
     };
 
     fetchUserAndData();
-  }, [router, currency]);
+  }, [router, currency, market]);
 
   useEffect(() => {
     const checkAndUnlockFunds = () => {
@@ -97,7 +98,7 @@ export function FundsClient() {
               lastProfitCheck: pnl
           };
           setFunds(newFunds);
-          localStorage.setItem(`funds_${user.id}`, JSON.stringify(newFunds));
+          localStorage.setItem(`funds_${user.id}_${market}`, JSON.stringify(newFunds));
           toast({
               title: "Congratulations!",
               description: `You've earned a ${currencySymbol}${profitTarget} profit! You can now add an additional ${currencySymbol}${bonusAmount} to your funds.`,
@@ -108,7 +109,7 @@ export function FundsClient() {
     if (funds) { // Only run if funds have been loaded
         checkAndUnlockFunds();
     }
-  }, [pnl, funds, user, toast, currency, currencySymbol]);
+  }, [pnl, funds, user, toast, currency, currencySymbol, market]);
 
 
   const handleAddFunds = () => {
@@ -235,3 +236,5 @@ export function FundsClient() {
     </div>
   );
 }
+
+    

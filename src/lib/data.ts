@@ -4,11 +4,24 @@ import type { Watchlist, NewsArticle } from './types';
 // Stock data is fetched dynamically.
 // User-specific watchlists will be stored in localStorage.
 
-export const watchlists: Watchlist[] = [
-  { id: 'watchlist-1', name: 'Nifty 50', stocks: ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS'] },
-  { id: 'watchlist-2', name: 'IT Sector', stocks: ['TCS.NS', 'INFY.NS', 'WIPRO.NS', 'HCLTECH.NS'] },
-  { id: 'watchlist-3', name: 'My Favorites', stocks: ['ITC.NS', 'TATAMOTORS.NS'] },
-];
+interface InitialWatchlistData {
+  IN: Watchlist[];
+  US: Watchlist[];
+}
+
+export const watchlists: InitialWatchlistData = {
+  IN: [
+    { id: 'watchlist-in-1', name: 'Nifty 50', stocks: ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS'] },
+    { id: 'watchlist-in-2', name: 'IT Sector', stocks: ['TCS.NS', 'INFY.NS', 'WIPRO.NS', 'HCLTECH.NS'] },
+    { id: 'watchlist-in-3', name: 'My Favorites', stocks: ['ITC.NS', 'TATAMOTORS.NS'] },
+  ],
+  US: [
+    { id: 'watchlist-us-1', name: 'Tech Giants', stocks: ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META'] },
+    { id: 'watchlist-us-2', name: 'EV Stocks', stocks: ['TSLA', 'RIVN', 'LCID'] },
+    { id: 'watchlist-us-3', name: 'My US Stocks', stocks: ['NVDA', 'PFE'] },
+  ],
+};
+
 
 export const news: NewsArticle[] = [
   { id: 'news-1', ticker: 'RELIANCE.NS', headline: "Reliance Industries shares climb after positive quarterly earnings report.", source: 'LiveMint', time: '2h ago', image: 'https://picsum.photos/seed/news1/400/200' },
@@ -21,3 +34,5 @@ export const news: NewsArticle[] = [
   { id: 'news-8', ticker: 'TCS.NS', headline: 'TCS partners with a leading US retailer for digital transformation.', source: 'Economic Times', time: '6h ago', image: 'https://picsum.photos/seed/news8/400/200' },
   { id: 'news-9', ticker: 'NIFTYBEES.NS', headline: 'Market analysts predict bullish trend for the upcoming week.', source: 'Reuters', time: '9h ago', image: 'https://picsum.photos/seed/news9/400/200' },
 ];
+
+    

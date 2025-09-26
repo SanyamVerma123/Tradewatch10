@@ -186,6 +186,7 @@ type StopLossTargetMode = 'PERCENT' | 'PRICE';
 export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const router = useRouter();
   const { toast } = useToast();
+  const { market, currencySymbol } = useMarket();
   const [stock, setStock] = useState<Stock | null>(null);
   const [availableFunds, setAvailableFunds] = useState(0);
   const [user, setUser] = useState<User | null>(null);
@@ -210,7 +211,6 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
 
   const [portfolio, setPortfolio] = useState<Portfolio>({ holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 });
-  const { currencySymbol } = useMarket();
 
   // One-time setup effect for form state from props
 useEffect(() => {
@@ -222,11 +222,12 @@ useEffect(() => {
         }
         setUser(sbUser);
 
-        const fundsData = JSON.parse(localStorage.getItem(`funds_${sbUser.id}`) || '{}');
+        const fundsKey = `funds_${sbUser.id}_${market}`;
+        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         setAvailableFunds(fundsData.balance || 0);
         
         let localPortfolio: Portfolio = { holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 };
-        const ordersKey = `orders_${sbUser.id}`;
+        const ordersKey = `orders_${sbUser.id}_${market}`;
         
         try {
             const allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
@@ -311,7 +312,7 @@ useEffect(() => {
 
     initializeData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticker]);
+  }, [ticker, market]);
 
 
   const fetchStock = useCallback(async () => {
@@ -377,12 +378,12 @@ useEffect(() => {
     return 0; // Not a sell or no holdings
   }, [isExiting, product, orderType, holdingForTicker, positionForTicker]);
   
-  const showAvailableQuantity = (orderType === 'SELL' && !isNewShortSell) || isExiting || isAdding;
+  const showAvailableQuantity = (orderType === 'SELL' && !isNewShortSell && !isAdding) || isExiting || isAdding;
 
 
   const handlePlaceOrder = () => {
     if(!stock || !user) return;
-    const ordersKey = `orders_${user.id}`;
+    const ordersKey = `orders_${user.id}_${market}`;
     
     const qty = parseInt(quantity) || 0;
     if (qty <= 0) {
@@ -404,7 +405,7 @@ useEffect(() => {
     
     // Refund old margin if we are editing a BUY order
     if (isEditing && orderToEdit?.type === 'BUY') {
-        const fundsKey = `funds_${user.id}`;
+        const fundsKey = `funds_${user.id}_${market}`;
         const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
         const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
@@ -419,7 +420,7 @@ useEffect(() => {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~${currencySymbol}${requiredFunds.toFixed(2)}. Available: ${currencySymbol}${availableFunds.toFixed(2)}.` });
       // Re-add the refunded margin if the new order fails
        if (isEditing && orderToEdit?.type === 'BUY') {
-            const fundsKey = `funds_${user.id}`;
+            const fundsKey = `funds_${user.id}_${market}`;
             const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
             const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
             const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
@@ -446,7 +447,7 @@ useEffect(() => {
     
     // Block funds for new BUY orders or updated BUY orders
     if (orderType === 'BUY') {
-        const fundsKey = `funds_${user.id}`;
+        const fundsKey = `funds_${user.id}_${market}`;
         const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         const newBalance = (fundsData.balance || 0) - requiredFunds;
         localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
@@ -496,11 +497,11 @@ useEffect(() => {
 
   const handleCancelOrder = () => {
     if (!user || !orderToEdit) return;
-    const ordersKey = `orders_${user.id}`;
+    const ordersKey = `orders_${user.id}_${market}`;
     let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
 
     if (orderToEdit.type === 'BUY' && orderToEdit.status === 'Pending') {
-        const fundsKey = `funds_${user.id}`;
+        const fundsKey = `funds_${user.id}_${market}`;
         const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         if (fundsData.balance !== undefined) {
              const orderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
@@ -759,3 +760,5 @@ useEffect(() => {
     </div>
   );
 }
+
+    

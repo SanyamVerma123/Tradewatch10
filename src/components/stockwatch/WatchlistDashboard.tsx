@@ -97,20 +97,30 @@ export function WatchlistDashboard() {
       }
       setUser(sbUser);
       
-      const watchlistsKey = `watchlists_${sbUser.id}`;
-      const loadedWatchlists = JSON.parse(localStorage.getItem(watchlistsKey) || JSON.stringify(initialWatchlistsData));
+      const watchlistsKey = `watchlists_${sbUser.id}_${market}`;
+      const loadedWatchlistsText = localStorage.getItem(watchlistsKey);
+      
+      let loadedWatchlists;
+      if (loadedWatchlistsText) {
+          loadedWatchlists = JSON.parse(loadedWatchlistsText);
+      } else {
+          // If no watchlist for the current market, initialize it
+          loadedWatchlists = initialWatchlistsData[market];
+          localStorage.setItem(watchlistsKey, JSON.stringify(loadedWatchlists));
+      }
+      
       setWatchlists(loadedWatchlists);
-      if (loadedWatchlists.length > 0 && !activeTab) {
+      if (loadedWatchlists.length > 0 && (!activeTab || !loadedWatchlists.some(w => w.id === activeTab))) {
           setActiveTab(loadedWatchlists[0].id);
       }
     };
     
     fetchUserAndData();
-  }, [router, activeTab]);
+  }, [router, activeTab, market]);
 
   const loadNewsFromCache = useCallback(() => {
     if (!user) return;
-    const newsCacheKey = `newsCache_${user.id}`;
+    const newsCacheKey = `newsCache_${user.id}_${market}`;
     const cachedNewsData = localStorage.getItem(newsCacheKey);
     
     if (cachedNewsData) {
@@ -126,20 +136,20 @@ export function WatchlistDashboard() {
     } else {
         setNews([]);
     }
-  }, [user]);
+  }, [user, market]);
 
   useEffect(() => {
     loadNewsFromCache();
 
     const handleStorageChange = (event: StorageEvent) => {
-        if (user && event.key === `newsCache_${user.id}`) {
+        if (user && event.key === `newsCache_${user.id}_${market}`) {
             loadNewsFromCache();
         }
     };
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, [user, loadNewsFromCache]);
+  }, [user, loadNewsFromCache, market]);
 
 
   const fetchStockData = useCallback(async (isSilent = false) => {
@@ -240,7 +250,7 @@ export function WatchlistDashboard() {
     });
 
     setWatchlists(updatedWatchlists);
-    localStorage.setItem(`watchlists_${user.id}`, JSON.stringify(updatedWatchlists));
+    localStorage.setItem(`watchlists_${user.id}_${market}`, JSON.stringify(updatedWatchlists));
     
     if (previousWatchlistName) {
         toast({
@@ -286,7 +296,7 @@ export function WatchlistDashboard() {
     };
     const updatedWatchlists = [...watchlists, newWatchlist];
     setWatchlists(updatedWatchlists);
-    localStorage.setItem(`watchlists_${user.id}`, JSON.stringify(updatedWatchlists));
+    localStorage.setItem(`watchlists_${user.id}_${market}`, JSON.stringify(updatedWatchlists));
     setActiveTab(newWatchlist.id);
     setNewWatchlistName("");
   };
@@ -328,7 +338,7 @@ export function WatchlistDashboard() {
         wl.id === editingWatchlistId ? { ...wl, name: editingWatchlistName } : wl
     );
     setWatchlists(updatedWatchlists);
-    localStorage.setItem(`watchlists_${user.id}`, JSON.stringify(updatedWatchlists));
+    localStorage.setItem(`watchlists_${user.id}_${market}`, JSON.stringify(updatedWatchlists));
     toast({
         title: "Watchlist Renamed",
         description: `Successfully renamed to "${editingWatchlistName}".`
@@ -590,3 +600,5 @@ export function WatchlistDashboard() {
     </div>
   );
 }
+
+    

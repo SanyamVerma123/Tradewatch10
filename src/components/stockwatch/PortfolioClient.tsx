@@ -60,7 +60,7 @@ export function PortfolioClient() {
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
   const [actionSheetContext, setActionSheetContext] = useState<'holding' | 'position' | 'watchlist'>('watchlist');
 
-  const { currencySymbol } = useMarket();
+  const { currencySymbol, market } = useMarket();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -77,8 +77,8 @@ export function PortfolioClient() {
   const updatePortfolioData = useCallback(async () => {
     if (!user) return;
     
-    const ordersKey = `orders_${user.id}`;
-    const portfolioKey = `portfolioData_${user.id}`;
+    const ordersKey = `orders_${user.id}_${market}`;
+    const portfolioKey = `portfolioData_${user.id}_${market}`;
     
     let allOrders: Order[];
     try {
@@ -251,7 +251,7 @@ export function PortfolioClient() {
 
     setPortfolio(newPortfolio);
     setIsLoading(false);
-  }, [toast, user]);
+  }, [toast, user, market]);
 
 
   const lightweightUpdate = useCallback(async (currentPortfolio: Portfolio) => {
@@ -302,7 +302,7 @@ export function PortfolioClient() {
     });
 
     // Realized PNL needs to be fetched from orders to be accurate in summary
-    const ordersKey = `orders_${user.id}`;
+    const ordersKey = `orders_${user.id}_${market}`;
     let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     const todayAllRealizedPnl = allOrders.filter(o => o.status === 'Executed' && o.executedAt && isToday(new Date(o.executedAt)) && o.realizedPnl !== undefined).reduce((acc, o) => acc + (o.realizedPnl || 0), 0);
 
@@ -322,7 +322,7 @@ export function PortfolioClient() {
     });
 
     // Write the latest portfolio totals to localStorage for other pages to use
-    const portfolioKey = `portfolioData_${user.id}`;
+    const portfolioKey = `portfolioData_${user.id}_${market}`;
     const portfolioSummary = { 
         investedValue: totalInvested, 
         currentValue: totalHoldingsCurrentValue,
@@ -331,14 +331,15 @@ export function PortfolioClient() {
     localStorage.setItem(portfolioKey, JSON.stringify(portfolioSummary));
 
 
-  }, [user]);
+  }, [user, market]);
 
   useEffect(() => {
     if (!user) return;
     updatePortfolioData(); // Initial heavy load
     
+    const ordersKey = `orders_${user.id}_${market}`;
     const handleStorageChange = (event: StorageEvent) => {
-      if ((event.key === `orders_${user.id}`)) {
+      if ((event.key === ordersKey)) {
         updatePortfolioData(); // Re-run heavy calculation on order change
       }
     };
@@ -347,7 +348,7 @@ export function PortfolioClient() {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [updatePortfolioData, user]);
+  }, [updatePortfolioData, user, market]);
 
   useEffect(() => {
     if (isLoading) return; // Don't start interval until initial load is done
@@ -591,3 +592,5 @@ export function PortfolioClient() {
     </div>
   );
 }
+
+    

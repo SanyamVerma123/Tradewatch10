@@ -28,7 +28,7 @@ export function OrdersClient() {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { currencySymbol } = useMarket();
+  const { currencySymbol, market } = useMarket();
 
   // Effect to fetch user and redirect if not logged in
   useEffect(() => {
@@ -48,8 +48,8 @@ export function OrdersClient() {
   useEffect(() => {
     if (!user) return;
 
+    const ordersKey = `orders_${user.id}_${market}`;
     const fetchOrders = () => {
-      const ordersKey = `orders_${user.id}`;
       try {
         const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
         setOrders(storedOrders);
@@ -62,7 +62,7 @@ export function OrdersClient() {
     fetchOrders();
 
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === `orders_${user.id}`) {
+      if (event.key === ordersKey) {
         fetchOrders();
       }
     };
@@ -71,7 +71,7 @@ export function OrdersClient() {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [user]);
+  }, [user, market]);
 
 
   // Effect to update live prices for pending orders
@@ -264,3 +264,5 @@ export function OrdersClient() {
     </div>
   );
 }
+
+    

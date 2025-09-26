@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -18,10 +19,12 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { useMarket } from "@/hooks/use-market";
 
 export function ProfileDetailsClient() {
   const router = useRouter();
   const { toast } = useToast();
+  const { market } = useMarket();
   const [sbUser, setSbUser] = useState<User | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -69,7 +72,7 @@ export function ProfileDetailsClient() {
   };
   
   const applyBonus = (userId: string) => {
-      const fundsKey = `funds_${userId}`;
+      const fundsKey = `funds_${userId}_${market}`;
       const fundsDataText = localStorage.getItem(fundsKey);
       const fundsData = fundsDataText ? JSON.parse(fundsDataText) : { balance: 500000, canAddMore: true, lastProfitCheck: 0 };
       const newFunds = { ...fundsData, balance: (fundsData.balance || 0) + 100000 };
@@ -216,3 +219,5 @@ export function ProfileDetailsClient() {
     </div>
   );
 }
+
+    

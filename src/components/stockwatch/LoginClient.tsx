@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState } from "react";
@@ -17,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase/client";
+import { useMarket } from "@/hooks/use-market";
 
 interface LoginClientProps {
     onToggleView: () => void;
@@ -25,6 +27,7 @@ interface LoginClientProps {
 export function LoginClient({ onToggleView }: LoginClientProps) {
   const router = useRouter();
   const { toast } = useToast();
+  const { market } = useMarket();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,7 +49,7 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
             description: error.message,
         });
     } else if (data.user) {
-        localStorage.setItem(`postLoginFundNotification_${data.user.id}`, "true");
+        localStorage.setItem(`postLoginFundNotification_${data.user.id}_${market}`, "true");
         toast({
             title: "Login Successful",
             description: `Welcome back!`,
@@ -135,3 +138,5 @@ export function LoginClient({ onToggleView }: LoginClientProps) {
       </Card>
   );
 }
+
+    

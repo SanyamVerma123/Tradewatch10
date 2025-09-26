@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase/client";
 import { getMarketNews, getStockData } from "@/app/actions";
 import type { NewsArticle, Order, Position } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import { useMarket } from "@/hooks/use-market";
 
 const navItems = [
   { href: "/watchlist", label: "Watchlist", icon: LayoutGrid },
@@ -62,11 +63,12 @@ export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
+  const { market } = useMarket();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchAndCacheNews = useCallback(async (userId: string) => {
-    const newsCacheKey = `newsCache_${userId}`;
+    const newsCacheKey = `newsCache_${userId}_${market}`;
     const cachedNewsData = localStorage.getItem(newsCacheKey);
     let shouldFetch = true;
 
@@ -106,11 +108,11 @@ export default function BottomNav() {
             }));
         }
     }
-  }, []);
+  }, [market]);
 
   const cancelOrder = useCallback((orderToCancel: Order, reason: string, userId: string) => {
     if (!userId) return;
-    const ordersKey = `orders_${userId}`;
+    const ordersKey = `orders_${userId}_${market}`;
     const allOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     
     const updatedOrders = allOrders.map((o: Order) => 
@@ -118,7 +120,7 @@ export default function BottomNav() {
     );
     
     if (orderToCancel.type === 'BUY' && orderToCancel.status === 'Pending') {
-        const fundsKey = `funds_${userId}`;
+        const fundsKey = `funds_${userId}_${market}`;
         const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         
         if (fundsData.balance !== undefined) {
@@ -130,32 +132,32 @@ export default function BottomNav() {
 
             const newBalance = fundsData.balance + blockedFunds;
             localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
-             window.dispatchEvent(new StorageEvent('storage', { key: `funds_${userId}` }));
+             window.dispatchEvent(new StorageEvent('storage', { key: fundsKey }));
         }
     }
     
     localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
-    window.dispatchEvent(new StorageEvent('storage', { key: `orders_${userId}` }));
+    window.dispatchEvent(new StorageEvent('storage', { key: ordersKey }));
     
     toast({
         variant: "destructive",
         title: "Order Cancelled",
         description: `${orderToCancel.ticker}: ${reason}`,
     });
-  }, [toast]);
+  }, [toast, market]);
 
 
   const executeOrder = useCallback((orderToExecute: Order, ltp: number, userId: string) => {
     if (!userId) return false;
 
-    const ordersKey = `orders_${userId}`;
+    const ordersKey = `orders_${userId}_${market}`;
     let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
     const orderIndex = allOrders.findIndex(o => o.id === orderToExecute.id);
     if (orderIndex === -1 || allOrders[orderIndex].status !== 'Pending') {
         return false;
     }
     
-    const fundsKey = `funds_${userId}`;
+    const fundsKey = `funds_${userId}_${market}`;
     const product = orderToExecute.product || 'CNC';
     const finalTradeValue = orderToExecute.quantity * ltp;
     const isIntradayTrade = product === 'MIS';
@@ -221,11 +223,11 @@ export default function BottomNav() {
       let newBalance = fundsData.balance + (finalTradeValue - totalCharges);
       newBalance = Math.max(0, newBalance);
       localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
-      window.dispatchEvent(new StorageEvent('storage', { key: `funds_${userId}` }));
+      window.dispatchEvent(new StorageEvent('storage', { key: fundsKey }));
     }
     
     localStorage.setItem(ordersKey, JSON.stringify(allOrders));
-    window.dispatchEvent(new StorageEvent('storage', { key: `orders_${userId}` }));
+    window.dispatchEvent(new StorageEvent('storage', { key: ordersKey }));
 
     toast({
         title: `Order Executed!`,
@@ -233,7 +235,7 @@ export default function BottomNav() {
     });
     return true;
 
-  }, [toast, cancelOrder]);
+  }, [toast, cancelOrder, market]);
 
 
   useEffect(() => {
@@ -253,12 +255,12 @@ export default function BottomNav() {
       if (loggedIn && session.user) {
         fetchAndCacheNews(session.user.id);
         
-        const notifFlag = `postLoginFundNotification_${session.user.id}`;
+        const notifFlag = `postLoginFundNotification_${session.user.id}_${market}`;
         if (localStorage.getItem(notifFlag) === 'true') {
             localStorage.removeItem(notifFlag);
             
             setTimeout(() => {
-                const fundsKey = `funds_${session.user!.id}`;
+                const fundsKey = `funds_${session.user!.id}_${market}`;
                 const fundsData = localStorage.getItem(fundsKey);
                 if (!fundsData) {
                     const initialFunds = { balance: 500000, canAddMore: true, lastProfitCheck: 0 };
@@ -278,7 +280,7 @@ export default function BottomNav() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
         
-        const ordersKey = `orders_${user.id}`;
+        const ordersKey = `orders_${user.id}_${market}`;
         const currentOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
         const pendingOrders = currentOrders.filter((o: Order) => o.status === 'Pending');
 
@@ -360,7 +362,7 @@ export default function BottomNav() {
       clearInterval(orderInterval);
     };
 
-  }, [pathname, router, fetchAndCacheNews, executeOrder, cancelOrder]);
+  }, [pathname, router, fetchAndCacheNews, executeOrder, cancelOrder, market]);
 
   if (pathname === '/' || isLoading || !isLoggedIn) {
     return null;
@@ -389,3 +391,5 @@ export default function BottomNav() {
     </nav>
   );
 }
+
+    
