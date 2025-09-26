@@ -32,6 +32,15 @@ const isMissingTableError = (errorMessage: string) => {
     return errorMessage.includes("relation \"public.messages\" does not exist") || errorMessage.includes("Could not find the table 'public.messages'");
 }
 
+const defaultWelcomeMessage: Message = {
+    id: 0,
+    created_at: new Date().toISOString(),
+    content: "Hi everyone! Welcome to the community chat. Feel free to discuss stocks, strategies, and market news.",
+    user_id: "admin",
+    user_name: "Admin"
+};
+
+
 export function CommunityClient() {
   const router = useRouter();
   const { toast } = useToast();
@@ -71,7 +80,11 @@ export function CommunityClient() {
         }
         console.error("Error fetching messages:", messagesError);
       } else {
-        setMessages(initialMessages || []);
+        if (initialMessages && initialMessages.length > 0) {
+            setMessages(initialMessages);
+        } else {
+            setMessages([defaultWelcomeMessage]);
+        }
       }
       setIsLoading(false);
     };
@@ -84,7 +97,13 @@ export function CommunityClient() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
-          setMessages((prevMessages) => [...prevMessages, payload.new]);
+            setMessages((prevMessages) => {
+                // If the only message is the default one, replace it
+                if (prevMessages.length === 1 && prevMessages[0].id === 0) {
+                    return [payload.new];
+                }
+                return [...prevMessages, payload.new];
+            });
         }
       )
       .subscribe((status, err) => {
