@@ -52,7 +52,7 @@ export function CommunityClient() {
         .select('*')
         .order('created_at', { ascending: true });
 
-      if (messagesError) {
+      if (messagesError && messagesError.message) {
         toast({
           variant: 'destructive',
           title: 'Error fetching messages',
