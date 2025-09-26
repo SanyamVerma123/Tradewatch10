@@ -102,6 +102,10 @@ export function CommunityClient() {
                 if (prevMessages.length === 1 && prevMessages[0].id === 0) {
                     return [payload.new];
                 }
+                // Prevent adding duplicates
+                if (prevMessages.some(m => m.id === payload.new.id)) {
+                    return prevMessages;
+                }
                 return [...prevMessages, payload.new];
             });
         }
