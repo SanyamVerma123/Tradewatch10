@@ -4,6 +4,17 @@
 import { useEffect, useState } from "react";
 import type { User as AppUser } from "@/lib/types";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Card,
   CardContent,
 } from "@/components/ui/card";
@@ -14,6 +25,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { useMarket } from "@/hooks/use-market";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 const menuItems = [
     { label: "Funds", icon: () => <span className="font-bold text-lg">₹</span>, href: "/funds" },
@@ -26,6 +38,7 @@ const menuItems = [
 
 export function ProfileClient() {
   const router = useRouter();
+  const { toast } = useToast();
   const [user, setUser] = useState<AppUser | null>(null);
   const { market, setMarket } = useMarket();
 
@@ -56,14 +69,24 @@ export function ProfileClient() {
     router.push('/');
   };
   
-  const handleMarketToggle = () => {
+  const handleMarketToggle = async () => {
     const newMarket = market === 'IN' ? 'US' : 'IN';
     setMarket(newMarket);
+    
+    toast({
+        title: "Market Switched",
+        description: `Market has been changed to ${newMarket}. Please log in again.`,
+    });
+    
+    await supabase.auth.signOut();
+    router.push('/');
   }
 
   if (!user) {
     return null; // Or a loading spinner
   }
+  
+  const nextMarket = market === 'IN' ? 'US' : 'Indian';
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6 bg-background">
@@ -104,15 +127,33 @@ export function ProfileClient() {
         ))}
       </div>
       
-       <Card className="mt-4 hover:bg-muted/50 transition-colors" onClick={handleMarketToggle}>
-          <CardContent className="p-4 flex justify-between items-center cursor-pointer">
-              <div className="flex items-center gap-4">
-                  <ArrowRightLeft className="h-5 w-5 text-muted-foreground" />
-                  <p className="font-semibold">Switch Market</p>
-              </div>
-              <Button variant="outline" size="sm">{market === 'IN' ? 'Indian' : 'US'} Market</Button>
-          </CardContent>
-      </Card>
+       <AlertDialog>
+        <AlertDialogTrigger asChild>
+           <Card className="mt-4 hover:bg-muted/50 transition-colors">
+              <CardContent className="p-4 flex justify-between items-center cursor-pointer">
+                  <div className="flex items-center gap-4">
+                      <ArrowRightLeft className="h-5 w-5 text-muted-foreground" />
+                      <p className="font-semibold">Switch Market</p>
+                  </div>
+                  <Button variant="outline" size="sm">{market === 'IN' ? 'Indian' : 'US'} Market</Button>
+              </CardContent>
+          </Card>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Switch to {nextMarket} Market?</AlertDialogTitle>
+            <AlertDialogDescription>
+                This action will switch your active market and log you out. You will need to sign in again to see the changes. Are you sure?
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleMarketToggle}>
+                Yes, Switch & Logout
+            </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+       </AlertDialog>
 
 
        <Card className="mt-4 hover:bg-destructive/10 transition-colors" onClick={handleLogout}>
