@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import {
@@ -39,22 +38,22 @@ export function SettingsClient() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && (
-                key.startsWith(`funds_${user.id}`) ||
-                key.startsWith(`watchlists_${user.id}`) ||
-                key.startsWith(`orders_${user.id}`) ||
-                key.startsWith(`portfolioData_${user.id}`) ||
-                key.startsWith(`newsCache_${user.id}`)
-            )) {
-                keysToRemove.push(key);
-            }
-        }
-        keysToRemove.push('market'); // Also clear the selected market
-        
-        keysToRemove.forEach(key => localStorage.removeItem(key));
+        // Clear all local storage for this user
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith(`funds_${user.id}`) || 
+              key.startsWith(`watchlists_${user.id}`) ||
+              key.startsWith(`portfolioData_${user.id}`) ||
+              key.startsWith(`newsCache_${user.id}`)) {
+            localStorage.removeItem(key);
+          }
+        });
+        localStorage.removeItem('market');
+
+        // Clear all supabase data for this user
+        await supabase.from('orders').delete().eq('user_id', user.id);
+        await supabase.from('watchlists').delete().eq('user_id', user.id);
+        await supabase.from('funds').delete().eq('user_id', user.id);
+
       }
       
       // Sign the user out
@@ -62,7 +61,7 @@ export function SettingsClient() {
 
       toast({
         title: "Data Cleared & Logged Out",
-        description: "Your local application data has been cleared. Please log in again.",
+        description: "Your local and cloud application data has been cleared. Please log in again.",
       });
 
       // Redirect to the auth page
@@ -136,7 +135,7 @@ export function SettingsClient() {
         <CardHeader>
           <CardTitle>Data Management</CardTitle>
           <CardDescription>
-            Clear all your local application data (watchlists, portfolio, etc.) for all markets from this device. You will be logged out.
+            Clear all your local application data (watchlists, portfolio, etc.) for all markets from this device and from the cloud. You will be logged out.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -151,7 +150,7 @@ export function SettingsClient() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete all your portfolios, orders, and watchlists from this device and then log you out.
+                    This action cannot be undone. This will permanently delete all your portfolios, orders, and watchlists from this device and the cloud, and then log you out.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

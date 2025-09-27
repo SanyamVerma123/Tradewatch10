@@ -223,7 +223,7 @@ export function FundsClient() {
                  <div className="flex justify-between items-center w-full">
                     <span className="font-bold text-base">Net Realized P&L</span>
                     <span className={cn("font-bold text-lg", realizedPnlData.netPnl >= 0 ? 'text-positive' : 'text-destructive')}>
-                        {realizedPnlData.netPnl >= 0 ? '+' : ''}{currencySymbol}{realizedPnlData.netPnl.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        {realizedPnlData.netPnl >= 0 ? '+' : ''}{currencySymbol}{realizedPnlData.netPnl.toLocaleString('en-IN', {minimumFractionDigits: 2, minimumFractionDigits: 2})}
                     </span>
                 </div>
             </CardFooter>
