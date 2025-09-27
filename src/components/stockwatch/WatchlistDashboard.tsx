@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Stock, Watchlist, NewsArticle, Order } from "@/lib/types";
@@ -65,6 +65,7 @@ export function WatchlistDashboard() {
   const { toast } = useToast();
   const [stocks, setStocks] = useState<Record<string, Stock>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [isWatchlistLoading, setIsWatchlistLoading] = useState(true);
   const [newWatchlistName, setNewWatchlistName] = useState("");
   const [user, setUser] = useState<User | null>(null);
 
@@ -77,6 +78,9 @@ export function WatchlistDashboard() {
 
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [isActionSheetOpen, setIsActionSheetOpen] = useState(false);
+  
+  const [swipedTicker, setSwipedTicker] = useState<string | null>(null);
+  const touchStartX = useRef(0);
 
   const [editingWatchlistId, setEditingWatchlistId] = useState<string | null>(null);
   const [editingWatchlistName, setEditingWatchlistName] = useState("");
@@ -199,10 +203,10 @@ export function WatchlistDashboard() {
   const fetchStockData = useCallback(async (isSilent = false) => {
     if (!activeWatchlist || activeWatchlist.stocks.length === 0) {
       setStocks({});
-      setIsLoading(false);
+      setIsWatchlistLoading(false);
       return;
     }
-    if (!isSilent) setIsLoading(true);
+    if (!isSilent) setIsWatchlistLoading(true);
     try {
       const data = await getStockData(activeWatchlist.stocks);
       setStocks(prevStocks => {
@@ -216,11 +220,12 @@ export function WatchlistDashboard() {
       console.error("Failed to fetch stock data", error);
       toast({ variant: "destructive", title: "Error", description: "Could not fetch watchlist data." });
     } finally {
-      if (!isSilent) setIsLoading(false);
+      if (!isSilent) setIsWatchlistLoading(false);
     }
   }, [activeWatchlist, toast]);
 
   useEffect(() => {
+    setSwipedTicker(null); // Reset swipe on tab change
     if (activeWatchlist) {
       fetchStockData();
       const interval = setInterval(() => fetchStockData(true), 5000);
@@ -295,6 +300,7 @@ export function WatchlistDashboard() {
         setWatchlists(watchlists.map(wl => wl.id === activeWatchlist.id ? { ...wl, stocks: newStockTickers } : wl));
         toast({ title: 'Stock Removed', description: `${ticker} removed from "${activeWatchlist.name}".` });
     }
+    setSwipedTicker(null);
   };
 
 
@@ -321,6 +327,10 @@ export function WatchlistDashboard() {
   };
 
   const handleStockClick = (stock: Stock) => {
+    if (swipedTicker === stock.ticker) {
+        setSwipedTicker(null); // Close if swiped
+        return;
+    }
     setSelectedStock(stock);
     setIsActionSheetOpen(true);
   }
@@ -335,7 +345,7 @@ export function WatchlistDashboard() {
         type: isShortSell ? 'SELL' : 'BUY',
         ticker: ticker,
         product: isShortSell ? 'MIS' : undefined,
-        isShortSell: isShortSell,
+        is_short_sell: isShortSell,
     };
     router.push(`/trade/${encodeURIComponent(ticker)}?order=${encodeURIComponent(JSON.stringify(orderData))}`);
     setIsActionSheetOpen(false);
@@ -375,19 +385,34 @@ export function WatchlistDashboard() {
     }
   };
 
+  const handleTouchStart = (e: React.TouchEvent, ticker: string) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent, ticker: string) => {
+      const touchCurrentX = e.targetTouches[0].clientX;
+      const deltaX = touchStartX.current - touchCurrentX;
+
+      if (deltaX > 50) { // Swiping left
+          setSwipedTicker(ticker);
+      } else if (deltaX < -50) { // Swiping right
+          setSwipedTicker(null);
+      }
+  };
+
 
   const renderStockSkeleton = () => (
-    [...Array(3)].map((_, i) => (
+    [...Array(5)].map((_, i) => (
       <TableRow key={`skeleton-${i}`}>
-        <TableCell colSpan={3}>
+        <TableCell colSpan={3} className="p-3">
            <div className="flex justify-between items-center">
              <div>
-                <Skeleton className="h-5 w-20 mb-1" />
+                <Skeleton className="h-5 w-20 mb-2" />
                 <Skeleton className="h-4 w-24" />
              </div>
              <div className="text-right">
-                <Skeleton className="h-5 w-16 ml-auto" />
-                <Skeleton className="h-4 w-24 mt-1 ml-auto" />
+                <Skeleton className="h-5 w-16 mb-2 ml-auto" />
+                <Skeleton className="h-4 w-24 ml-auto" />
             </div>
            </div>
         </TableCell>
@@ -539,9 +564,28 @@ export function WatchlistDashboard() {
                 <CardContent className="p-0">
                   <Table>
                     <TableBody>
-                      {isLoading && filteredStocks.length === 0 ? renderStockSkeleton() : filteredStocks.map((stock) => (
-                        <TableRow key={stock.ticker} >
-                           <TableCell className="p-3" onClick={() => handleStockClick(stock)}>
+                      {isWatchlistLoading ? renderStockSkeleton() : filteredStocks.map((stock) => (
+                         <TableRow key={stock.ticker} className="relative overflow-hidden">
+                           <div
+                             className="absolute top-0 right-0 h-full flex items-center transition-transform duration-300"
+                             style={{ transform: swipedTicker === stock.ticker ? 'translateX(0)' : 'translateX(100%)' }}
+                           >
+                             <Button
+                               variant="destructive"
+                               className="h-full w-20 rounded-none flex items-center justify-center"
+                               onClick={() => removeStockFromWatchlist(stock.ticker)}
+                             >
+                               <Trash2 className="h-5 w-5" />
+                             </Button>
+                           </div>
+                           <div
+                             className="w-full bg-background transition-transform duration-300"
+                             style={{ transform: swipedTicker === stock.ticker ? 'translateX(-80px)' : 'translateX(0)' }}
+                             onTouchStart={(e) => handleTouchStart(e, stock.ticker)}
+                             onTouchMove={(e) => handleTouchMove(e, stock.ticker)}
+                             onClick={() => handleStockClick(stock)}
+                           >
+                             <TableCell className="p-3 cursor-pointer">
                                <div className="flex items-center justify-between">
                                  <div className="flex-1 pr-4">
                                      <p className="font-bold text-sm">{stock.ticker}</p>
@@ -553,13 +597,9 @@ export function WatchlistDashboard() {
                                      <p className="text-xs">{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)</p>
                                  </div>
                                </div>
-                           </TableCell>
-                           <TableCell className="p-1 w-10">
-                               <Button variant="ghost" size="icon" onClick={() => removeStockFromWatchlist(stock.ticker)}>
-                                 <Trash2 className="h-4 w-4 text-destructive/70" />
-                               </Button>
-                           </TableCell>
-                        </TableRow>
+                             </TableCell>
+                           </div>
+                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
@@ -574,7 +614,7 @@ export function WatchlistDashboard() {
         <div className="mt-6">
           <Dialog open={isAnalysisDialogOpen} onOpenChange={setIsAnalysisDialogOpen}>
               <DialogTrigger asChild>
-                  <Button className="w-full" disabled={isLoading && Object.keys(stocks).length === 0}>
+                  <Button className="w-full" disabled={isWatchlistLoading && Object.keys(stocks).length === 0}>
                       <Sparkles className="mr-2 h-4 w-4" />
                       Get AI Stock Analysis
                   </Button>
@@ -647,3 +687,5 @@ export function WatchlistDashboard() {
     </div>
   );
 }
+
+    
