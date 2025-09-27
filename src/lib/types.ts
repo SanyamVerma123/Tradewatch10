@@ -46,7 +46,7 @@ export interface Order {
   limitPrice: number;
   triggerPrice?: number;
   status: 'Pending' | 'Executed' | 'Cancelled';
-  timestamp: string;
+  timestamp: string; // ISO date string
   exchange: string;
   orderType: string;
   ltp: number;
@@ -60,6 +60,7 @@ export interface Order {
   realizedPnl?: number;
   stopLossValue?: number;
   targetValue?: number;
+  market?: string;
 }
 
 export interface Holding {

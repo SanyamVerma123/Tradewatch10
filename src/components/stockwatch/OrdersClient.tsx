@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -60,7 +61,7 @@ export function OrdersClient() {
         .select('*')
         .eq('user_id', user.id)
         .eq('market', market)
-        .order('executed_at', { ascending: false, nullsFirst: true });
+        .order('timestamp', { ascending: false });
 
       if (error) {
         toast({ variant: 'destructive', title: 'Error fetching orders', description: error.message });
@@ -142,7 +143,7 @@ export function OrdersClient() {
   
   const pendingOrders = orders.filter(o => o.status === 'Pending');
   const todaysExecutedOrders = orders.filter(o => o.status === 'Executed' && o.executedAt && isToday(new Date(o.executedAt)));
-  const todaysCancelledOrders = orders.filter(o => o.status === 'Cancelled' && o.timestamp && isToday(new Date())); // A simple approximation for cancelled today
+  const todaysCancelledOrders = orders.filter(o => o.status === 'Cancelled' && o.timestamp && isToday(new Date(o.timestamp)));
 
   const filteredPendingOrders = pendingOrders.filter(
     (order) => order.ticker.toLowerCase().includes(searchTerm.toLowerCase())
@@ -187,7 +188,7 @@ export function OrdersClient() {
                         <span className="ml-2 text-muted-foreground">{order.filledQuantity}/{order.quantity}</span>
                     </div>
                     <div className="text-xs text-muted-foreground text-right">
-                        <span>{order.timestamp}</span>
+                        <span>{new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         {order.isAMO && <div className="text-primary font-semibold">AMO REQ...</div>}
                     </div>
                   </div>
@@ -217,7 +218,7 @@ export function OrdersClient() {
                         <span className="ml-2 text-green-500">{order.filledQuantity}/{order.quantity}</span>
                     </div>
                     <div className="text-xs text-muted-foreground text-right">
-                        <span>{order.executedAt ? new Date(order.executedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : order.timestamp}</span>
+                        <span>{order.executedAt ? new Date(order.executedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                          <span className="text-xs font-semibold text-green-600 ml-2">EXECUTED</span>
                     </div>
                   </div>
@@ -250,7 +251,7 @@ export function OrdersClient() {
                         <span className="ml-2 text-red-500">{order.filledQuantity}/{order.quantity}</span>
                     </div>
                     <div className="text-xs text-muted-foreground text-right">
-                        <span>{order.timestamp}</span>
+                        <span>{new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                          <span className="text-xs font-semibold text-red-600 ml-2">CANCELLED</span>
                     </div>
                   </div>

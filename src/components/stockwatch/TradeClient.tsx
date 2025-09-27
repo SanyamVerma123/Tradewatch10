@@ -33,7 +33,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useMarket } from "@/hooks/use-market";
 
@@ -221,17 +220,15 @@ useEffect(() => {
             return;
         }
         setUser(sbUser);
-
-        const fundsKey = `funds_${sbUser.id}_${market}`;
-        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-        setAvailableFunds(fundsData.balance || 0);
+        
+        const { data: fundsData } = await supabase.from('funds').select('balance').eq('user_id', sbUser.id).eq('market', market).single();
+        setAvailableFunds(fundsData?.balance || 0);
+        
+        const { data: allOrders, error: ordersError } = await supabase.from('orders').select('*').eq('user_id', sbUser.id).eq('market', market);
         
         let localPortfolio: Portfolio = { holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 };
-        const ordersKey = `orders_${sbUser.id}_${market}`;
-        
-        try {
-            const allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-            const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executedAt).sort((a,b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime());
+        if (allOrders) {
+            const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executed_at).sort((a,b) => new Date(a.executed_at!).getTime() - new Date(b.executed_at!).getTime());
             
             const holdingsMap: { [ticker: string]: Holding } = {};
             const positionsMap: { [compositeKey: string]: Position } = {};
@@ -272,8 +269,7 @@ useEffect(() => {
 
             localPortfolio.holdings = Object.values(holdingsMap).filter(h => h.quantity > 0.001);
             localPortfolio.positions = Object.values(positionsMap).filter(p => Math.abs(p.quantity) > 0.001);
-
-        } catch (e) { console.error("Could not parse portfolio for TradeClient", e); }
+        }
         
         setPortfolio(localPortfolio);
         
@@ -381,9 +377,8 @@ useEffect(() => {
   const showAvailableQuantity = (orderType === 'SELL' && !isNewShortSell && !isAdding) || isExiting || isAdding;
 
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if(!stock || !user) return;
-    const ordersKey = `orders_${user.id}_${market}`;
     
     const qty = parseInt(quantity) || 0;
     if (qty <= 0) {
@@ -403,31 +398,30 @@ useEffect(() => {
         }
     }
     
+    const { data: fundsData } = await supabase.from('funds').select('balance').eq('user_id', user.id).eq('market', market).single();
+    let currentBalance = fundsData?.balance || 0;
+    
     // Refund old margin if we are editing a BUY order
     if (isEditing && orderToEdit?.type === 'BUY') {
-        const fundsKey = `funds_${user.id}_${market}`;
-        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
         const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
         const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
         const oldCharges = Math.min(20, oldOrderValue * 0.0003) + (oldOrderValue * 0.000345);
         const fundsToRefund = oldMargin + oldCharges;
-        const newBalance = (fundsData.balance || 0) + fundsToRefund;
-        localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
-        setAvailableFunds(newBalance);
+        currentBalance += fundsToRefund;
+        await supabase.from('funds').update({ balance: currentBalance }).eq('user_id', user.id).eq('market', market);
+        setAvailableFunds(currentBalance);
     }
 
-    if (orderType === 'BUY' && requiredFunds > availableFunds) {
-      toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~${currencySymbol}${requiredFunds.toFixed(2)}. Available: ${currencySymbol}${availableFunds.toFixed(2)}.` });
+    if (orderType === 'BUY' && requiredFunds > currentBalance) {
+      toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~${currencySymbol}${requiredFunds.toFixed(2)}. Available: ${currencySymbol}${currentBalance.toFixed(2)}.` });
       // Re-add the refunded margin if the new order fails
        if (isEditing && orderToEdit?.type === 'BUY') {
-            const fundsKey = `funds_${user.id}_${market}`;
-            const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
             const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
             const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
             const oldCharges = Math.min(20, oldOrderValue * 0.0003) + (oldOrderValue * 0.000345);
             const fundsToRefund = oldMargin + oldCharges;
-            const newBalance = (fundsData.balance || 0) - fundsToRefund;
-            localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+            const newBalance = currentBalance - fundsToRefund;
+            await supabase.from('funds').update({ balance: newBalance }).eq('user_id', user.id).eq('market', market);
             setAvailableFunds(newBalance);
        }
       return;
@@ -447,10 +441,8 @@ useEffect(() => {
     
     // Block funds for new BUY orders or updated BUY orders
     if (orderType === 'BUY') {
-        const fundsKey = `funds_${user.id}_${market}`;
-        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-        const newBalance = (fundsData.balance || 0) - requiredFunds;
-        localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+        const newBalance = currentBalance - requiredFunds;
+        await supabase.from('funds').update({ balance: newBalance }).eq('user_id', user.id).eq('market', market);
         setAvailableFunds(newBalance);
     }
 
@@ -465,7 +457,7 @@ useEffect(() => {
         limitPrice: executionPrice,
         triggerPrice: parseFloat(triggerPrice) || undefined,
         status: 'Pending',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().toISOString(),
         exchange: stock.exchange || 'NSE',
         orderType: `${finalProduct} ${orderMethod}`,
         ltp: stock?.price || 0,
@@ -475,16 +467,23 @@ useEffect(() => {
         isShortSell: isNewShortSell,
         isExit: isExiting,
         isAdding: isAdding,
+        market: market,
     };
-
-    const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-    let updatedOrders;
-    if(isEditing) {
-        updatedOrders = storedOrders.map((o: Order) => o.id === newOrder.id ? newOrder : o);
+    
+    let dbError;
+    if (isEditing) {
+        const { error } = await supabase.from('orders').update(newOrder).eq('id', newOrder.id);
+        dbError = error;
     } else {
-        updatedOrders = [newOrder, ...storedOrders];
+        const { error } = await supabase.from('orders').insert(newOrder);
+        dbError = error;
     }
-    localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
+
+    if (dbError) {
+        toast({ variant: "destructive", title: "Database Error", description: dbError.message });
+        return;
+    }
+    
     showOrderNotification(ticker);
 
     toast({
@@ -495,29 +494,27 @@ useEffect(() => {
     router.push('/orders');
   }
 
-  const handleCancelOrder = () => {
+  const handleCancelOrder = async () => {
     if (!user || !orderToEdit) return;
-    const ordersKey = `orders_${user.id}_${market}`;
-    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
 
     if (orderToEdit.type === 'BUY' && orderToEdit.status === 'Pending') {
-        const fundsKey = `funds_${user.id}_${market}`;
-        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-        if (fundsData.balance !== undefined) {
+        const { data: fundsData } = await supabase.from('funds').select('balance').eq('user_id', user.id).eq('market', market).single();
+        let currentBalance = fundsData?.balance || 0;
+        if (currentBalance !== undefined) {
              const orderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
              const orderMargin = orderToEdit.product === 'MIS' ? orderValue / 5 : orderValue;
              const orderBrokerage = Math.min(20, orderValue * 0.0003);
              const orderCharges = orderBrokerage + (orderValue * 0.000345);
              const fundsToRefund = orderMargin + orderCharges;
 
-            const newBalance = fundsData.balance + fundsToRefund;
-            localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
+            const newBalance = currentBalance + fundsToRefund;
+            await supabase.from('funds').update({ balance: newBalance }).eq('user_id', user.id).eq('market', market);
             setAvailableFunds(newBalance);
         }
     }
 
-    const updatedOrders = allOrders.map(o => o.id === orderToEdit.id ? { ...o, status: 'Cancelled' } : o);
-    localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
+    await supabase.from('orders').update({ status: 'Cancelled' }).eq('id', orderToEdit.id);
+    
     toast({
         variant: "destructive",
         title: "Order Cancelled",
