@@ -6,14 +6,14 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 export type Market = 'IN' | 'US' | 'GB' | 'DE' | 'JP' | 'HK' | 'CA';
 export type Currency = 'INR' | 'USD' | 'GBP' | 'EUR' | 'JPY' | 'HKD' | 'CAD';
 
-export const marketDetails: Record<Market, { name: string, currency: Currency, symbol: string }> = {
-  IN: { name: 'India', currency: 'INR', symbol: '₹' },
-  US: { name: 'United States', currency: 'USD', symbol: '$' },
-  GB: { name: 'United Kingdom', currency: 'GBP', symbol: '£' },
-  DE: { name: 'Germany', currency: 'EUR', symbol: '€' },
-  JP: { name: 'Japan', currency: 'JPY', symbol: '¥' },
-  HK: { name: 'Hong Kong', currency: 'HKD', symbol: 'HK$' },
-  CA: { name: 'Canada', currency: 'CAD', symbol: '$' },
+export const marketDetails: Record<Market, { name: string, currency: Currency, symbol: string, initialBalance: number }> = {
+  IN: { name: 'India', currency: 'INR', symbol: '₹', initialBalance: 500000 },
+  US: { name: 'United States', currency: 'USD', symbol: '$', initialBalance: 5000 },
+  GB: { name: 'United Kingdom', currency: 'GBP', symbol: '£', initialBalance: 4000 },
+  DE: { name: 'Germany', currency: 'EUR', symbol: '€', initialBalance: 4500 },
+  JP: { name: 'Japan', currency: 'JPY', symbol: '¥', initialBalance: 750000 },
+  HK: { name: 'Hong Kong', currency: 'HKD', symbol: 'HK$', initialBalance: 40000 },
+  CA: { name: 'Canada', currency: 'CAD', symbol: '$', initialBalance: 6500 },
 };
 
 interface MarketContextType {
@@ -32,22 +32,30 @@ export const MarketProvider = ({ children }: { children: ReactNode }) => {
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    const storedMarket = localStorage.getItem('market') as Market | null;
-    if (storedMarket && marketDetails[storedMarket]) {
-      setMarketState(storedMarket);
-      const details = marketDetails[storedMarket];
-      setCurrencyState(details.currency);
-      setCurrencySymbolState(details.symbol);
+    try {
+        const storedMarket = localStorage.getItem('market') as Market | null;
+        if (storedMarket && marketDetails[storedMarket]) {
+          setMarketState(storedMarket);
+          const details = marketDetails[storedMarket];
+          setCurrencyState(details.currency);
+          setCurrencySymbolState(details.symbol);
+        }
+    } catch (error) {
+        console.error("Could not access localStorage:", error);
     }
     setIsInitialized(true);
   }, []);
 
   useEffect(() => {
     if (isInitialized) {
-      localStorage.setItem('market', market);
-      const details = marketDetails[market];
-      setCurrencyState(details.currency);
-      setCurrencySymbolState(details.symbol);
+      try {
+          localStorage.setItem('market', market);
+          const details = marketDetails[market];
+          setCurrencyState(details.currency);
+          setCurrencySymbolState(details.symbol);
+      } catch (error) {
+          console.error("Could not access localStorage:", error);
+      }
     }
   }, [market, isInitialized]);
 

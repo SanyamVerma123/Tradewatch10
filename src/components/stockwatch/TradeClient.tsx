@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useMarket } from "@/hooks/use-market";
+import { useMarket, marketDetails } from "@/hooks/use-market";
 
 const PageLoader = () => (
     <div className="flex justify-center items-center h-screen">
@@ -221,105 +221,104 @@ useEffect(() => {
         }
         setUser(sbUser);
         
-        const { data: fundsData, error: fundsError } = await supabase.from('funds').select('balance').eq('user_id', sbUser.id).eq('market', market).single();
-        if (fundsData) {
-            setAvailableFunds(fundsData.balance);
-        } else if (!fundsError) {
-             const getInitialBalance = () => {
-                switch (currency) {
-                    case 'INR': return 500000;
-                    case 'USD': return 5000;
-                    case 'GBP': return 4000;
-                    case 'EUR': return 4500;
-                    case 'JPY': return 750000;
-                    case 'HKD': return 40000;
-                    case 'CAD': return 6500;
-                    default: return 5000;
-                }
-             };
-            setAvailableFunds(getInitialBalance());
-        }
-        
-        const { data: allOrders, error: ordersError } = await supabase.from('orders').select('*').eq('user_id', sbUser.id).eq('market', market);
-        
-        let localPortfolio: Portfolio = { holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 };
-        if (allOrders) {
-            const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executed_at).sort((a,b) => new Date(a.executed_at!).getTime() - new Date(b.executed_at!).getTime());
-            
-            const holdingsMap: { [ticker: string]: Holding } = {};
-            const positionsMap: { [compositeKey: string]: Position } = {};
-
-            executedOrders.forEach(order => {
-                const compositeKey = `${order.ticker}-${order.product}`;
-                if (order.product === 'CNC') {
-                    let h = holdingsMap[order.ticker] || { id: `h-${order.ticker}`, ticker: order.ticker, quantity: 0, avgPrice: 0, investedValue: 0, ltp: 0, pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0 };
-                    const tradeValue = order.ltp * order.quantity;
-                    if(order.type === 'BUY') {
-                        const newTotalValue = (h.avgPrice * h.quantity) + tradeValue;
-                        h.quantity += order.quantity;
-                        h.avgPrice = h.quantity > 0 ? newTotalValue / h.quantity : 0;
-                    } else {
-                        h.quantity -= order.quantity;
-                    }
-                    holdingsMap[order.ticker] = h;
-                } else { // MIS
-                    let p = positionsMap[compositeKey] || { id: `p-${compositeKey}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
-                    const tradeSign = order.type === 'BUY' ? 1 : -1;
-                    const prevQuantity = p.quantity;
-
-                    if (Math.sign(tradeSign) === Math.sign(prevQuantity) || prevQuantity === 0) { // increasing position or new
-                       const newTotalValue = (p.avgPrice * Math.abs(prevQuantity)) + (order.ltp * order.quantity);
-                       p.quantity += order.quantity * tradeSign;
-                       p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
-                    } else { // reducing position
-                        p.quantity += order.quantity * tradeSign;
-                         if (Math.abs(p.quantity) < 0.001) { // closed out
-                            p.avgPrice = 0;
-                        } else if (Math.sign(p.quantity) !== Math.sign(prevQuantity)) { // flipped
-                            p.avgPrice = order.ltp;
-                        }
-                    }
-                    positionsMap[compositeKey] = p;
-                }
-            });
-
-            localPortfolio.holdings = Object.values(holdingsMap).filter(h => h.quantity > 0.001);
-            localPortfolio.positions = Object.values(positionsMap).filter(p => Math.abs(p.quantity) > 0.001);
-        }
-        
-        setPortfolio(localPortfolio);
-        
-        const data = await getStockData([ticker]);
-        if (data && data.length > 0) {
-            const fetchedStock = data[0];
-            setStock(fetchedStock);
-            if (orderToEdit) {
-                setOrderType(orderToEdit.type || "BUY");
-                setProduct(orderToEdit.product || (orderToEdit.isShortSell ? 'MIS' : 'CNC'));
-                setQuantity(orderToEdit.quantity?.toString() || "1");
-                
-                setPrice(orderToEdit.limitPrice?.toString() || fetchedStock.price.toFixed(2));
-                setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
-                setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
-
-                // If this is a new short sell from watchlist, enforce MIS
-                if (orderToEdit.isShortSell && !orderToEdit.isExit) {
-                    setProduct('MIS');
-                }
-                 // If we are exiting a short position, it must be a BUY and MIS
-                if (orderToEdit.isExit && (orderToEdit.type === 'BUY' || (positionForTicker && positionForTicker.quantity < 0))) {
-                    setProduct('MIS');
-                    setOrderType('BUY');
-                }
-
-
+        try {
+            const { data: fundsData, error: fundsError } = await supabase.from('funds').select('balance').eq('user_id', sbUser.id).eq('market', market).single();
+            if (fundsData) {
+                setAvailableFunds(fundsData.balance);
+            } else if (!fundsError || fundsError.code === 'PGRST116') {
+                const initialBalance = marketDetails[market].initialBalance;
+                setAvailableFunds(initialBalance);
+                await supabase.from('funds').upsert({ user_id: sbUser.id, market, balance: initialBalance }, { onConflict: 'user_id, market' });
             } else {
-                setPrice(fetchedStock.price.toFixed(2));
-                setQuantity("1");
+                throw fundsError;
             }
+
+            const { data: allOrders, error: ordersError } = await supabase.from('orders').select('*').eq('user_id', sbUser.id).eq('market', market);
+            if (ordersError) throw ordersError;
+            
+            let localPortfolio: Portfolio = { holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 };
+            if (allOrders) {
+                const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executed_at).sort((a,b) => new Date(a.executed_at!).getTime() - new Date(b.executed_at!).getTime());
+                
+                const holdingsMap: { [ticker: string]: Holding } = {};
+                const positionsMap: { [compositeKey: string]: Position } = {};
+
+                executedOrders.forEach(order => {
+                    const compositeKey = `${order.ticker}-${order.product}`;
+                    if (order.product === 'CNC') {
+                        let h = holdingsMap[order.ticker] || { id: `h-${order.ticker}`, ticker: order.ticker, quantity: 0, avgPrice: 0, investedValue: 0, ltp: 0, pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0 };
+                        const tradeValue = order.ltp * order.quantity;
+                        if(order.type === 'BUY') {
+                            const newTotalValue = (h.avgPrice * h.quantity) + tradeValue;
+                            h.quantity += order.quantity;
+                            h.avgPrice = h.quantity > 0 ? newTotalValue / h.quantity : 0;
+                        } else {
+                            h.quantity -= order.quantity;
+                        }
+                        holdingsMap[order.ticker] = h;
+                    } else { // MIS
+                        let p = positionsMap[compositeKey] || { id: `p-${compositeKey}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
+                        const tradeSign = order.type === 'BUY' ? 1 : -1;
+                        const prevQuantity = p.quantity;
+
+                        if (Math.sign(tradeSign) === Math.sign(prevQuantity) || prevQuantity === 0) { // increasing position or new
+                           const newTotalValue = (p.avgPrice * Math.abs(prevQuantity)) + (order.ltp * order.quantity);
+                           p.quantity += order.quantity * tradeSign;
+                           p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
+                        } else { // reducing position
+                            p.quantity += order.quantity * tradeSign;
+                             if (Math.abs(p.quantity) < 0.001) { // closed out
+                                p.avgPrice = 0;
+                            } else if (Math.sign(p.quantity) !== Math.sign(prevQuantity)) { // flipped
+                                p.avgPrice = order.ltp;
+                            }
+                        }
+                        positionsMap[compositeKey] = p;
+                    }
+                });
+
+                localPortfolio.holdings = Object.values(holdingsMap).filter(h => h.quantity > 0.001);
+                localPortfolio.positions = Object.values(positionsMap).filter(p => Math.abs(p.quantity) > 0.001);
+            }
+            
+            setPortfolio(localPortfolio);
+            
+            const data = await getStockData([ticker]);
+            if (data && data.length > 0) {
+                const fetchedStock = data[0];
+                setStock(fetchedStock);
+                const positionForTicker = localPortfolio.positions.find(p => p.ticker === ticker && p.product === (orderToEdit?.product || product));
+                
+                if (orderToEdit) {
+                    setOrderType(orderToEdit.type || "BUY");
+                    setProduct(orderToEdit.product || (orderToEdit.isShortSell ? 'MIS' : 'CNC'));
+                    setQuantity(orderToEdit.quantity?.toString() || "1");
+                    
+                    setPrice(orderToEdit.limitPrice?.toString() || fetchedStock.price.toFixed(2));
+                    setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
+                    setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
+
+                    // If this is a new short sell from watchlist, enforce MIS
+                    if (orderToEdit.isShortSell && !orderToEdit.isExit) {
+                        setProduct('MIS');
+                    }
+                     // If we are exiting a short position, it must be a BUY and MIS
+                    if (orderToEdit.isExit && (orderToEdit.type === 'BUY' || (positionForTicker && positionForTicker.quantity < 0))) {
+                        setProduct('MIS');
+                        setOrderType('BUY');
+                    }
+
+                } else {
+                    setPrice(fetchedStock.price.toFixed(2));
+                    setQuantity("1");
+                }
+            }
+        } catch (e: any) {
+            console.error("Error initializing trade data", e);
+            toast({ variant: 'destructive', title: "Initialization Error", description: e.message });
+        } finally {
+            setIsDataInitialized(true);
         }
-        
-        setIsDataInitialized(true);
     };
 
     initializeData();
@@ -430,7 +429,7 @@ useEffect(() => {
 
     if (orderType === 'BUY' && requiredFunds > currentBalance) {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~${currencySymbol}${requiredFunds.toFixed(2)}. Available: ${currencySymbol}${currentBalance.toFixed(2)}.` });
-      // Re-add the refunded margin if the new order fails
+      // Re-block the refunded margin if the new order fails
        if (isEditing && orderToEdit?.type === 'BUY') {
             const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
             const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
@@ -497,6 +496,11 @@ useEffect(() => {
 
     if (dbError) {
         toast({ variant: "destructive", title: "Database Error", description: dbError.message });
+        // Refund blocked funds if insert fails
+        if (orderType === 'BUY') {
+            await supabase.from('funds').update({ balance: currentBalance }).eq('user_id', user.id).eq('market', market);
+            setAvailableFunds(currentBalance);
+        }
         return;
     }
     
@@ -773,7 +777,3 @@ useEffect(() => {
     </div>
   );
 }
-
-    
-
-    

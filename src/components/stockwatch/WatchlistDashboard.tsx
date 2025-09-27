@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
-import { Search, Sparkles, Users, Loader2, PlusCircle, X, Newspaper, TrendingUp } from "lucide-react";
+import { Search, Sparkles, Users, Loader2, PlusCircle, X, Newspaper, TrendingUp, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -62,10 +62,9 @@ export function WatchlistDashboard() {
   const router = useRouter();
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [activeTab, setActiveTab] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
   const [stocks, setStocks] = useState<Record<string, Stock>>({});
-  const [isLoadingStocks, setIsLoadingStocks] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [newWatchlistName, setNewWatchlistName] = useState("");
   const [user, setUser] = useState<User | null>(null);
 
@@ -90,36 +89,73 @@ export function WatchlistDashboard() {
     return watchlists.find((w) => w.id === activeTab);
   }, [activeTab, watchlists]);
 
+  const fetchWatchlists = useCallback(async (sbUser: User) => {
+    setIsLoading(true);
+    const { data, error } = await supabase
+      .from('watchlists')
+      .select('id, name, stock_tickers')
+      .eq('user_id', sbUser.id)
+      .eq('market', market);
+
+    if (error) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch watchlists.' });
+      setWatchlists([]);
+    } else if (data) {
+      const formattedWatchlists: Watchlist[] = data.map(wl => ({
+        id: wl.id.toString(),
+        name: wl.name,
+        stocks: wl.stock_tickers || [],
+      }));
+
+      if (formattedWatchlists.length > 0) {
+        setWatchlists(formattedWatchlists);
+        if (!activeTab || !formattedWatchlists.some(w => w.id === activeTab)) {
+          setActiveTab(formattedWatchlists[0].id);
+        }
+      } else {
+        // No watchlists found for this user/market, create default ones
+        const defaultWatchlists = initialWatchlistsData[market].map((wl, index) => ({
+            ...wl,
+            id: `default-${market}-${index}` // temporary id
+        }));
+
+        const watchlistsToInsert = defaultWatchlists.map(wl => ({
+            user_id: sbUser.id,
+            market: market,
+            name: wl.name,
+            stock_tickers: wl.stocks,
+        }));
+        
+        const { data: inserted, error: insertError } = await supabase.from('watchlists').insert(watchlistsToInsert).select();
+        
+        if (insertError) {
+             toast({ variant: 'destructive', title: 'Error', description: 'Could not create default watchlists.' });
+        } else if (inserted) {
+            const newFormattedWatchlists: Watchlist[] = inserted.map(wl => ({
+                id: wl.id.toString(),
+                name: wl.name,
+                stocks: wl.stock_tickers || [],
+            }));
+            setWatchlists(newFormattedWatchlists);
+            setActiveTab(newFormattedWatchlists[0].id);
+        }
+      }
+    }
+    setIsLoading(false);
+  }, [market, toast, activeTab]);
 
   useEffect(() => {
-    const fetchUserAndData = async () => {
+    const init = async () => {
       const { data: { user: sbUser }, error } = await supabase.auth.getUser();
       if (error || !sbUser) {
         router.replace('/');
         return;
       }
       setUser(sbUser);
-      
-      const watchlistsKey = `watchlists_${sbUser.id}_${market}`;
-      const loadedWatchlistsText = localStorage.getItem(watchlistsKey);
-      
-      let loadedWatchlists;
-      if (loadedWatchlistsText) {
-          loadedWatchlists = JSON.parse(loadedWatchlistsText);
-      } else {
-          // If no watchlist for the current market, initialize it
-          loadedWatchlists = initialWatchlistsData[market];
-          localStorage.setItem(watchlistsKey, JSON.stringify(loadedWatchlists));
-      }
-      
-      setWatchlists(loadedWatchlists);
-      if (loadedWatchlists.length > 0 && (!activeTab || !loadedWatchlists.some(w => w.id === activeTab))) {
-          setActiveTab(loadedWatchlists[0].id);
-      }
+      fetchWatchlists(sbUser);
     };
-    
-    fetchUserAndData();
-  }, [router, activeTab, market]);
+    init();
+  }, [router, fetchWatchlists]);
 
   const loadNewsFromCache = useCallback(async () => {
     if (!user) return;
@@ -129,7 +165,6 @@ export function WatchlistDashboard() {
     if (cachedNewsData) {
         const { date, articles } = JSON.parse(cachedNewsData);
         const today = new Date().toDateString();
-        // Clear cache if it's from a previous day
         if (date !== today) {
             localStorage.removeItem(newsCacheKey);
             setNews([]);
@@ -161,20 +196,15 @@ export function WatchlistDashboard() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, [user, loadNewsFromCache, market]);
 
-
   const fetchStockData = useCallback(async (isSilent = false) => {
-    if (!activeWatchlist) return;
-    if (activeWatchlist.stocks.length === 0) {
-        setIsLoadingStocks(false);
-        setStocks({});
-        return;
-    };
-
-
-    if (!isSilent) setIsLoadingStocks(true);
+    if (!activeWatchlist || activeWatchlist.stocks.length === 0) {
+      setStocks({});
+      setIsLoading(false);
+      return;
+    }
+    if (!isSilent) setIsLoading(true);
     try {
       const data = await getStockData(activeWatchlist.stocks);
-      
       setStocks(prevStocks => {
         const newStocks = { ...prevStocks };
         data.forEach(stock => {
@@ -182,28 +212,22 @@ export function WatchlistDashboard() {
         });
         return newStocks;
       });
-
     } catch (error) {
       console.error("Failed to fetch stock data", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Could not fetch watchlist data.",
-      });
+      toast({ variant: "destructive", title: "Error", description: "Could not fetch watchlist data." });
     } finally {
-      if (!isSilent) setIsLoadingStocks(false);
+      if (!isSilent) setIsLoading(false);
     }
   }, [activeWatchlist, toast]);
 
   useEffect(() => {
     if (activeWatchlist) {
       fetchStockData();
-      const interval = setInterval(() => fetchStockData(true), 5000); // Refresh every 5s for live price feel
+      const interval = setInterval(() => fetchStockData(true), 5000);
       return () => clearInterval(interval);
     }
   }, [activeWatchlist, fetchStockData]);
 
-  // Fetch Stock of the Day
   useEffect(() => {
     const fetchStockOfTheDay = async () => {
         const result = await getStockOfTheDayAction();
@@ -214,20 +238,10 @@ export function WatchlistDashboard() {
 
   const filteredStocks = useMemo(() => {
     if (!activeWatchlist) return [];
-    
-    const currentStocks = activeWatchlist.stocks
+    return activeWatchlist.stocks
         .map(ticker => stocks[ticker])
-        .filter(Boolean); // Filter out any undefined stocks
-
-    if (!searchTerm) {
-      return currentStocks;
-    }
-    return currentStocks.filter(
-      (stock) =>
-        stock.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        stock.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [stocks, searchTerm, activeWatchlist]);
+        .filter(Boolean);
+  }, [stocks, activeWatchlist]);
 
   const handleSearchQueryChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -241,83 +255,69 @@ export function WatchlistDashboard() {
     }
   };
 
-  const addStockToWatchlist = (ticker: string) => {
+  const addStockToWatchlist = async (ticker: string) => {
     if (!activeWatchlist || !user) return;
-
     if (activeWatchlist.stocks.includes(ticker)) {
-        toast({
-            description: `${ticker} is already in this watchlist.`,
-        });
-        return;
+      toast({ description: `${ticker} is already in this watchlist.` });
+      return;
     }
 
-    let previousWatchlistName: string | undefined;
-
-    const updatedWatchlists = watchlists.map(wl => {
-        // Remove from any other watchlist
-        if (wl.stocks.includes(ticker)) {
-            previousWatchlistName = wl.name;
-            return { ...wl, stocks: wl.stocks.filter(s => s !== ticker) };
-        }
-        return wl;
-    }).map(wl => {
-        // Add to the active watchlist
-        if (wl.id === activeWatchlist.id) {
-            return { ...wl, stocks: [...wl.stocks, ticker] };
-        }
-        return wl;
-    });
-
-    setWatchlists(updatedWatchlists);
-    localStorage.setItem(`watchlists_${user.id}_${market}`, JSON.stringify(updatedWatchlists));
+    const newStockTickers = [...activeWatchlist.stocks, ticker];
+    const { error } = await supabase
+      .from('watchlists')
+      .update({ stock_tickers: newStockTickers })
+      .eq('id', activeWatchlist.id);
     
-    if (previousWatchlistName) {
-        toast({
-            title: "Stock Moved",
-            description: `${ticker} moved from "${previousWatchlistName}" to "${activeWatchlist.name}".`,
-        });
+    if (error) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not add stock.' });
     } else {
-        toast({
-            title: "Stock Added",
-            description: `${ticker} added to "${activeWatchlist.name}".`,
-        });
+      setWatchlists(watchlists.map(wl => wl.id === activeWatchlist.id ? { ...wl, stocks: newStockTickers } : wl));
+      toast({ title: 'Stock Added', description: `${ticker} added to "${activeWatchlist.name}".` });
+      fetchStockData();
     }
-    
-    const newActiveWl = updatedWatchlists.find(wl => wl.id === activeWatchlist.id);
-    if (newActiveWl) {
-        setIsLoadingStocks(true);
-        getStockData(newActiveWl.stocks).then(data => {
-            const newStockData: Record<string, Stock> = {};
-            data.forEach(s => newStockData[s.ticker] = s);
-            setStocks(prev => ({...prev, ...newStockData}));
-            setIsLoadingStocks(false);
-        });
-    }
-
     setSearchQuery("");
     setSearchResults([]);
     setIsSearchMode(false);
   };
+  
+  const removeStockFromWatchlist = async (ticker: string) => {
+    if (!activeWatchlist || !user) return;
+    
+    const newStockTickers = activeWatchlist.stocks.filter(s => s !== ticker);
+    const { error } = await supabase
+        .from('watchlists')
+        .update({ stock_tickers: newStockTickers })
+        .eq('id', activeWatchlist.id);
 
-  const handleCreateWatchlist = () => {
+    if (error) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not remove stock.' });
+    } else {
+        setWatchlists(watchlists.map(wl => wl.id === activeWatchlist.id ? { ...wl, stocks: newStockTickers } : wl));
+        toast({ title: 'Stock Removed', description: `${ticker} removed from "${activeWatchlist.name}".` });
+    }
+  };
+
+
+  const handleCreateWatchlist = async () => {
     if (!newWatchlistName.trim() || !user) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Watchlist name cannot be empty.",
-      });
+      toast({ variant: "destructive", title: "Error", description: "Watchlist name cannot be empty." });
       return;
     }
-    const newWatchlist: Watchlist = {
-      id: `watchlist-${Date.now()}`,
-      name: newWatchlistName,
-      stocks: [],
-    };
-    const updatedWatchlists = [...watchlists, newWatchlist];
-    setWatchlists(updatedWatchlists);
-    localStorage.setItem(`watchlists_${user.id}_${market}`, JSON.stringify(updatedWatchlists));
-    setActiveTab(newWatchlist.id);
-    setNewWatchlistName("");
+    
+    const { data, error } = await supabase
+      .from('watchlists')
+      .insert({ user_id: user.id, name: newWatchlistName, stock_tickers: [], market: market })
+      .select()
+      .single();
+
+    if (error) {
+      toast({ variant: "destructive", title: 'Error', description: 'Could not create watchlist.' });
+    } else if (data) {
+      const newWl: Watchlist = { id: data.id.toString(), name: data.name, stocks: data.stock_tickers || [] };
+      setWatchlists([...watchlists, newWl]);
+      setActiveTab(newWl.id);
+      setNewWatchlistName("");
+    }
   };
 
   const handleStockClick = (stock: Stock) => {
@@ -334,7 +334,6 @@ export function WatchlistDashboard() {
     const orderData: Partial<Order> = {
         type: isShortSell ? 'SELL' : 'BUY',
         ticker: ticker,
-        // When shorting from watchlist, enforce MIS product type
         product: isShortSell ? 'MIS' : undefined,
         isShortSell: isShortSell,
     };
@@ -347,21 +346,23 @@ export function WatchlistDashboard() {
     setEditingWatchlistName(watchlist.name);
   };
 
-  const handleSaveWatchlistName = () => {
+  const handleSaveWatchlistName = async () => {
     if (!editingWatchlistId || !editingWatchlistName.trim() || !user) {
         setEditingWatchlistId(null);
         return;
     };
+    
+    const { error } = await supabase
+        .from('watchlists')
+        .update({ name: editingWatchlistName })
+        .eq('id', editingWatchlistId);
 
-    const updatedWatchlists = watchlists.map(wl => 
-        wl.id === editingWatchlistId ? { ...wl, name: editingWatchlistName } : wl
-    );
-    setWatchlists(updatedWatchlists);
-    localStorage.setItem(`watchlists_${user.id}_${market}`, JSON.stringify(updatedWatchlists));
-    toast({
-        title: "Watchlist Renamed",
-        description: `Successfully renamed to "${editingWatchlistName}".`
-    });
+    if (error) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not rename watchlist.' });
+    } else {
+        setWatchlists(watchlists.map(wl => wl.id === editingWatchlistId ? { ...wl, name: editingWatchlistName } : wl));
+        toast({ title: "Watchlist Renamed", description: `Successfully renamed to "${editingWatchlistName}".` });
+    }
     setEditingWatchlistId(null);
   };
 
@@ -378,7 +379,7 @@ export function WatchlistDashboard() {
   const renderStockSkeleton = () => (
     [...Array(3)].map((_, i) => (
       <TableRow key={`skeleton-${i}`}>
-        <TableCell colSpan={2}>
+        <TableCell colSpan={3}>
            <div className="flex justify-between items-center">
              <div>
                 <Skeleton className="h-5 w-20 mb-1" />
@@ -395,6 +396,10 @@ export function WatchlistDashboard() {
   );
   
   const currentStockForSheet = selectedStock ? stocks[selectedStock.ticker] : null;
+
+  if (isLoading || !user) {
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -527,8 +532,6 @@ export function WatchlistDashboard() {
                     setSearchQuery("");
                     setSearchResults([]);
                   }}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
               
@@ -536,9 +539,9 @@ export function WatchlistDashboard() {
                 <CardContent className="p-0">
                   <Table>
                     <TableBody>
-                      {isLoadingStocks && filteredStocks.length === 0 ? renderStockSkeleton() : filteredStocks.map((stock) => (
-                        <TableRow key={stock.ticker} onClick={() => handleStockClick(stock)} className="cursor-pointer">
-                           <TableCell colSpan={2} className="p-3">
+                      {isLoading && filteredStocks.length === 0 ? renderStockSkeleton() : filteredStocks.map((stock) => (
+                        <TableRow key={stock.ticker} >
+                           <TableCell className="p-3" onClick={() => handleStockClick(stock)}>
                                <div className="flex items-center justify-between">
                                  <div className="flex-1 pr-4">
                                      <p className="font-bold text-sm">{stock.ticker}</p>
@@ -551,6 +554,11 @@ export function WatchlistDashboard() {
                                  </div>
                                </div>
                            </TableCell>
+                           <TableCell className="p-1 w-10">
+                               <Button variant="ghost" size="icon" onClick={() => removeStockFromWatchlist(stock.ticker)}>
+                                 <Trash2 className="h-4 w-4 text-destructive/70" />
+                               </Button>
+                           </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -562,23 +570,24 @@ export function WatchlistDashboard() {
         </Tabs>
       )}
 
-      {!isSearchMode && (
-        <>
-          <div className="mt-6">
-            <Dialog open={isAnalysisDialogOpen} onOpenChange={setIsAnalysisDialogOpen}>
-                <DialogTrigger asChild>
-                    <Button className="w-full" disabled={isLoadingStocks && Object.keys(stocks).length === 0}>
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        Get AI Stock Analysis
-                    </Button>
-                </DialogTrigger>
-                <AIAnalysisDialog
-                  stocks={filteredStocks}
-                  onClose={() => setIsAnalysisDialogOpen(false)}
-                />
-            </Dialog>
-          </div>
+      {!isSearchMode && activeWatchlist && activeWatchlist.stocks.length > 0 && (
+        <div className="mt-6">
+          <Dialog open={isAnalysisDialogOpen} onOpenChange={setIsAnalysisDialogOpen}>
+              <DialogTrigger asChild>
+                  <Button className="w-full" disabled={isLoading && Object.keys(stocks).length === 0}>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Get AI Stock Analysis
+                  </Button>
+              </DialogTrigger>
+              <AIAnalysisDialog
+                stocks={filteredStocks}
+                onClose={() => setIsAnalysisDialogOpen(false)}
+              />
+          </Dialog>
+        </div>
+      )}
 
+      {!isSearchMode && (
           <section className="mt-8">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold flex items-center gap-2"><Newspaper className="h-5 w-5" /> Related News</h2>
@@ -627,7 +636,6 @@ export function WatchlistDashboard() {
                 ))}
             </div>
           </section>
-        </>
       )}
        <StockActionSheet 
         stock={currentStockForSheet} 
@@ -639,5 +647,3 @@ export function WatchlistDashboard() {
     </div>
   );
 }
-
-    

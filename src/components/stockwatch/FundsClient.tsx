@@ -18,7 +18,7 @@ import type { Order } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
-import { useMarket } from "@/hooks/use-market";
+import { useMarket, marketDetails } from "@/hooks/use-market";
 import { Separator } from "@/components/ui/separator";
 
 
@@ -52,73 +52,74 @@ export function FundsClient() {
       }
       setUser(sbUser);
 
-      // Fetch Funds
-      const { data: fundsData, error: fundsError } = await supabase
-        .from('funds')
-        .select('balance')
-        .eq('user_id', sbUser.id)
-        .eq('market', market)
-        .single();
-      
-      if (fundsData) {
-        setFundsBalance(fundsData.balance);
-      } else if (!fundsError) { // If no record exists but there's no error, set initial balance
-         const getInitialBalance = () => {
-            switch (currency) {
-                case 'INR': return 500000;
-                case 'USD': return 5000;
-                case 'GBP': return 4000;
-                case 'EUR': return 4500;
-                case 'JPY': return 750000;
-                case 'HKD': return 40000;
-                case 'CAD': return 6500;
-                default: return 5000;
-            }
-          };
-          const initialBalance = getInitialBalance();
-          setFundsBalance(initialBalance);
-          // Also, insert it into the database for the future
-          await supabase.from('funds').insert({ user_id: sbUser.id, market, balance: initialBalance });
+      try {
+        // Fetch Funds
+        const { data: fundsData, error: fundsError } = await supabase
+          .from('funds')
+          .select('balance')
+          .eq('user_id', sbUser.id)
+          .eq('market', market)
+          .single();
+        
+        if (fundsData) {
+          setFundsBalance(fundsData.balance);
+        } else if (!fundsError || fundsError.code === 'PGRST116') { // PGRST116: No rows found
+           const initialBalance = marketDetails[market].initialBalance;
+           setFundsBalance(initialBalance);
+           // Also, insert it into the database for the future if it doesn't exist
+           await supabase.from('funds').upsert({ user_id: sbUser.id, market, balance: initialBalance }, { onConflict: 'user_id, market' });
+        } else {
+            throw fundsError;
+        }
+        
+        // Fetch Orders to calculate realized P&L
+        const { data: ordersData, error: ordersError } = await supabase
+          .from('orders')
+          .select('ticker, realized_pnl, executed_at')
+          .eq('user_id', sbUser.id)
+          .eq('status', 'Executed')
+          .not('realized_pnl', 'is', null)
+          .order('executed_at', { ascending: false });
+
+        if (ordersError) throw ordersError;
+
+        if (ordersData) {
+          let totalProfit = 0;
+          let totalLoss = 0;
+          const transactions = ordersData.map((order: any) => {
+              if(order.realized_pnl > 0) {
+                  totalProfit += order.realized_pnl;
+              } else {
+                  totalLoss += order.realized_pnl;
+              }
+              return {
+                  ticker: order.ticker,
+                  pnl: order.realized_pnl,
+                  date: new Date(order.executed_at).toLocaleDateString(),
+              };
+          });
+
+          setRealizedPnlData({
+              totalProfit,
+              totalLoss,
+              netPnl: totalProfit + totalLoss,
+              transactions,
+          });
+        }
+      } catch (e: any) {
+        console.error("Error fetching funds data:", e);
+        toast({
+            variant: "destructive",
+            title: "Error loading funds",
+            description: e.message || "Could not retrieve your account balance."
+        })
+      } finally {
+        setIsLoading(false);
       }
-      
-      // Fetch Orders to calculate realized P&L
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('ticker, realized_pnl, executed_at')
-        .eq('user_id', sbUser.id)
-        .eq('status', 'Executed')
-        .not('realized_pnl', 'is', null)
-        .order('executed_at', { ascending: false });
-
-      if (ordersData) {
-        let totalProfit = 0;
-        let totalLoss = 0;
-        const transactions = ordersData.map((order: any) => {
-            if(order.realized_pnl > 0) {
-                totalProfit += order.realized_pnl;
-            } else {
-                totalLoss += order.realized_pnl;
-            }
-            return {
-                ticker: order.ticker,
-                pnl: order.realized_pnl,
-                date: new Date(order.executed_at).toLocaleDateString(),
-            };
-        });
-
-        setRealizedPnlData({
-            totalProfit,
-            totalLoss,
-            netPnl: totalProfit + totalLoss,
-            transactions,
-        });
-      }
-
-      setIsLoading(false);
     };
 
     fetchUserAndData();
-  }, [router, currency, market]);
+  }, [router, currency, market, toast]);
   
   const handleAddFunds = () => {
     toast({
