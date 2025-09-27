@@ -62,7 +62,7 @@ export function FundsClient() {
       
       if (fundsData) {
         setFundsBalance(fundsData.balance);
-      } else {
+      } else if (!fundsError) { // If no record exists but there's no error, set initial balance
          const getInitialBalance = () => {
             switch (currency) {
                 case 'INR': return 500000;
@@ -75,7 +75,10 @@ export function FundsClient() {
                 default: return 5000;
             }
           };
-          setFundsBalance(getInitialBalance());
+          const initialBalance = getInitialBalance();
+          setFundsBalance(initialBalance);
+          // Also, insert it into the database for the future
+          await supabase.from('funds').insert({ user_id: sbUser.id, market, balance: initialBalance });
       }
       
       // Fetch Orders to calculate realized P&L
