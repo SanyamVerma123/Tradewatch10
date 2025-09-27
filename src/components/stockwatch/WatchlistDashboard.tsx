@@ -565,40 +565,42 @@ export function WatchlistDashboard() {
                   <Table>
                     <TableBody>
                       {isWatchlistLoading ? renderStockSkeleton() : filteredStocks.map((stock) => (
-                         <TableRow key={stock.ticker} className="relative overflow-hidden">
-                           <div
-                             className="absolute top-0 right-0 h-full flex items-center transition-transform duration-300"
-                             style={{ transform: swipedTicker === stock.ticker ? 'translateX(0)' : 'translateX(100%)' }}
-                           >
-                             <Button
-                               variant="destructive"
-                               className="h-full w-20 rounded-none flex items-center justify-center"
-                               onClick={() => removeStockFromWatchlist(stock.ticker)}
-                             >
-                               <Trash2 className="h-5 w-5" />
-                             </Button>
-                           </div>
-                           <div
-                             className="w-full bg-background transition-transform duration-300"
-                             style={{ transform: swipedTicker === stock.ticker ? 'translateX(-80px)' : 'translateX(0)' }}
-                             onTouchStart={(e) => handleTouchStart(e, stock.ticker)}
-                             onTouchMove={(e) => handleTouchMove(e, stock.ticker)}
-                             onClick={() => handleStockClick(stock)}
-                           >
-                             <TableCell className="p-3 cursor-pointer">
-                               <div className="flex items-center justify-between">
-                                 <div className="flex-1 pr-4">
-                                     <p className="font-bold text-sm">{stock.ticker}</p>
-                                     <p className="text-xs text-muted-foreground truncate w-40 sm:w-auto">{stock.name}</p>
-                                     <p className="text-xs text-primary/80 mt-1 italic">{getStockStatusMessage(stock.changePercent)}</p>
-                                 </div>
-                                 <div className={cn("text-right font-medium", stock.change >= 0 ? "text-positive" : "text-destructive")}>
-                                     <p className="text-base">{currencySymbol}{stock.price.toFixed(2)}</p>
-                                     <p className="text-xs">{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)</p>
-                                 </div>
+                         <TableRow key={stock.ticker}>
+                            <TableCell className="p-0">
+                               <div className="relative overflow-hidden">
+                                    <div
+                                        className="absolute top-0 right-0 h-full flex items-center transition-transform duration-300"
+                                        style={{ transform: swipedTicker === stock.ticker ? 'translateX(0)' : 'translateX(100%)' }}
+                                    >
+                                        <Button
+                                            variant="destructive"
+                                            className="h-full w-20 rounded-none flex items-center justify-center"
+                                            onClick={() => removeStockFromWatchlist(stock.ticker)}
+                                        >
+                                            <Trash2 className="h-5 w-5" />
+                                        </Button>
+                                    </div>
+                                    <div
+                                        className="w-full bg-background p-3 cursor-pointer transition-transform duration-300"
+                                        style={{ transform: swipedTicker === stock.ticker ? 'translateX(-80px)' : 'translateX(0)' }}
+                                        onTouchStart={(e) => handleTouchStart(e, stock.ticker)}
+                                        onTouchMove={(e) => handleTouchMove(e, stock.ticker)}
+                                        onClick={() => handleStockClick(stock)}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex-1 pr-4">
+                                                <p className="font-bold text-sm">{stock.ticker}</p>
+                                                <p className="text-xs text-muted-foreground truncate w-40 sm:w-auto">{stock.name}</p>
+                                                <p className="text-xs text-primary/80 mt-1 italic">{getStockStatusMessage(stock.changePercent)}</p>
+                                            </div>
+                                            <div className={cn("text-right font-medium", stock.change >= 0 ? "text-positive" : "text-destructive")}>
+                                                <p className="text-base">{currencySymbol}{stock.price.toFixed(2)}</p>
+                                                <p className="text-xs">{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)} ({stock.changePercent.toFixed(2)}%)</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                </div>
-                             </TableCell>
-                           </div>
+                            </TableCell>
                          </TableRow>
                       ))}
                     </TableBody>
