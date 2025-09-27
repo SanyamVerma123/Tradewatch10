@@ -94,7 +94,7 @@ export default function BottomNav() {
         .single();
       
       if (fundsData && fundsData.balance !== undefined) {
-        const tradeValue = orderToCancel.quantity * (orderToCancel.orderMethod === "MARKET" ? orderToCancel.ltp : orderToCancel.limitPrice);
+        const tradeValue = orderToCancel.quantity * (orderToCancel.order_method === "MARKET" ? orderToCancel.ltp : orderToCancel.limit_price);
         const brokerage = Math.min(20, tradeValue * 0.0003);
         const totalCharges = brokerage + (tradeValue * 0.000345);
         const approxMargin = orderToCancel.product === 'MIS' ? tradeValue / 5 : tradeValue;
@@ -140,15 +140,13 @@ export default function BottomNav() {
     }
     
     let realizedPnl: number | undefined = undefined;
-    if (orderToExecute.type === 'SELL' || (orderToExecute.type === 'BUY' && orderToExecute.isExit)) {
+    if (orderToExecute.type === 'SELL' || (orderToExecute.type === 'BUY' && orderToExecute.is_exit)) {
         const { data: executedOrdersToday, error: ordersError } = await supabase
           .from('orders')
           .select('ticker, product, type, quantity, ltp')
           .eq('user_id', userId)
           .eq('market', market)
-          .eq('status', 'Executed')
-          // .gte('executed_at', new Date(new Date().setHours(0,0,0,0)).toISOString())
-          // .lte('executed_at', new Date().toISOString());
+          .eq('status', 'Executed');
 
         if (executedOrdersToday) {
             const positionMap: { [compositeKey: string]: Position } = {};
@@ -176,7 +174,7 @@ export default function BottomNav() {
     const otherCharges = finalTradeValue * 0.000345;
     const totalCharges = brokerage + stt + otherCharges;
     
-    const executedOrderUpdate: Partial<Order> = { status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString(), realizedPnl };
+    const executedOrderUpdate: Partial<Order> = { status: 'Executed', filled_quantity: orderToExecute.quantity, ltp, executed_at: new Date().toISOString(), realized_pnl: realizedPnl };
 
     const { error: updateError } = await supabase.from('orders').update(executedOrderUpdate).eq('id', orderToExecute.id);
     if (updateError) return false;
@@ -245,24 +243,24 @@ export default function BottomNav() {
                 let shouldExecute = false;
                 let executionPrice = ltp;
 
-                if (order.isAMO) { shouldExecute = true; } 
-                else if (order.orderMethod === "MARKET") { shouldExecute = true; }
-                else if (order.orderMethod === "LIMIT") {
-                    if ((order.type === 'BUY' && ltp <= order.limitPrice) || (order.type === 'SELL' && ltp >= order.limitPrice)) {
+                if (order.is_amo) { shouldExecute = true; } 
+                else if (order.order_method === "MARKET") { shouldExecute = true; }
+                else if (order.order_method === "LIMIT") {
+                    if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
                         shouldExecute = true;
-                        executionPrice = order.limitPrice;
+                        executionPrice = order.limit_price;
                     }
                 } 
-                else if (order.orderMethod === "SL") {
-                    if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
-                        if ((order.type === 'BUY' && ltp <= order.limitPrice) || (order.type === 'SELL' && ltp >= order.limitPrice)) {
+                else if (order.order_method === "SL") {
+                    if (order.trigger_price && ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price))) {
+                        if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
                            shouldExecute = true;
-                           executionPrice = order.limitPrice;
+                           executionPrice = order.limit_price;
                         }
                     }
                 } 
-                else if (order.orderMethod === "SL-M") {
-                    if (order.triggerPrice && ((order.type === 'BUY' && ltp >= order.triggerPrice) || (order.type === 'SELL' && ltp <= order.triggerPrice))) {
+                else if (order.order_method === "SL-M") {
+                    if (order.trigger_price && ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price))) {
                         shouldExecute = true;
                     }
                 }

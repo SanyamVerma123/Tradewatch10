@@ -247,7 +247,7 @@ useEffect(() => {
                     const compositeKey = `${order.ticker}-${order.product}`;
                     if (order.product === 'CNC') {
                         let h = holdingsMap[order.ticker] || { id: `h-${order.ticker}`, ticker: order.ticker, quantity: 0, avgPrice: 0, investedValue: 0, ltp: 0, pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0 };
-                        const tradeValue = order.ltp * order.quantity;
+                        const tradeValue = order.limit_price * order.quantity;
                         if(order.type === 'BUY') {
                             const newTotalValue = (h.avgPrice * h.quantity) + tradeValue;
                             h.quantity += order.quantity;
@@ -262,7 +262,7 @@ useEffect(() => {
                         const prevQuantity = p.quantity;
 
                         if (Math.sign(tradeSign) === Math.sign(prevQuantity) || prevQuantity === 0) { // increasing position or new
-                           const newTotalValue = (p.avgPrice * Math.abs(prevQuantity)) + (order.ltp * order.quantity);
+                           const newTotalValue = (p.avgPrice * Math.abs(prevQuantity)) + (order.limit_price * order.quantity);
                            p.quantity += order.quantity * tradeSign;
                            p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
                         } else { // reducing position
@@ -270,7 +270,7 @@ useEffect(() => {
                              if (Math.abs(p.quantity) < 0.001) { // closed out
                                 p.avgPrice = 0;
                             } else if (Math.sign(p.quantity) !== Math.sign(prevQuantity)) { // flipped
-                                p.avgPrice = order.ltp;
+                                p.avgPrice = order.limit_price;
                             }
                         }
                         positionsMap[compositeKey] = p;
@@ -291,19 +291,19 @@ useEffect(() => {
                 
                 if (orderToEdit) {
                     setOrderType(orderToEdit.type || "BUY");
-                    setProduct(orderToEdit.product || (orderToEdit.isShortSell ? 'MIS' : 'CNC'));
+                    setProduct(orderToEdit.product || (orderToEdit.is_short_sell ? 'MIS' : 'CNC'));
                     setQuantity(orderToEdit.quantity?.toString() || "1");
                     
-                    setPrice(orderToEdit.limitPrice?.toString() || fetchedStock.price.toFixed(2));
-                    setTriggerPrice(orderToEdit.triggerPrice?.toString() || "");
-                    setOrderMethod(orderToEdit.orderMethod?.toUpperCase() || "LIMIT");
+                    setPrice(orderToEdit.limit_price?.toString() || fetchedStock.price.toFixed(2));
+                    setTriggerPrice(orderToEdit.trigger_price?.toString() || "");
+                    setOrderMethod(orderToEdit.order_method?.toUpperCase() || "LIMIT");
 
                     // If this is a new short sell from watchlist, enforce MIS
-                    if (orderToEdit.isShortSell && !orderToEdit.isExit) {
+                    if (orderToEdit.is_short_sell && !orderToEdit.is_exit) {
                         setProduct('MIS');
                     }
                      // If we are exiting a short position, it must be a BUY and MIS
-                    if (orderToEdit.isExit && (orderToEdit.type === 'BUY' || (positionForTicker && positionForTicker.quantity < 0))) {
+                    if (orderToEdit.is_exit && (orderToEdit.type === 'BUY' || (positionForTicker && positionForTicker.quantity < 0))) {
                         setProduct('MIS');
                         setOrderType('BUY');
                     }
@@ -352,9 +352,9 @@ useEffect(() => {
   }, [isDataInitialized, fetchStock]);
   
   const isEditing = !!(orderToEdit?.id && orderToEdit.status === 'Pending');
-  const isExiting = !!orderToEdit?.isExit;
-  const isAdding = !!orderToEdit?.isAdding;
-  const isNewShortSell = !!orderToEdit?.isShortSell && !isExiting && !isAdding;
+  const isExiting = !!orderToEdit?.is_exit;
+  const isAdding = !!orderToEdit?.is_adding;
+  const isNewShortSell = !!orderToEdit?.is_short_sell && !isExiting && !isAdding;
 
   const getExecutionPrice = useCallback(() => {
     if (orderMethod.includes('MARKET')) {
@@ -418,7 +418,7 @@ useEffect(() => {
     
     // Refund old margin if we are editing a BUY order
     if (isEditing && orderToEdit?.type === 'BUY') {
-        const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
+        const oldOrderValue = orderToEdit.quantity * (orderToEdit.order_method === "MARKET" ? orderToEdit.ltp : orderToEdit.limit_price);
         const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
         const oldCharges = Math.min(20, oldOrderValue * 0.0003) + (oldOrderValue * 0.000345);
         const fundsToRefund = oldMargin + oldCharges;
@@ -431,7 +431,7 @@ useEffect(() => {
       toast({ variant: "destructive", title: "Insufficient Funds", description: `Required: ~${currencySymbol}${requiredFunds.toFixed(2)}. Available: ${currencySymbol}${currentBalance.toFixed(2)}.` });
       // Re-block the refunded margin if the new order fails
        if (isEditing && orderToEdit?.type === 'BUY') {
-            const oldOrderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
+            const oldOrderValue = orderToEdit.quantity * (orderToEdit.order_method === "MARKET" ? orderToEdit.ltp : orderToEdit.limit_price);
             const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
             const oldCharges = Math.min(20, oldOrderValue * 0.0003) + (oldOrderValue * 0.000345);
             const fundsToRefund = oldMargin + oldCharges;
@@ -463,34 +463,37 @@ useEffect(() => {
 
     const finalProduct = isNewShortSell ? 'MIS' : (isExiting && positionForTicker && positionForTicker.quantity < 0 ? 'MIS' : product);
 
-    const newOrder: Order = {
+    const newOrder = {
         id: isEditing ? orderToEdit.id : `order-${Date.now()}`,
+        user_id: user.id,
         type: orderType,
         ticker,
         quantity: qty,
-        filledQuantity: 0,
-        limitPrice: executionPrice,
-        triggerPrice: parseFloat(triggerPrice) || undefined,
+        filled_quantity: 0,
+        limit_price: executionPrice,
+        trigger_price: parseFloat(triggerPrice) || undefined,
         status: 'Pending',
         timestamp: new Date().toISOString(),
         exchange: stock.exchange || 'NSE',
-        orderType: `${finalProduct} ${orderMethod}`,
+        order_type: `${finalProduct} ${orderMethod}`,
         ltp: stock?.price || 0,
-        isAMO: !marketIsOpen,
+        is_amo: !marketIsOpen,
         product: finalProduct,
-        orderMethod: orderMethod,
-        isShortSell: isNewShortSell,
-        isExit: isExiting,
-        isAdding: isAdding,
+        order_method: orderMethod,
+        is_short_sell: isNewShortSell,
+        is_exit: isExiting,
+        is_adding: isAdding,
         market: market,
     };
     
     let dbError;
     if (isEditing) {
-        const { error } = await supabase.from('orders').update(newOrder).eq('id', newOrder.id);
+        // Supabase update doesn't allow changing the primary key 'id'
+        const { id, user_id, ...updateData } = newOrder;
+        const { error } = await supabase.from('orders').update(updateData).eq('id', newOrder.id);
         dbError = error;
     } else {
-        const { error } = await supabase.from('orders').insert({ ...newOrder, user_id: user.id });
+        const { error } = await supabase.from('orders').insert({ ...newOrder });
         dbError = error;
     }
 
@@ -521,7 +524,7 @@ useEffect(() => {
         const { data: fundsData } = await supabase.from('funds').select('balance').eq('user_id', user.id).eq('market', market).single();
         let currentBalance = fundsData?.balance || 0;
         if (currentBalance !== undefined) {
-             const orderValue = orderToEdit.quantity * (orderToEdit.orderMethod === "MARKET" ? orderToEdit.ltp : orderToEdit.limitPrice);
+             const orderValue = orderToEdit.quantity * (orderToEdit.order_method === "MARKET" ? orderToEdit.ltp : orderToEdit.limit_price);
              const orderMargin = orderToEdit.product === 'MIS' ? orderValue / 5 : orderValue;
              const orderBrokerage = Math.min(20, orderValue * 0.0003);
              const orderCharges = orderBrokerage + (orderValue * 0.000345);

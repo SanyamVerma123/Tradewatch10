@@ -142,7 +142,7 @@ export function OrdersClient() {
   }
   
   const pendingOrders = orders.filter(o => o.status === 'Pending');
-  const todaysExecutedOrders = orders.filter(o => o.status === 'Executed' && o.executedAt && isToday(new Date(o.executedAt)));
+  const todaysExecutedOrders = orders.filter(o => o.status === 'Executed' && o.executed_at && isToday(new Date(o.executed_at)));
   const todaysCancelledOrders = orders.filter(o => o.status === 'Cancelled' && o.timestamp && isToday(new Date(o.timestamp)));
 
   const filteredPendingOrders = pendingOrders.filter(
@@ -185,20 +185,20 @@ export function OrdersClient() {
                   <div className="flex justify-between items-start">
                     <div>
                         <span className={`font-bold ${order.type === 'BUY' ? 'text-blue-500' : 'text-red-500'}`}>{order.type}</span>
-                        <span className="ml-2 text-muted-foreground">{order.filledQuantity}/{order.quantity}</span>
+                        <span className="ml-2 text-muted-foreground">{order.filled_quantity}/{order.quantity}</span>
                     </div>
                     <div className="text-xs text-muted-foreground text-right">
                         <span>{new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        {order.isAMO && <div className="text-primary font-semibold">AMO REQ...</div>}
+                        {order.is_amo && <div className="text-primary font-semibold">AMO REQ...</div>}
                     </div>
                   </div>
                   <div className="flex justify-between items-end mt-1">
                     <div>
                         <p className="font-semibold">{order.ticker}</p>
-                        <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
+                        <p className="text-xs text-muted-foreground">{order.exchange} {order.order_type}</p>
                     </div>
                     <div className="text-right">
-                        <p className="font-semibold">{currencySymbol}{order.limitPrice.toFixed(2)}</p>
+                        <p className="font-semibold">{currencySymbol}{order.limit_price.toFixed(2)}</p>
                         <p className="text-xs text-muted-foreground">LTP {currencySymbol}{order.ltp.toFixed(2)}</p>
                     </div>
                   </div>
@@ -215,23 +215,23 @@ export function OrdersClient() {
                   <div className="flex justify-between items-start">
                     <div>
                         <span className={`font-bold ${order.type === 'BUY' ? 'text-blue-500' : 'text-red-500'}`}>{order.type}</span>
-                        <span className="ml-2 text-green-500">{order.filledQuantity}/{order.quantity}</span>
+                        <span className="ml-2 text-green-500">{order.filled_quantity}/{order.quantity}</span>
                     </div>
                     <div className="text-xs text-muted-foreground text-right">
-                        <span>{order.executedAt ? new Date(order.executedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{order.executed_at ? new Date(order.executed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                          <span className="text-xs font-semibold text-green-600 ml-2">EXECUTED</span>
                     </div>
                   </div>
                   <div className="flex justify-between items-end mt-1">
                     <div>
                         <p className="font-semibold">{order.ticker}</p>
-                        <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
+                        <p className="text-xs text-muted-foreground">{order.exchange} {order.order_type}</p>
                     </div>
                      <div className="text-right">
                         <p className="font-semibold">Avg. {currencySymbol}{order.ltp.toFixed(2)}</p>
-                        {order.realizedPnl !== undefined && (
-                            <p className={cn("text-xs font-semibold", order.realizedPnl >= 0 ? "text-positive" : "text-destructive")}>
-                                P&L: {order.realizedPnl >= 0 ? '+' : ''}{currencySymbol}{order.realizedPnl.toFixed(2)}
+                        {order.realized_pnl !== undefined && (
+                            <p className={cn("text-xs font-semibold", order.realized_pnl >= 0 ? "text-positive" : "text-destructive")}>
+                                P&L: {order.realized_pnl >= 0 ? '+' : ''}{currencySymbol}{order.realized_pnl.toFixed(2)}
                             </p>
                         )}
                     </div>
@@ -248,7 +248,7 @@ export function OrdersClient() {
                   <div className="flex justify-between items-start">
                     <div>
                         <span className={`font-bold ${order.type === 'BUY' ? 'text-blue-500' : 'text-red-500'}`}>{order.type}</span>
-                        <span className="ml-2 text-red-500">{order.filledQuantity}/{order.quantity}</span>
+                        <span className="ml-2 text-red-500">{order.filled_quantity}/{order.quantity}</span>
                     </div>
                     <div className="text-xs text-muted-foreground text-right">
                         <span>{new Date(order.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -258,10 +258,10 @@ export function OrdersClient() {
                   <div className="flex justify-between items-end mt-1">
                     <div>
                         <p className="font-semibold">{order.ticker}</p>
-                        <p className="text-xs text-muted-foreground">{order.exchange} {order.orderType}</p>
+                        <p className="text-xs text-muted-foreground">{order.exchange} {order.order_type}</p>
                     </div>
                      <div className="text-right">
-                        <p className="font-semibold">{currencySymbol}{order.limitPrice.toFixed(2)}</p>                    </div>
+                        <p className="font-semibold">{currencySymbol}{order.limit_price.toFixed(2)}</p>                    </div>
                   </div>
                 </CardContent>
               </Card>

@@ -77,22 +77,24 @@ export function PortfolioClient() {
   const updatePortfolioData = useCallback(async () => {
     if (!user) return;
     
-    const ordersKey = `orders_${user.id}_${market}`;
-    const portfolioKey = `portfolioData_${user.id}_${market}`;
-    
-    let allOrders: Order[];
-    try {
-        const ordersItem = localStorage.getItem(ordersKey);
-        allOrders = ordersItem ? JSON.parse(ordersItem) : [];
-    } catch (e) {
-        console.error("Could not parse orders from local storage", e);
-        allOrders = [];
+    setIsLoading(true);
+
+    const { data: allOrders, error: ordersError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('market', market);
+
+    if (ordersError) {
+        toast({ variant: 'destructive', title: 'Error fetching portfolio', description: ordersError.message });
+        setIsLoading(false);
+        return;
     }
     
-    const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executedAt).sort((a, b) => new Date(a.executedAt!).getTime() - new Date(b.executedAt!).getTime());
+    const executedOrders = allOrders.filter(o => o.status === 'Executed' && o.executed_at).sort((a, b) => new Date(a.executed_at!).getTime() - new Date(b.executed_at!).getTime());
 
-    const todayExecutedOrders = executedOrders.filter(o => isToday(new Date(o.executedAt!)));
-    const previousDaysExecutedOrders = executedOrders.filter(o => !isToday(new Date(o.executedAt!)));
+    const todayExecutedOrders = executedOrders.filter(o => isToday(new Date(o.executed_at!)));
+    const previousDaysExecutedOrders = executedOrders.filter(o => !isToday(new Date(o.executed_at!)));
     
     const allTickersInOrders = [...new Set(allOrders.map(o => o.ticker))];
     const initialPortfolioData = { holdings: [], positions: [], investedValue: 0, currentValue: 0, totalPnl: 0, totalPnlPercent: 0, dayPnl: 0, dayPnlPercent: 0 };
@@ -101,11 +103,9 @@ export function PortfolioClient() {
     if (allTickersInOrders.length === 0) {
       setPortfolio(initialPortfolioData);
       setIsLoading(false);
-      localStorage.setItem(portfolioKey, JSON.stringify(initialPortfolioData));
       return;
     }
     
-    setIsLoading(true);
     const stockData = await getStockData(allTickersInOrders);
     const newStocksMap: Record<string, Stock> = {};
     stockData.forEach(s => newStocksMap[s.ticker] = s);
@@ -200,37 +200,6 @@ export function PortfolioClient() {
         p.pnl = unrealizedPnl;
     });
     
-    if (isMarketClosedForAutoSquareOff()) {
-        const openMISPositions = updatedPositions.filter(p => p.product === 'MIS' && Math.abs(p.quantity) > 0.001);
-        if (openMISPositions.length > 0) {
-            let newOrdersForSquareOff: Order[] = [];
-            let didSquareOff = false;
-            openMISPositions.forEach(pos => {
-                const liveData = newStocksMap[pos.ticker];
-                if (!liveData) return;
-                
-                const realizedPnlOnSquareOff = (liveData.price - pos.avgPrice) * pos.quantity;
-
-                const closingOrder: Order = {
-                    id: `auto-sq-off-${Date.now()}-${pos.ticker}`, type: pos.quantity > 0 ? 'SELL' : 'BUY', ticker: pos.ticker, quantity: Math.abs(pos.quantity), filledQuantity: Math.abs(pos.quantity), limitPrice: liveData.price, status: 'Executed', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), exchange: liveData.exchange || 'NSE', orderType: `${pos.product} MARKET`, ltp: liveData.price, isAMO: false, product: pos.product, orderMethod: 'MARKET', executedAt: new Date().toISOString(), realizedPnl: realizedPnlOnSquareOff
-                };
-                
-                // Avoid re-adding the same square-off order
-                if (!allOrders.some(o => o.id.startsWith('auto-sq-off') && o.ticker === pos.ticker)) {
-                    newOrdersForSquareOff.push(closingOrder);
-                    didSquareOff = true;
-                }
-            });
-
-            if (didSquareOff) {
-                const updatedOrders = [...allOrders, ...newOrdersForSquareOff];
-                localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
-                toast({ title: "Auto Square-Off", description: `Your open intraday positions have been automatically closed.` });
-                updatePortfolioData(); // Re-run to update portfolio state
-                return;
-            }
-        }
-    }
 
     const finalHoldings = currentHoldings.map(h => {
         const liveData = newStocksMap[h.ticker];
@@ -301,10 +270,17 @@ export function PortfolioClient() {
         return { ...p, ltp, pnl: unrealizedPnl, investedValue: margin, dayChange: liveData?.change || 0, dayChangePercent: liveData?.changePercent || 0, pnlPercent: margin > 0 ? (unrealizedPnl / margin) * 100 : 0, };
     });
 
-    // Realized PNL needs to be fetched from orders to be accurate in summary
-    const ordersKey = `orders_${user.id}_${market}`;
-    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-    const todayAllRealizedPnl = allOrders.filter(o => o.status === 'Executed' && o.executedAt && isToday(new Date(o.executedAt)) && o.realizedPnl !== undefined).reduce((acc, o) => acc + (o.realizedPnl || 0), 0);
+    const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('realized_pnl')
+        .eq('user_id', user.id)
+        .eq('market', market)
+        .eq('status', 'Executed')
+        .not('realized_pnl', 'is', null)
+        .gte('executed_at', new Date(new Date().setHours(0,0,0,0)).toISOString());
+        
+    const todayAllRealizedPnl = ordersData?.reduce((acc, o) => acc + (o.realized_pnl || 0), 0) || 0;
+
 
     const dayPnl = holdingsDayPnl + todayAllRealizedPnl + openPositionsUnrealizedPnl;
     const totalInvested = totalHoldingsInvested; // Only holdings contribute to the main invested value
@@ -321,32 +297,24 @@ export function PortfolioClient() {
         positions: updatedPositions,
     });
 
-    // Write the latest portfolio totals to localStorage for other pages to use
-    const portfolioKey = `portfolioData_${user.id}_${market}`;
-    const portfolioSummary = { 
-        investedValue: totalInvested, 
-        currentValue: totalHoldingsCurrentValue,
-        totalPnl: totalPnl,
-    };
-    localStorage.setItem(portfolioKey, JSON.stringify(portfolioSummary));
-
-
-  }, [user, market]);
+  }, [user, market, supabase]);
 
   useEffect(() => {
     if (!user) return;
     updatePortfolioData(); // Initial heavy load
     
-    const ordersKey = `orders_${user.id}_${market}`;
-    const handleStorageChange = (event: StorageEvent) => {
-      if ((event.key === ordersKey)) {
-        updatePortfolioData(); // Re-run heavy calculation on order change
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
+    const channel = supabase.channel(`portfolio_orders_channel_${user.id}`)
+      .on<Order>(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+           updatePortfolioData(); // Refetch all orders on any change
+        }
+      )
+      .subscribe();
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      supabase.removeChannel(channel);
     };
   }, [updatePortfolioData, user, market]);
 
@@ -388,10 +356,10 @@ export function PortfolioClient() {
         if (action === 'exit') {
             orderData.type = 'SELL';
             orderData.quantity = holding.quantity;
-            orderData.isExit = true;
+            orderData.is_exit = true;
         } else { // 'add'
             orderData.type = 'BUY';
-            orderData.isAdding = true;
+            orderData.is_adding = true;
         }
      } else if (actionSheetContext === 'position') {
         const position = portfolio.positions.find(p => p.ticker === ticker && p.product === selectedStock.product);
@@ -403,11 +371,11 @@ export function PortfolioClient() {
             // Exiting a long position is SELL, exiting a short is BUY
             orderData.type = position.quantity > 0 ? 'SELL' : 'BUY'; 
             orderData.quantity = Math.abs(position.quantity);
-            orderData.isExit = true;
+            orderData.is_exit = true;
         } else { // 'add'
             // Adding to a long position is BUY, adding to short is SELL
             orderData.type = position.quantity > 0 ? 'BUY' : 'SELL';
-            orderData.isAdding = true;
+            orderData.is_adding = true;
         }
      }
      
@@ -592,5 +560,3 @@ export function PortfolioClient() {
     </div>
   );
 }
-
-    

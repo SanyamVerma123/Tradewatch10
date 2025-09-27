@@ -42,24 +42,24 @@ export interface Order {
   type: 'BUY' | 'SELL';
   ticker: string;
   quantity: number;
-  filledQuantity: number;
-  limitPrice: number;
-  triggerPrice?: number;
+  filled_quantity: number;
+  limit_price: number;
+  trigger_price?: number;
   status: 'Pending' | 'Executed' | 'Cancelled';
   timestamp: string; // ISO date string
   exchange: string;
-  orderType: string;
+  order_type: string;
   ltp: number;
-  isAMO?: boolean;
+  is_amo?: boolean;
   product?: string;
-  orderMethod?: string;
-  isShortSell?: boolean;
-  isExit?: boolean;
-  isAdding?: boolean;
-  executedAt?: string; // ISO date string
-  realizedPnl?: number;
-  stopLossValue?: number;
-  targetValue?: number;
+  order_method?: string;
+  is_short_sell?: boolean;
+  is_exit?: boolean;
+  is_adding?: boolean;
+  executed_at?: string; // ISO date string
+  realized_pnl?: number;
+  stop_loss_value?: number;
+  target_value?: number;
   market?: string;
 }
 

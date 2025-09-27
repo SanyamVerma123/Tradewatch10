@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.messages (
 -- Enable Row Level Security for the messages table
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
--- Drop existing policies for messages to avoid conflicts, then recreate them
+-- Drop existing policies for messages if they exist, then re-create them
 DROP POLICY IF EXISTS "Allow authenticated users to view messages" ON public.messages;
 CREATE POLICY "Allow authenticated users to view messages"
 ON public.messages
@@ -42,10 +42,13 @@ CREATE TABLE IF NOT EXISTS public.watchlists (
 ALTER TABLE public.watchlists ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view their own watchlists" ON public.watchlists;
 CREATE POLICY "Users can view their own watchlists" ON public.watchlists FOR SELECT USING (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can insert their own watchlists" ON public.watchlists;
 CREATE POLICY "Users can insert their own watchlists" ON public.watchlists FOR INSERT WITH CHECK (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can update their own watchlists" ON public.watchlists;
 CREATE POLICY "Users can update their own watchlists" ON public.watchlists FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can delete their own watchlists" ON public.watchlists;
 CREATE POLICY "Users can delete their own watchlists" ON public.watchlists FOR DELETE USING (auth.uid() = user_id);
 
