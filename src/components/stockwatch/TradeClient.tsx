@@ -33,6 +33,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useMarket, marketDetails } from "@/hooks/use-market";
 
@@ -196,7 +197,7 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [price, setPrice] = useState("");
   const [triggerPrice, setTriggerPrice] = useState("");
   const [product, setProduct] = useState(orderToEdit?.product || "CNC");
-  const [orderMethod, setOrderMethod] = useState(orderToEdit?.orderMethod || "LIMIT");
+  const [orderMethod, setOrderMethod] = useState(orderToEdit?.order_method || "LIMIT");
   
   const [useStopLoss, setUseStopLoss] = useState(false);
   const [stopLossValue, setStopLossValue] = useState("");
