@@ -18,6 +18,8 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { watchlists as initialWatchlistsData } from "@/lib/data";
 import { supabase } from "@/lib/supabase/client";
+import { marketDetails } from "@/hooks/use-market";
+
 
 interface SignupClientProps {
   onToggleView: () => void;
@@ -51,22 +53,62 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
         title: "Signup Failed",
         description: error.message,
       });
-    } else if (user) {
-      // Initialize app-specific data in local storage, namespaced by user ID and market
-      const userId = user.id;
-      
-      (Object.keys(initialWatchlistsData) as (keyof typeof initialWatchlistsData)[]).forEach(market => {
-        localStorage.setItem(`watchlists_${userId}_${market}`, JSON.stringify(initialWatchlistsData[market]));
-        localStorage.setItem(`orders_${userId}_${market}`, '[]');
-        localStorage.setItem(`portfolioData_${userId}_${market}`, '{"holdings":[],"positions":[]}');
-      });
+      setIsLoading(false);
+      return;
+    } 
+    
+    if (user) {
+      try {
+        // Initialize data for all markets in Supabase
+        for (const market of Object.keys(marketDetails)) {
+          const marketKey = market as keyof typeof initialWatchlistsData;
+          
+          // 1. Insert default watchlists
+          const watchlistsToInsert = initialWatchlistsData[marketKey].map(wl => ({
+            user_id: user.id,
+            market: marketKey,
+            name: wl.name,
+            stock_tickers: wl.stocks,
+          }));
 
-      toast({
-        title: "Account Created!",
-        description: "Please check your email to confirm your account and sign in.",
-        duration: 10000,
-      });
-      onToggleView(); // Switch back to login view
+          const { error: watchlistError } = await supabase.from('watchlists').insert(watchlistsToInsert);
+          if (watchlistError) throw watchlistError;
+
+          // 2. Initialize funds for the market
+          const getInitialBalance = () => {
+            switch (marketDetails[marketKey].currency) {
+                case 'INR': return 500000;
+                case 'USD': return 5000;
+                case 'GBP': return 4000;
+                case 'EUR': return 4500;
+                case 'JPY': return 750000;
+                case 'HKD': return 40000;
+                case 'CAD': return 6500;
+                default: return 5000;
+            }
+          };
+          const { error: fundsError } = await supabase.from('funds').insert({
+            user_id: user.id,
+            market: marketKey,
+            balance: getInitialBalance(),
+          });
+          if (fundsError) throw fundsError;
+        }
+
+        toast({
+          title: "Account Created!",
+          description: "Please check your email to confirm your account and sign in.",
+          duration: 10000,
+        });
+        onToggleView(); // Switch back to login view
+
+      } catch (dbError: any) {
+         toast({
+          variant: "destructive",
+          title: "Initialization Failed",
+          description: "Your account was created, but we couldn't set up your initial data. Please try logging in. " + dbError.message,
+        });
+      }
     }
     setIsLoading(false);
   };
