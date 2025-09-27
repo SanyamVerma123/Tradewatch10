@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import Link from "next/link";
@@ -12,7 +11,7 @@ import { supabase } from "@/lib/supabase/client";
 import { getMarketNews, getStockData } from "@/app/actions";
 import type { NewsArticle, Order, Position } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { useMarket } from "@/hooks/use-market";
+import { useMarket, marketDetails } from "@/hooks/use-market";
 
 const navItems = [
   { href: "/watchlist", label: "Watchlist", icon: LayoutGrid },
@@ -28,7 +27,7 @@ async function showDelayedFundNotification() {
     try {
       const registration = await navigator.serviceWorker.ready;
       registration.showNotification("Funds Credited!", {
-        body: "Your starting fund of ₹5,00,000 has been credited to your account.",
+        body: "Your starting fund has been credited to your account.",
         icon: "/icon-192x192.png",
         badge: "/badge-72x72.png",
       });
@@ -68,76 +67,43 @@ export default function BottomNav() {
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchAndCacheNews = useCallback(async (userId: string) => {
-    const newsCacheKey = `newsCache_${userId}_${market}`;
-    const cachedNewsData = localStorage.getItem(newsCacheKey);
-    let shouldFetch = true;
-
-    if (cachedNewsData) {
-        const { timestamp } = JSON.parse(cachedNewsData);
-        const lastFetch = new Date(timestamp);
-        const now = new Date();
-        const oneHour = 60 * 60 * 1000;
-        if (now.getTime() - lastFetch.getTime() < oneHour) {
-            shouldFetch = false;
-        }
-    }
-
-    if (shouldFetch) {
-        const liveNews = await getMarketNews();
-        if (liveNews) {
-            const articles: NewsArticle[] = liveNews.map((article: any) => ({
-                id: article.id,
-                headline: article.headline,
-                source: article.source,
-                time: article.time,
-                image: article.image,
-                url: article.url,
-            }));
-
-            const today = new Date().toDateString();
-            const newsCache = {
-                timestamp: new Date().toISOString(),
-                date: today,
-                articles: articles,
-            };
-            localStorage.setItem(newsCacheKey, JSON.stringify(newsCache));
-            // Manually trigger a storage event so other tabs get the new data
-            window.dispatchEvent(new StorageEvent('storage', {
-                key: newsCacheKey,
-                newValue: JSON.stringify(newsCache),
-            }));
-        }
-    }
+    // News caching is now handled by WatchlistDashboard, this can be simplified or removed
   }, [market]);
 
-  const cancelOrder = useCallback((orderToCancel: Order, reason: string, userId: string) => {
+  const cancelOrder = useCallback(async (orderToCancel: Order, reason: string, userId: string) => {
     if (!userId) return;
-    const ordersKey = `orders_${userId}_${market}`;
-    const allOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-    
-    const updatedOrders = allOrders.map((o: Order) => 
-        o.id === orderToCancel.id ? { ...o, status: 'Cancelled' as const } : o
-    );
-    
-    if (orderToCancel.type === 'BUY' && orderToCancel.status === 'Pending') {
-        const fundsKey = `funds_${userId}_${market}`;
-        const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
-        
-        if (fundsData.balance !== undefined) {
-            const tradeValue = orderToCancel.quantity * (orderToCancel.orderMethod === "MARKET" ? orderToCancel.ltp : orderToCancel.limitPrice);
-            const brokerage = Math.min(20, tradeValue * 0.0003);
-            const totalCharges = brokerage + (tradeValue * 0.000345);
-            const approxMargin = orderToCancel.product === 'MIS' ? tradeValue / 5 : tradeValue;
-            const blockedFunds = approxMargin + totalCharges;
 
-            const newBalance = fundsData.balance + blockedFunds;
-            localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
-             window.dispatchEvent(new StorageEvent('storage', { key: fundsKey }));
-        }
+    // Update order status in Supabase
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'Cancelled' })
+      .eq('id', orderToCancel.id)
+      .eq('user_id', userId);
+
+    if (error) {
+      toast({ variant: 'destructive', title: 'Error cancelling order', description: error.message });
+      return;
     }
-    
-    localStorage.setItem(ordersKey, JSON.stringify(updatedOrders));
-    window.dispatchEvent(new StorageEvent('storage', { key: ordersKey }));
+
+    if (orderToCancel.type === 'BUY' && orderToCancel.status === 'Pending') {
+      const { data: fundsData, error: fundsError } = await supabase
+        .from('funds')
+        .select('balance')
+        .eq('user_id', userId)
+        .eq('market', market)
+        .single();
+      
+      if (fundsData && fundsData.balance !== undefined) {
+        const tradeValue = orderToCancel.quantity * (orderToCancel.orderMethod === "MARKET" ? orderToCancel.ltp : orderToCancel.limitPrice);
+        const brokerage = Math.min(20, tradeValue * 0.0003);
+        const totalCharges = brokerage + (tradeValue * 0.000345);
+        const approxMargin = orderToCancel.product === 'MIS' ? tradeValue / 5 : tradeValue;
+        const blockedFunds = approxMargin + totalCharges;
+        const newBalance = fundsData.balance + blockedFunds;
+        
+        await supabase.from('funds').update({ balance: newBalance }).eq('user_id', userId).eq('market', market);
+      }
+    }
     
     toast({
         variant: "destructive",
@@ -147,91 +113,83 @@ export default function BottomNav() {
   }, [toast, market]);
 
 
-  const executeOrder = useCallback((orderToExecute: Order, ltp: number, userId: string) => {
+  const executeOrder = useCallback(async (orderToExecute: Order, ltp: number, userId: string) => {
     if (!userId) return false;
-
-    const ordersKey = `orders_${userId}_${market}`;
-    let allOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-    const orderIndex = allOrders.findIndex(o => o.id === orderToExecute.id);
-    if (orderIndex === -1 || allOrders[orderIndex].status !== 'Pending') {
-        return false;
-    }
     
-    const fundsKey = `funds_${userId}_${market}`;
+    const { data: currentOrder, error: fetchError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', orderToExecute.id)
+      .single();
+
+    if (fetchError || !currentOrder || currentOrder.status !== 'Pending') {
+      return false; // Order already processed or doesn't exist
+    }
+
+    const { data: fundsData, error: fundsError } = await supabase.from('funds').select('balance').eq('user_id', userId).eq('market', market).single();
+    if (fundsError || !fundsData) return false;
+    
     const product = orderToExecute.product || 'CNC';
     const finalTradeValue = orderToExecute.quantity * ltp;
     const isIntradayTrade = product === 'MIS';
-    
-    const fundsData = JSON.parse(localStorage.getItem(fundsKey) || '{}');
     const approxMargin = isIntradayTrade ? finalTradeValue / 5 : finalTradeValue;
 
-    if (orderToExecute.type === 'BUY' && fundsData.balance < 0) { 
-        cancelOrder(orderToExecute, `Insufficient funds. Required margin: ~₹${approxMargin.toFixed(2)}`, userId);
+    if (orderToExecute.type === 'BUY' && fundsData.balance < 0) {
+        await cancelOrder(orderToExecute, `Insufficient funds. Required margin: ~${marketDetails[market].symbol}${approxMargin.toFixed(2)}`, userId);
         return false;
     }
     
-    // Calculate realized PnL for SELL orders and BUY-to-cover-short orders
     let realizedPnl: number | undefined = undefined;
     if (orderToExecute.type === 'SELL' || (orderToExecute.type === 'BUY' && orderToExecute.isExit)) {
-      // Find the position this order is closing/reducing
-      const isToday = (d: Date) => { const t = new Date(); return d.getDate() === t.getDate() && d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear(); };
-      const executedOrdersToday = allOrders.filter((o: Order) => o.status === 'Executed' && o.executedAt && isToday(new Date(o.executedAt)));
-      const positionMap: { [compositeKey: string]: Position } = {};
-      
-      for (const order of executedOrdersToday) {
-        const pKey = `${order.ticker}-${order.product}`;
-        let p = positionMap[pKey];
-        if (!p) {
-             p = { id: `p-${pKey}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
-             positionMap[pKey] = p;
+        const { data: executedOrdersToday, error: ordersError } = await supabase
+          .from('orders')
+          .select('ticker, product, type, quantity, ltp')
+          .eq('user_id', userId)
+          .eq('market', market)
+          .eq('status', 'Executed')
+          // .gte('executed_at', new Date(new Date().setHours(0,0,0,0)).toISOString())
+          // .lte('executed_at', new Date().toISOString());
+
+        if (executedOrdersToday) {
+            const positionMap: { [compositeKey: string]: Position } = {};
+            for (const order of executedOrdersToday) {
+              const pKey = `${order.ticker}-${order.product}`;
+              let p = positionMap[pKey] || { id: `p-${pKey}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
+              const tradeSign = order.type === 'BUY' ? 1 : -1;
+              const newTotalValue = (p.avgPrice * Math.abs(p.quantity)) + (order.ltp * order.quantity);
+              p.quantity += order.quantity * tradeSign;
+              p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
+              positionMap[pKey] = p;
+            }
+            const posKey = `${orderToExecute.ticker}-${orderToExecute.product}`;
+            const relevantPosition = positionMap[posKey];
+            const avgPrice = relevantPosition ? relevantPosition.avgPrice : 0;
+            if (avgPrice > 0) {
+                realizedPnl = (orderToExecute.type === 'SELL' ? (ltp - avgPrice) : (avgPrice - ltp)) * orderToExecute.quantity;
+            }
         }
-        const tradeSign = order.type === 'BUY' ? 1 : -1;
-        const currentNetQty = p.quantity;
-        if(Math.sign(tradeSign) === Math.sign(currentNetQty) || currentNetQty === 0) {
-            const newTotalValue = (p.avgPrice * Math.abs(currentNetQty)) + (order.ltp * order.quantity);
-            p.quantity += order.quantity * tradeSign;
-            p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
-        } else {
-            p.quantity += order.quantity * tradeSign;
-            if (Math.abs(p.quantity) < 0.001) p.avgPrice = 0;
-        }
-      }
-      
-      const posKey = `${orderToExecute.ticker}-${orderToExecute.product}`;
-      const relevantPosition = positionMap[posKey];
-      const avgPrice = relevantPosition ? relevantPosition.avgPrice : 0;
-      
-      if (avgPrice > 0) {
-        if (orderToExecute.type === 'SELL') { // Selling a long position
-          realizedPnl = (ltp - avgPrice) * orderToExecute.quantity;
-        } else { // Buying to cover a short position
-          realizedPnl = (avgPrice - ltp) * orderToExecute.quantity;
-        }
-      }
     }
 
-    const executedOrder: Order = { ...orderToExecute, status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString(), realizedPnl };
-    allOrders[orderIndex] = executedOrder;
-
-    const sttRate = (product === 'CNC' && executedOrder.type === 'SELL') ? 0.001 : (isIntradayTrade && executedOrder.type === 'SELL' ? 0.00025 : 0);
+    const sttRate = (product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : (isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : 0);
     const stt = finalTradeValue * sttRate;
     const brokerage = Math.min(20, finalTradeValue * 0.0003);
     const otherCharges = finalTradeValue * 0.000345;
     const totalCharges = brokerage + stt + otherCharges;
     
-    if (fundsData.balance !== undefined && executedOrder.type === 'SELL') {
+    const executedOrderUpdate: Partial<Order> = { status: 'Executed', filledQuantity: orderToExecute.quantity, ltp, executedAt: new Date().toISOString(), realizedPnl };
+
+    const { error: updateError } = await supabase.from('orders').update(executedOrderUpdate).eq('id', orderToExecute.id);
+    if (updateError) return false;
+
+    if (orderToExecute.type === 'SELL') {
       let newBalance = fundsData.balance + (finalTradeValue - totalCharges);
       newBalance = Math.max(0, newBalance);
-      localStorage.setItem(fundsKey, JSON.stringify({ ...fundsData, balance: newBalance }));
-      window.dispatchEvent(new StorageEvent('storage', { key: fundsKey }));
+      await supabase.from('funds').update({ balance: newBalance }).eq('user_id', userId).eq('market', market);
     }
     
-    localStorage.setItem(ordersKey, JSON.stringify(allOrders));
-    window.dispatchEvent(new StorageEvent('storage', { key: ordersKey }));
-
     toast({
         title: `Order Executed!`,
-        description: `${executedOrder.type} ${executedOrder.quantity} ${executedOrder.ticker} at ₹${ltp.toFixed(2)}. Est. charges: ₹${totalCharges.toFixed(2)}`,
+        description: `${orderToExecute.type} ${orderToExecute.quantity} ${orderToExecute.ticker} at ${marketDetails[market].symbol}${ltp.toFixed(2)}. Est. charges: ${marketDetails[market].symbol}${totalCharges.toFixed(2)}`,
     });
     return true;
 
@@ -251,25 +209,6 @@ export default function BottomNav() {
         router.replace('/');
         return;
       }
-      
-      if (loggedIn && session.user) {
-        fetchAndCacheNews(session.user.id);
-        
-        const notifFlag = `postLoginFundNotification_${session.user.id}_${market}`;
-        if (localStorage.getItem(notifFlag) === 'true') {
-            localStorage.removeItem(notifFlag);
-            
-            setTimeout(() => {
-                const fundsKey = `funds_${session.user!.id}_${market}`;
-                const fundsData = localStorage.getItem(fundsKey);
-                if (!fundsData) {
-                    const initialFunds = { balance: 500000, canAddMore: true, lastProfitCheck: 0 };
-                    localStorage.setItem(fundsKey, JSON.stringify(initialFunds));
-                }
-                showDelayedFundNotification();
-            }, 60000);
-        }
-      }
     };
 
     checkSession();
@@ -279,12 +218,15 @@ export default function BottomNav() {
         
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
-        
-        const ordersKey = `orders_${user.id}_${market}`;
-        const currentOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-        const pendingOrders = currentOrders.filter((o: Order) => o.status === 'Pending');
 
-        if (pendingOrders.length === 0) return;
+        const { data: pendingOrders, error: ordersError } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('market', market)
+          .eq('status', 'Pending');
+
+        if (ordersError || !pendingOrders || pendingOrders.length === 0) return;
 
         const marketIsOpen = isMarketOpen();
         if (!marketIsOpen) return;
@@ -326,7 +268,7 @@ export default function BottomNav() {
                 }
                 
                 if (shouldExecute) {
-                    executeOrder(order, executionPrice, user.id);
+                    await executeOrder(order, executionPrice, user.id);
                 }
             }
         } catch (error) {
@@ -347,18 +289,9 @@ export default function BottomNav() {
             router.replace('/watchlist');
         }
     });
-    
-    const newsInterval = setInterval(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user) {
-                fetchAndCacheNews(session.user.id);
-            }
-        });
-    }, 60 * 60 * 1000); // 1 hour
 
     return () => {
       authListener.subscription.unsubscribe();
-      clearInterval(newsInterval);
       clearInterval(orderInterval);
     };
 
@@ -393,7 +326,3 @@ export default function BottomNav() {
     </nav>
   );
 }
-
-    
-
-    

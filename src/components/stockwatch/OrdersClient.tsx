@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -20,6 +19,13 @@ import { supabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { useMarket } from "@/hooks/use-market";
 
+const isToday = (someDate: Date) => {
+    const today = new Date();
+    return someDate.getDate() === today.getDate() &&
+           someDate.getMonth() === today.getMonth() &&
+           someDate.getFullYear() === today.getFullYear();
+};
+
 export function OrdersClient() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Pending");
@@ -35,7 +41,6 @@ export function OrdersClient() {
     const checkUser = async () => {
       const { data: { user: sbUser } } = await supabase.auth.getUser();
       if (!sbUser) {
-        // This navigation now happens safely after the initial render.
         router.replace('/');
       } else {
         setUser(sbUser);
@@ -44,39 +49,48 @@ export function OrdersClient() {
     checkUser();
   }, [router]);
 
-  // Effect to load orders and handle storage events once the user is confirmed
+  // Effect to load orders from Supabase once the user is confirmed
   useEffect(() => {
     if (!user) return;
 
-    const ordersKey = `orders_${user.id}_${market}`;
-    const fetchOrders = () => {
-      try {
-        const storedOrders = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-        setOrders(storedOrders);
-      } catch {
+    const fetchOrders = async () => {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('market', market)
+        .order('executed_at', { ascending: false, nullsFirst: true });
+
+      if (error) {
+        toast({ variant: 'destructive', title: 'Error fetching orders', description: error.message });
         setOrders([]);
+      } else {
+        setOrders(data || []);
       }
       setIsLoading(false);
     };
 
     fetchOrders();
 
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === ordersKey) {
-        fetchOrders();
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    
+    const channel = supabase.channel(`orders_channel_${user.id}`)
+      .on<Order>(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+           fetchOrders(); // Refetch all orders on any change
+        }
+      )
+      .subscribe();
+
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      supabase.removeChannel(channel);
     };
-  }, [user, market]);
+  }, [user, market, toast]);
 
 
   // Effect to update live prices for pending orders
   useEffect(() => {
-    // Don't run interval until user and initial orders are loaded
     if (!user || isLoading) return;
 
     const updateLivePrices = async () => {
@@ -90,7 +104,6 @@ export function OrdersClient() {
             const stockData = await getStockData(tickers);
             const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
             
-            // This functional update ensures we are working with the latest state
             setOrders(prevOrders => {
                 let wasUpdated = false;
                 const newOrders = prevOrders.map(order => {
@@ -103,7 +116,6 @@ export function OrdersClient() {
                     }
                     return order;
                 });
-                // Only return a new array if something actually changed
                 return wasUpdated ? newOrders : prevOrders;
             });
         } catch (error) {
@@ -129,15 +141,15 @@ export function OrdersClient() {
   }
   
   const pendingOrders = orders.filter(o => o.status === 'Pending');
-  const executedOrders = orders.filter(o => o.status === 'Executed');
-  const cancelledOrders = orders.filter(o => o.status === 'Cancelled');
+  const todaysExecutedOrders = orders.filter(o => o.status === 'Executed' && o.executedAt && isToday(new Date(o.executedAt)));
+  const todaysCancelledOrders = orders.filter(o => o.status === 'Cancelled' && o.timestamp && isToday(new Date())); // A simple approximation for cancelled today
 
   const filteredPendingOrders = pendingOrders.filter(
     (order) => order.ticker.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
-  const filteredExecutedOrders = executedOrders.filter(o => o.ticker.toLowerCase().includes(searchTerm.toLowerCase()));
-  const filteredCancelledOrders = cancelledOrders.filter(o => o.ticker.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredExecutedOrders = todaysExecutedOrders.filter(o => o.ticker.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredCancelledOrders = todaysCancelledOrders.filter(o => o.ticker.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-6">
@@ -151,7 +163,7 @@ export function OrdersClient() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="Pending">Pending ({pendingOrders.length})</TabsTrigger>
-          <TabsTrigger value="Executed">Executed ({executedOrders.length})</TabsTrigger>
+          <TabsTrigger value="Executed">Executed ({todaysExecutedOrders.length})</TabsTrigger>
           <TabsTrigger value="GTT">GTT</TabsTrigger>
         </TabsList>
         <div className="relative my-4">
@@ -225,7 +237,7 @@ export function OrdersClient() {
                   </div>
                 </CardContent>
               </Card>
-            )) : <div className="text-center py-10"><p className="text-muted-foreground">You have no executed orders.</p></div>}
+            )) : <div className="text-center py-10"><p className="text-muted-foreground">You have no executed orders today.</p></div>}
           </div>
           {filteredCancelledOrders.length > 0 && <h3 className="text-lg font-semibold my-4">Cancelled</h3>}
            <div className="space-y-4">
@@ -264,5 +276,3 @@ export function OrdersClient() {
     </div>
   );
 }
-
-    
