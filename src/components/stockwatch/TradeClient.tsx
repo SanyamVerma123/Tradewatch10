@@ -185,7 +185,7 @@ type StopLossTargetMode = 'PERCENT' | 'PRICE';
 export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const router = useRouter();
   const { toast } = useToast();
-  const { market, currencySymbol } = useMarket();
+  const { market, currency, currencySymbol } = useMarket();
   const [stock, setStock] = useState<Stock | null>(null);
   const [availableFunds, setAvailableFunds] = useState(0);
   const [user, setUser] = useState<User | null>(null);
@@ -221,8 +221,24 @@ useEffect(() => {
         }
         setUser(sbUser);
         
-        const { data: fundsData } = await supabase.from('funds').select('balance').eq('user_id', sbUser.id).eq('market', market).single();
-        setAvailableFunds(fundsData?.balance || 0);
+        const { data: fundsData, error: fundsError } = await supabase.from('funds').select('balance').eq('user_id', sbUser.id).eq('market', market).single();
+        if (fundsData) {
+            setAvailableFunds(fundsData.balance);
+        } else if (!fundsError) {
+             const getInitialBalance = () => {
+                switch (currency) {
+                    case 'INR': return 500000;
+                    case 'USD': return 5000;
+                    case 'GBP': return 4000;
+                    case 'EUR': return 4500;
+                    case 'JPY': return 750000;
+                    case 'HKD': return 40000;
+                    case 'CAD': return 6500;
+                    default: return 5000;
+                }
+             };
+            setAvailableFunds(getInitialBalance());
+        }
         
         const { data: allOrders, error: ordersError } = await supabase.from('orders').select('*').eq('user_id', sbUser.id).eq('market', market);
         
@@ -475,7 +491,7 @@ useEffect(() => {
         const { error } = await supabase.from('orders').update(newOrder).eq('id', newOrder.id);
         dbError = error;
     } else {
-        const { error } = await supabase.from('orders').insert(newOrder);
+        const { error } = await supabase.from('orders').insert({ ...newOrder, user_id: user.id });
         dbError = error;
     }
 
@@ -757,5 +773,7 @@ useEffect(() => {
     </div>
   );
 }
+
+    
 
     
