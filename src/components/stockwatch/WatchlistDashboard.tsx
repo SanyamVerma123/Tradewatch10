@@ -64,7 +64,7 @@ export function WatchlistDashboard() {
   const [activeTab, setActiveTab] = useState("");
   const { toast } = useToast();
   const [stocks, setStocks] = useState<Record<string, Stock>>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isWatchlistLoading, setIsWatchlistLoading] = useState(true);
   const [newWatchlistName, setNewWatchlistName] = useState("");
   const [user, setUser] = useState<User | null>(null);
@@ -94,7 +94,7 @@ export function WatchlistDashboard() {
   }, [activeTab, watchlists]);
 
   const fetchWatchlists = useCallback(async (sbUser: User) => {
-    setIsLoading(true);
+    setIsInitialLoading(true);
     const { data, error } = await supabase
       .from('watchlists')
       .select('id, name, stock_tickers')
@@ -117,10 +117,9 @@ export function WatchlistDashboard() {
           setActiveTab(formattedWatchlists[0].id);
         }
       } else {
-        // No watchlists found for this user/market, create default ones
         const defaultWatchlists = initialWatchlistsData[market].map((wl, index) => ({
             ...wl,
-            id: `default-${market}-${index}` // temporary id
+            id: `default-${market}-${index}`
         }));
 
         const watchlistsToInsert = defaultWatchlists.map(wl => ({
@@ -145,7 +144,7 @@ export function WatchlistDashboard() {
         }
       }
     }
-    setIsLoading(false);
+    setIsInitialLoading(false);
   }, [market, toast, activeTab]);
 
   useEffect(() => {
@@ -163,41 +162,20 @@ export function WatchlistDashboard() {
 
   const loadNewsFromCache = useCallback(async () => {
     if (!user) return;
-    const newsCacheKey = `newsCache_${user.id}_${market}`;
-    const cachedNewsData = localStorage.getItem(newsCacheKey);
-    
-    if (cachedNewsData) {
-        const { date, articles } = JSON.parse(cachedNewsData);
-        const today = new Date().toDateString();
-        if (date !== today) {
-            localStorage.removeItem(newsCacheKey);
-            setNews([]);
-        } else {
-            setNews(articles);
-        }
-    } else {
+    try {
         const liveNews = await getMarketNews(market);
         if(liveNews) {
             setNews(liveNews as NewsArticle[]);
-            const newsCache = { date: new Date().toDateString(), articles: liveNews };
-            localStorage.setItem(newsCacheKey, JSON.stringify(newsCache));
         } else {
             setNews([]);
         }
+    } catch (e) {
+        setNews([]);
     }
   }, [user, market]);
 
   useEffect(() => {
     loadNewsFromCache();
-
-    const handleStorageChange = (event: StorageEvent) => {
-        if (user && event.key === `newsCache_${user.id}_${market}`) {
-            loadNewsFromCache();
-        }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
   }, [user, loadNewsFromCache, market]);
 
   const fetchStockData = useCallback(async (isSilent = false) => {
@@ -225,7 +203,7 @@ export function WatchlistDashboard() {
   }, [activeWatchlist, toast]);
 
   useEffect(() => {
-    setSwipedTicker(null); // Reset swipe on tab change
+    setSwipedTicker(null);
     if (activeWatchlist) {
       fetchStockData();
       const interval = setInterval(() => fetchStockData(true), 5000);
@@ -328,7 +306,7 @@ export function WatchlistDashboard() {
 
   const handleStockClick = (stock: Stock) => {
     if (swipedTicker === stock.ticker) {
-        setSwipedTicker(null); // Close if swiped
+        setSwipedTicker(null); 
         return;
     }
     setSelectedStock(stock);
@@ -393,9 +371,9 @@ export function WatchlistDashboard() {
       const touchCurrentX = e.targetTouches[0].clientX;
       const deltaX = touchStartX.current - touchCurrentX;
 
-      if (deltaX > 50) { // Swiping left
+      if (deltaX > 50) { 
           setSwipedTicker(ticker);
-      } else if (deltaX < -50) { // Swiping right
+      } else if (deltaX < -50) { 
           setSwipedTicker(null);
       }
   };
@@ -422,7 +400,7 @@ export function WatchlistDashboard() {
   
   const currentStockForSheet = selectedStock ? stocks[selectedStock.ticker] : null;
 
-  if (isLoading || !user) {
+  if (isInitialLoading || !user) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
@@ -689,5 +667,3 @@ export function WatchlistDashboard() {
     </div>
   );
 }
-
-    
