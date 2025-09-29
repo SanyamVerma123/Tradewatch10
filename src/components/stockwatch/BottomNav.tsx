@@ -131,15 +131,6 @@ export default function BottomNav() {
     
     const product = orderToExecute.product || 'CNC';
     const finalTradeValue = orderToExecute.quantity * ltp;
-    const isIntradayTrade = product === 'MIS';
-    
-    // Check for sufficient funds only on BUY orders *before* execution.
-    // Margin/funds are already blocked when the order is placed, but this is a final server-side check.
-    if (orderToExecute.type === 'BUY') {
-        const requiredMargin = isIntradayTrade ? finalTradeValue / 5 : finalTradeValue;
-        // Check against currently blocked funds to ensure no over-spending
-        // This check is implicitly handled by the initial fund blocking. If we are here, funds were sufficient.
-    }
     
     let realizedPnl: number | undefined = undefined;
     if (orderToExecute.type === 'SELL' || (orderToExecute.type === 'BUY' && orderToExecute.is_exit)) {
@@ -170,18 +161,15 @@ export default function BottomNav() {
         }
     }
 
-    const sttRate = (product === 'CNC' && orderToExecute.type === 'SELL') ? 0.001 : (isIntradayTrade && orderToExecute.type === 'SELL' ? 0.00025 : 0);
-    const stt = finalTradeValue * sttRate;
     const brokerage = Math.min(20, finalTradeValue * 0.0003);
     const otherCharges = finalTradeValue * 0.000345;
-    const totalCharges = brokerage + stt + otherCharges;
+    const totalCharges = brokerage + otherCharges;
     
     const executedOrderUpdate: Partial<Order> = { status: 'Executed', filled_quantity: orderToExecute.quantity, ltp, executed_at: new Date().toISOString(), realized_pnl: realizedPnl };
 
     const { error: updateError } = await supabase.from('orders').update(executedOrderUpdate).eq('id', orderToExecute.id);
     if (updateError) return false;
     
-    // **FUND CALCULATION FIX**
     // For a BUY order, the funds were already blocked. No further action needed on funds.
     // For a SELL order, credit the funds to the user's account.
     if (orderToExecute.type === 'SELL') {
