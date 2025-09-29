@@ -229,7 +229,7 @@ export function OrdersClient() {
                     </div>
                      <div className="text-right">
                         <p className="font-semibold">Avg. {currencySymbol}{order.ltp.toFixed(2)}</p>
-                        {order.realized_pnl !== undefined && (
+                        {order.realized_pnl != null && (
                             <p className={cn("text-xs font-semibold", order.realized_pnl >= 0 ? "text-positive" : "text-destructive")}>
                                 P&L: {order.realized_pnl >= 0 ? '+' : ''}{currencySymbol}{order.realized_pnl.toFixed(2)}
                             </p>
