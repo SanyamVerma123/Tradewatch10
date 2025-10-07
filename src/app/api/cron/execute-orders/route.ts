@@ -11,22 +11,19 @@ function isMarketOpen(market: keyof typeof marketDetails): boolean {
     const marketInfo = marketDetails[market];
     if (!marketInfo) return false;
 
-    // Get the current time in UTC
+    // Create a date object representing the current time in UTC
     const now = new Date();
-    const utcHours = now.getUTCHours();
-    const utcMinutes = now.getUTCMinutes();
-    const utcDay = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
-
-    // Calculate the market's local time
-    const marketTotalMinutes = utcHours * 60 + utcMinutes + marketInfo.offset * 60;
-    const marketDay = new Date(now.getTime() + marketInfo.offset * 3600 * 1000).getUTCDay();
+    
+    // Calculate the current time in the market's timezone
+    const marketTime = new Date(now.getTime() + marketInfo.offset * 3600 * 1000);
+    
+    const marketDay = marketTime.getUTCDay(); // 0 = Sunday, 6 = Saturday
+    const marketHour = marketTime.getUTCHours() + marketTime.getUTCMinutes() / 60;
 
     // Check for weekend closure
     if (marketInfo.weekend_closure.includes(marketDay)) {
         return false;
     }
-
-    const marketHour = (marketTotalMinutes / 60 + 24) % 24;
 
     // Check if within trading hours
     return marketHour >= marketInfo.open && marketHour < marketInfo.close;
