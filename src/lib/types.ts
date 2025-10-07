@@ -61,6 +61,7 @@ export interface Order {
   stop_loss_value?: number;
   target_value?: number;
   market?: string;
+  parent_order_id?: string;
 }
 
 export interface Holding {

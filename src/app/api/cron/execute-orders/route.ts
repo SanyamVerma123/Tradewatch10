@@ -6,7 +6,6 @@ import type { Order } from '@/lib/types';
 import { marketDetails } from '@/hooks/use-market';
 
 // Initialize Supabase Admin Client
-// Note: Use environment variables for sensitive data in production
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -31,6 +30,90 @@ function isMarketOpen(market: keyof typeof marketDetails) {
     if(hour > 1 && hour < 22) return true;
 
     return false;
+}
+
+async function createBracketOrders(executedOrder: Order) {
+    const exitOrderType = executedOrder.type === 'BUY' ? 'SELL' : 'BUY';
+    const newOrders: Partial<Order>[] = [];
+
+    // Create Stop Loss Order
+    if (executedOrder.stop_loss_value) {
+        newOrders.push({
+            user_id: executedOrder.user_id,
+            parent_order_id: executedOrder.id,
+            type: exitOrderType,
+            ticker: executedOrder.ticker,
+            quantity: executedOrder.quantity,
+            status: 'Pending',
+            order_method: 'SL-M', // Stop Loss Market
+            trigger_price: executedOrder.stop_loss_value,
+            product: executedOrder.product,
+            is_amo: false,
+            timestamp: new Date().toISOString(),
+            market: executedOrder.market,
+            exchange: executedOrder.exchange,
+            order_type: `${executedOrder.product} SL-M`,
+            limit_price: 0, // Market order, no limit price
+            filled_quantity: 0,
+            ltp: executedOrder.ltp,
+        });
+    }
+
+    // Create Target Order
+    if (executedOrder.target_value) {
+        newOrders.push({
+            user_id: executedOrder.user_id,
+            parent_order_id: executedOrder.id,
+            type: exitOrderType,
+            ticker: executedOrder.ticker,
+            quantity: executedOrder.quantity,
+            status: 'Pending',
+            order_method: 'LIMIT',
+            limit_price: executedOrder.target_value,
+            product: executedOrder.product,
+            is_amo: false,
+            timestamp: new Date().toISOString(),
+            market: executedOrder.market,
+            exchange: executedOrder.exchange,
+            order_type: `${executedOrder.product} LIMIT`,
+            filled_quantity: 0,
+            ltp: executedOrder.ltp,
+        });
+    }
+    
+    if (newOrders.length > 0) {
+        const { error } = await supabaseAdmin.from('orders').insert(newOrders);
+        if (error) {
+            console.error('Error creating bracket orders:', error);
+            // This is a non-critical error, the main order is already executed.
+            // We should log this for monitoring.
+        }
+    }
+}
+
+async function cancelPeerBracketOrders(executedOrder: Order) {
+    if (!executedOrder.parent_order_id) return;
+
+    // Find other pending bracket orders with the same parent_order_id and cancel them
+    const { data: peerOrders, error } = await supabaseAdmin
+        .from('orders')
+        .select('id')
+        .eq('parent_order_id', executedOrder.parent_order_id)
+        .eq('status', 'Pending')
+        .neq('id', executedOrder.id); // Exclude the order that was just executed
+
+    if (error) {
+        console.error('Error fetching peer bracket orders to cancel:', error);
+        return;
+    }
+
+    if (peerOrders && peerOrders.length > 0) {
+        const idsToCancel = peerOrders.map(o => o.id);
+        await supabaseAdmin
+            .from('orders')
+            .update({ status: 'Cancelled' })
+            .in('id', idsToCancel);
+    }
 }
 
 async function executeOrder(orderToExecute: Order, ltp: number, userId: string) {
@@ -90,6 +173,8 @@ async function executeOrder(orderToExecute: Order, ltp: number, userId: string) 
     if (updateError) {
         return { success: false, reason: `Failed to update order: ${updateError.message}`};
     }
+
+    const executedOrderWithUpdate = { ...orderToExecute, ...executedOrderUpdate };
     
     // For a BUY order, the funds were already blocked. No further action needed.
     // For a SELL order, credit the funds to the user's account.
@@ -104,6 +189,15 @@ async function executeOrder(orderToExecute: Order, ltp: number, userId: string) 
       await supabaseAdmin.from('funds').update({ balance: newBalance }).eq('user_id', userId).eq('market', market);
     }
     
+    // After execution, check if we need to create bracket orders (SL/Target)
+    // Only do this for the primary entry order, not for the SL/Target orders themselves.
+    if (!executedOrderWithUpdate.parent_order_id) {
+        await createBracketOrders(executedOrderWithUpdate);
+    } else {
+        // If this was a SL/Target order that got executed, cancel its peer.
+        await cancelPeerBracketOrders(executedOrderWithUpdate);
+    }
+
     return { success: true, reason: `Executed ${orderToExecute.type} ${orderToExecute.quantity} ${orderToExecute.ticker}` };
 }
 

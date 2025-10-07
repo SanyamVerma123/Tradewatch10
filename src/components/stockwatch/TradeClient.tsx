@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -366,7 +367,7 @@ useEffect(() => {
   const tradeValue = (parseInt(quantity) || 0) * getExecutionPrice();
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
   const brokerage = Math.min(20, tradeValue * 0.0003);
-  const totalCharges = brokerage + (tradeValue * 0.000345); // Simplified charges
+  const totalCharges = brokerage;
   const requiredFunds = approxMargin + totalCharges;
   
   const holdingForTicker = useMemo(() => {
@@ -420,7 +421,7 @@ useEffect(() => {
     if (isEditing && orderToEdit?.type === 'BUY') {
         const oldOrderValue = orderToEdit.quantity * (orderToEdit.order_method === "MARKET" ? orderToEdit.ltp : orderToEdit.limit_price);
         const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
-        const oldCharges = Math.min(20, oldOrderValue * 0.0003) + (oldOrderValue * 0.000345);
+        const oldCharges = Math.min(20, oldOrderValue * 0.0003);
         const fundsToRefund = oldMargin + oldCharges;
         currentBalance += fundsToRefund;
         await supabase.from('funds').update({ balance: currentBalance }).eq('user_id', user.id).eq('market', market);
@@ -433,7 +434,7 @@ useEffect(() => {
        if (isEditing && orderToEdit?.type === 'BUY') {
             const oldOrderValue = orderToEdit.quantity * (orderToEdit.order_method === "MARKET" ? orderToEdit.ltp : orderToEdit.limit_price);
             const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
-            const oldCharges = Math.min(20, oldOrderValue * 0.0003) + (oldOrderValue * 0.000345);
+            const oldCharges = Math.min(20, oldOrderValue * 0.0003);
             const fundsToRefund = oldMargin + oldCharges;
             const newBalance = currentBalance - fundsToRefund;
             await supabase.from('funds').update({ balance: newBalance }).eq('user_id', user.id).eq('market', market);
@@ -462,6 +463,17 @@ useEffect(() => {
     }
 
     const finalProduct = isNewShortSell ? 'MIS' : (isExiting && positionForTicker && positionForTicker.quantity < 0 ? 'MIS' : product);
+    
+    let sl, target;
+    const execPrice = getExecutionPrice();
+
+    if(useStopLoss && stopLossValue) {
+        sl = stopLossMode === 'PRICE' ? parseFloat(stopLossValue) : execPrice * (1 - parseFloat(stopLossValue)/100);
+    }
+
+    if(useTarget && targetValue) {
+        target = targetMode === 'PRICE' ? parseFloat(targetValue) : execPrice * (1 + parseFloat(targetValue)/100);
+    }
 
     const newOrder = {
         id: isEditing ? orderToEdit.id : `order-${Date.now()}`,
@@ -484,6 +496,8 @@ useEffect(() => {
         is_exit: isExiting,
         is_adding: isAdding,
         market: market,
+        stop_loss_value: sl,
+        target_value: target
     };
     
     let dbError;
@@ -527,7 +541,7 @@ useEffect(() => {
              const orderValue = orderToEdit.quantity * (orderToEdit.order_method === "MARKET" ? orderToEdit.ltp : orderToEdit.limit_price);
              const orderMargin = orderToEdit.product === 'MIS' ? orderValue / 5 : orderValue;
              const orderBrokerage = Math.min(20, orderValue * 0.0003);
-             const orderCharges = orderBrokerage + (orderValue * 0.000345);
+             const orderCharges = orderBrokerage;
              const fundsToRefund = orderMargin + orderCharges;
 
             const newBalance = currentBalance + fundsToRefund;
