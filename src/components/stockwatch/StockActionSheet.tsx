@@ -27,7 +27,7 @@ interface StockActionSheetProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onTrade?: (action: 'add' | 'exit' | 'buy' | 'sell', ticker: string) => void;
-  tradeButtonVariant?: 'long-short' | 'buy-sell' | 'add-exit';
+  tradeButtonVariant?: 'long-short' | 'add-exit';
 }
 
 type Timeframe = '5d' | '1mo' | '3mo' | '1y' | 'max';
@@ -114,7 +114,7 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
             case 'add-exit':
                 return { primary: 'Add', secondary: 'Exit' };
             case 'long-short':
-                return { primary: 'Long', secondary: 'Short' };
+                return { primary: 'Buy', secondary: 'Short' };
             default: // 'buy-sell' and fallback
                 return { primary: 'Buy', secondary: 'Sell' };
         }
@@ -124,7 +124,7 @@ export function StockActionSheet({ stock, isOpen, onOpenChange, onTrade, tradeBu
     
     // Determine the action based on the button variant
     const primaryAction = tradeButtonVariant === 'add-exit' ? 'add' : 'buy';
-    const secondaryAction = tradeButtonVariant === 'add-exit' ? 'exit' : 'sell';
+    const secondaryAction = tradeButtonVariant === 'long-short' ? 'sell' : 'exit';
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>

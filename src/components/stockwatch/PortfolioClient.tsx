@@ -97,11 +97,10 @@ export function PortfolioClient() {
         for (const order of executedOrders) {
             const ltp = newStocksMap[order.ticker]?.price || order.ltp;
             const product = order.product || 'CNC';
-            const isCnc = product === 'CNC';
-            const isMis = product === 'MIS';
             const tradeValue = order.ltp * order.quantity;
 
-            if (isCnc) {
+            // CNC Holdings Logic
+            if (product === 'CNC') {
                 let h = holdingsMap[order.ticker];
                 if (!h) {
                     h = { id: `holding-${order.ticker}`, ticker: order.ticker, quantity: 0, avgPrice: 0, investedValue: 0, ltp: 0, pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0 };
@@ -117,7 +116,8 @@ export function PortfolioClient() {
                 }
             }
             
-            if (isMis || (isCnc && isToday(new Date(order.executed_at!)))) {
+            // Intraday (MIS) Positions & NEW CNC Buy Positions for the day
+            if (product === 'MIS' || (product === 'CNC' && order.type === 'BUY' && isToday(new Date(order.executed_at!)))) {
                 const compositeKey = `${order.ticker}-${product}`;
                 let p = positionMap[compositeKey];
                 if (!p) {
@@ -128,11 +128,9 @@ export function PortfolioClient() {
                 p.ltp = ltp;
                 const tradeSign = order.type === 'BUY' ? 1 : -1;
                 
-                // For positions, quantity represents the net open quantity for the day
                 const currentNetQuantity = p.quantity;
                 p.quantity += order.quantity * tradeSign;
 
-                // Update average price only when increasing position size or opening new one
                  if (Math.sign(tradeSign) === Math.sign(currentNetQuantity) || currentNetQuantity === 0) {
                     const newTotalValue = (p.avgPrice * Math.abs(currentNetQuantity)) + tradeValue;
                     p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
