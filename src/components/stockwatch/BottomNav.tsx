@@ -55,17 +55,63 @@ export default function BottomNav() {
   const [isLoading, setIsLoading] = useState(true);
   const { market } = useMarket();
 
+  // Bracket order logic: Create SL/Target orders after a parent order executes
+  const createBracketOrders = async (parentOrder: Order) => {
+      if (!parentOrder.id || (!parentOrder.stop_loss_value && !parentOrder.target_value)) return;
+      
+      const exitOrderType = parentOrder.type === 'BUY' ? 'SELL' : 'BUY';
+      const newOrders: Omit<Order, 'id' | 'user_id'>[] = [];
+
+      if (parentOrder.stop_loss_value) {
+          newOrders.push({
+              parent_order_id: parentOrder.id, type: exitOrderType,
+              ticker: parentOrder.ticker, quantity: parentOrder.quantity, status: 'Pending',
+              order_method: 'SL-M', trigger_price: parentOrder.stop_loss_value, product: parentOrder.product,
+              is_amo: false, timestamp: new Date().toISOString(), market: parentOrder.market,
+              exchange: parentOrder.exchange, order_type: `${parentOrder.product} SL-M`,
+              limit_price: 0, filled_quantity: 0, ltp: parentOrder.ltp,
+          });
+      }
+
+      if (parentOrder.target_value) {
+          newOrders.push({
+              parent_order_id: parentOrder.id, type: exitOrderType,
+              ticker: parentOrder.ticker, quantity: parentOrder.quantity, status: 'Pending',
+              order_method: 'LIMIT', limit_price: parentOrder.target_value, product: parentOrder.product,
+              is_amo: false, timestamp: new Date().toISOString(), market: parentOrder.market,
+              exchange: parentOrder.exchange, order_type: `${parentOrder.product} LIMIT`,
+              filled_quantity: 0, ltp: parentOrder.ltp,
+          });
+      }
+      
+      if (newOrders.length > 0) {
+          const ordersToInsert = newOrders.map(o => ({...o, user_id: parentOrder.user_id}));
+          await supabase.from('orders').insert(ordersToInsert);
+      }
+  };
+
+  // Bracket order logic: Cancel the other leg when one leg executes
+  const cancelPeerBracketOrders = async (childOrder: Order) => {
+      if (!childOrder.parent_order_id) return;
+      const { data: peerOrders } = await supabase.from('orders').select('id')
+          .eq('parent_order_id', childOrder.parent_order_id).eq('status', 'Pending').neq('id', childOrder.id);
+
+      if (peerOrders && peerOrders.length > 0) {
+          const idsToCancel = peerOrders.map(o => o.id);
+          await supabase.from('orders').update({ status: 'Cancelled' }).in('id', idsToCancel);
+      }
+  };
 
   const executeOrder = useCallback(async (orderToExecute: Order, ltp: number) => {
-    const market = orderToExecute.market as keyof typeof marketDetails;
     let realizedPnl: number | undefined = undefined;
 
+    // Correct P&L Calculation for SELL orders
     if (orderToExecute.type === 'SELL') {
         const { data: purchaseOrders, error: poError } = await supabase
             .from('orders')
-            .select('quantity, limit_price')
+            .select('quantity, ltp')
             .eq('user_id', orderToExecute.user_id)
-            .eq('market', market)
+            .eq('market', orderToExecute.market)
             .eq('ticker', orderToExecute.ticker)
             .eq('product', orderToExecute.product)
             .eq('type', 'BUY')
@@ -77,7 +123,7 @@ export default function BottomNav() {
             let totalCost = 0;
             let totalQuantity = 0;
             for (const po of purchaseOrders) {
-                totalCost += po.quantity * po.limit_price;
+                totalCost += po.quantity * po.ltp; // Use executed price (ltp at time of execution)
                 totalQuantity += po.quantity;
             }
             const avgBuyPrice = totalQuantity > 0 ? totalCost / totalQuantity : 0;
@@ -90,76 +136,37 @@ export default function BottomNav() {
     const executedOrderUpdate: Partial<Order> = { 
         status: 'Executed', 
         filled_quantity: orderToExecute.quantity, 
-        ltp, 
+        ltp, // This is the execution price
         executed_at: new Date().toISOString(),
         realized_pnl: realizedPnl 
     };
-
+    
+    // Use the ID from the order object to update
     const { error: updateError } = await supabase.from('orders').update(executedOrderUpdate).eq('id', orderToExecute.id);
     if (updateError) {
         console.error("Failed to update order:", updateError);
+        // TODO: Handle fund reversal if update fails
         return;
     }
-
-    const executedOrderWithUpdate = { ...orderToExecute, ...executedOrderUpdate };
     
+    // After successful update, handle funds
     if (orderToExecute.type === 'SELL') {
       const { data: fundsData, error: fundsError } = await supabase.from('funds').select('balance').eq('user_id', orderToExecute.user_id).eq('market', market).single();
       if (!fundsError && fundsData) {
         const finalTradeValue = orderToExecute.quantity * ltp;
+        // Correctly update balance: add proceeds for sell, PNL is for record-keeping
         let newBalance = fundsData.balance + finalTradeValue;
         await supabase.from('funds').update({ balance: newBalance }).eq('user_id', orderToExecute.user_id).eq('market', market);
       }
     }
 
-    // Bracket order logic
-    const createBracketOrders = async (parentOrder: Order) => {
-        if (!parentOrder.id) return;
-        const exitOrderType = parentOrder.type === 'BUY' ? 'SELL' : 'BUY';
-        const newOrders: Omit<Order, 'id'>[] = [];
-
-        if (parentOrder.stop_loss_value) {
-            newOrders.push({
-                user_id: parentOrder.user_id, parent_order_id: parentOrder.id, type: exitOrderType,
-                ticker: parentOrder.ticker, quantity: parentOrder.quantity, status: 'Pending',
-                order_method: 'SL-M', trigger_price: parentOrder.stop_loss_value, product: parentOrder.product,
-                is_amo: false, timestamp: new Date().toISOString(), market: parentOrder.market,
-                exchange: parentOrder.exchange, order_type: `${parentOrder.product} SL-M`,
-                limit_price: 0, filled_quantity: 0, ltp: parentOrder.ltp,
-            });
-        }
-
-        if (parentOrder.target_value) {
-            newOrders.push({
-                user_id: parentOrder.user_id, parent_order_id: parentOrder.id, type: exitOrderType,
-                ticker: parentOrder.ticker, quantity: parentOrder.quantity, status: 'Pending',
-                order_method: 'LIMIT', limit_price: parentOrder.target_value, product: parentOrder.product,
-                is_amo: false, timestamp: new Date().toISOString(), market: parentOrder.market,
-                exchange: parentOrder.exchange, order_type: `${parentOrder.product} LIMIT`,
-                filled_quantity: 0, ltp: parentOrder.ltp,
-            });
-        }
-        
-        if (newOrders.length > 0) {
-            await supabase.from('orders').insert(newOrders);
-        }
-    };
+    const executedOrderWithUpdate = { ...orderToExecute, ...executedOrderUpdate };
     
-    const cancelPeerBracketOrders = async (childOrder: Order) => {
-        if (!childOrder.parent_order_id) return;
-        const { data: peerOrders } = await supabase.from('orders').select('id')
-            .eq('parent_order_id', childOrder.parent_order_id).eq('status', 'Pending').neq('id', childOrder.id);
-
-        if (peerOrders && peerOrders.length > 0) {
-            const idsToCancel = peerOrders.map(o => o.id);
-            await supabase.from('orders').update({ status: 'Cancelled' }).in('id', idsToCancel);
-        }
-    };
-
-    if (!executedOrderWithUpdate.parent_order_id) {
-        await createBracketOrders(executedOrderWithUpdate);
-    } else {
-        await cancelPeerBracketOrders(executedOrderWithUpdate);
+    // Reliably call bracket order logic
+    if (!executedOrderWithUpdate.parent_order_id) { // This is a parent order
+        await createBracketOrders(executedOrderWithUpdate as Order);
+    } else { // This is a child (SL/Target) order
+        await cancelPeerBracketOrders(executedOrderWithUpdate as Order);
     }
   }, [supabase, market, toast]);
 
@@ -185,34 +192,52 @@ export default function BottomNav() {
             let shouldExecute = false;
             let executionPrice = ltp;
 
-            if (order.is_amo && marketIsOpen) { shouldExecute = true; }
-            else if (!order.is_amo && marketIsOpen) {
-                if (order.order_method === "MARKET") { shouldExecute = true; }
-                else if (order.order_method === "LIMIT") {
-                    if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
+            if (order.is_amo && marketIsOpen) {
+                shouldExecute = true; // Execute AMO as market order when market opens
+            } else if (!order.is_amo && marketIsOpen) {
+                // Rigorous checks for different order methods
+                switch(order.order_method) {
+                    case "MARKET":
                         shouldExecute = true;
-                        executionPrice = order.limit_price;
-                    }
-                } 
-                else if (order.order_method === "SL") {
-                    if (order.trigger_price && ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price))) {
+                        break;
+                    case "LIMIT":
                         if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
-                           shouldExecute = true;
-                           executionPrice = order.limit_price;
+                            shouldExecute = true;
+                            executionPrice = order.limit_price; // Execute at limit price
                         }
-                    }
-                } 
-                else if (order.order_method === "SL-M") {
-                    if (order.trigger_price && ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price))) {
-                        shouldExecute = true;
-                    }
+                        break;
+                    case "SL":
+                        if (order.trigger_price) {
+                            if ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price)) {
+                                // Trigger is hit, now it's a limit order. Check limit price.
+                                if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
+                                    shouldExecute = true;
+                                    executionPrice = order.limit_price;
+                                }
+                            }
+                        }
+                        break;
+                    case "SL-M":
+                        if (order.trigger_price) {
+                            if ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price)) {
+                                // Trigger is hit, becomes a market order.
+                                shouldExecute = true;
+                            }
+                        }
+                        break;
                 }
             }
             
             if (shouldExecute) {
-                const { data: finalCheckOrder } = await supabase.from('orders').select('*').eq('id', order.id).single();
+                // Final check to prevent double execution in a race condition
+                const { data: finalCheckOrder, error: checkError } = await supabase.from('orders').select('status').eq('id', order.id).single();
+                if (checkError) {
+                    console.error("Failed to re-check order status before execution:", checkError);
+                    continue;
+                }
                 if (finalCheckOrder && finalCheckOrder.status === 'Pending') {
-                   await executeOrder(finalCheckOrder, executionPrice);
+                   // Pass the full order object to executeOrder
+                   await executeOrder(order, executionPrice);
                 }
             }
         }
@@ -239,6 +264,9 @@ export default function BottomNav() {
       }
       
       if (sbUser) {
+        // Initial check
+        checkPendingOrders(sbUser);
+        // Set up interval
         orderInterval = setInterval(() => {
           checkPendingOrders(sbUser);
         }, 5000);
@@ -253,6 +281,7 @@ export default function BottomNav() {
         
         clearInterval(orderInterval);
         if (sbUser) {
+            checkPendingOrders(sbUser); // Immediate check on auth change
             orderInterval = setInterval(() => {
                 checkPendingOrders(sbUser);
             }, 5000);
