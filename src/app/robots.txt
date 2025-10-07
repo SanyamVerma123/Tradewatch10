@@ -1,0 +1,5 @@
+# See https://www.robotstxt.org/robotstxt.html for syntax and directives
+
+User-agent: *
+Allow: /
+Sitemap: https://tradewatch10.vercel.app/sitemap.xml
