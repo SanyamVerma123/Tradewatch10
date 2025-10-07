@@ -96,7 +96,7 @@ export default function BottomNav() {
       if (fundsData && fundsData.balance !== undefined) {
         const tradeValue = orderToCancel.quantity * (orderToCancel.order_method === "MARKET" ? orderToCancel.ltp : orderToCancel.limit_price);
         const brokerage = Math.min(20, tradeValue * 0.0003);
-        const totalCharges = brokerage + (tradeValue * 0.000345);
+        const totalCharges = brokerage; // Removed taxes
         const approxMargin = orderToCancel.product === 'MIS' ? tradeValue / 5 : tradeValue;
         const blockedFunds = approxMargin + totalCharges;
         const newBalance = fundsData.balance + blockedFunds;
@@ -133,37 +133,55 @@ export default function BottomNav() {
     const finalTradeValue = orderToExecute.quantity * ltp;
     
     let realizedPnl: number | undefined = undefined;
-    if (orderToExecute.type === 'SELL' || (orderToExecute.type === 'BUY' && orderToExecute.is_exit)) {
-        const { data: executedOrdersToday, error: ordersError } = await supabase
-          .from('orders')
-          .select('ticker, product, type, quantity, ltp')
-          .eq('user_id', userId)
-          .eq('market', market)
-          .eq('status', 'Executed');
+    
+    const { data: executedOrders, error: ordersError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('market', market)
+        .eq('status', 'Executed')
+        .order('executed_at', { ascending: true });
 
-        if (executedOrdersToday) {
-            const positionMap: { [compositeKey: string]: Position } = {};
-            for (const order of executedOrdersToday) {
-              const pKey = `${order.ticker}-${order.product}`;
-              let p = positionMap[pKey] || { id: `p-${pKey}`, ticker: order.ticker, product: order.product!, quantity: 0, avgPrice: 0, ltp: 0, pnl: 0, investedValue: 0, dayChange: 0, dayChangePercent: 0, pnlPercent: 0, type: 'BUY' };
-              const tradeSign = order.type === 'BUY' ? 1 : -1;
-              const newTotalValue = (p.avgPrice * Math.abs(p.quantity)) + (order.ltp * order.quantity);
-              p.quantity += order.quantity * tradeSign;
-              p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
-              positionMap[pKey] = p;
-            }
-            const posKey = `${orderToExecute.ticker}-${orderToExecute.product}`;
-            const relevantPosition = positionMap[posKey];
-            const avgPrice = relevantPosition ? relevantPosition.avgPrice : 0;
-            if (avgPrice > 0) {
-                realizedPnl = (orderToExecute.type === 'SELL' ? (ltp - avgPrice) : (avgPrice - ltp)) * orderToExecute.quantity;
+    if (ordersError) {
+        console.error("Could not fetch orders for PNL calc", ordersError);
+    } else {
+        const allRelevantOrders = [...executedOrders, { ...orderToExecute, ltp: ltp, executed_at: new Date().toISOString() }];
+
+        const holdingsMap: { [ticker: string]: { quantity: number; avgPrice: number; } } = {};
+        const positionsMap: { [compositeKey: string]: { quantity: number; avgPrice: number; } } = {};
+        
+        for (const order of allRelevantOrders) {
+            const compositeKey = `${order.ticker}-${order.product}`;
+            const tradeValue = order.ltp * order.quantity;
+            const tradeSign = order.type === 'BUY' ? 1 : -1;
+
+            if (order.product === 'MIS') {
+                let p = positionsMap[compositeKey] || { quantity: 0, avgPrice: 0 };
+                const currentQty = p.quantity;
+                if (Math.sign(tradeSign) !== Math.sign(currentQty) && currentQty !== 0) { // Reducing position
+                    const qtyToSquareOff = Math.min(Math.abs(currentQty), order.quantity);
+                    realizedPnl = (realizedPnl || 0) + ((ltp - p.avgPrice) * qtyToSquareOff * -Math.sign(currentQty));
+                }
+                const newTotalValue = (p.avgPrice * Math.abs(currentQty)) + tradeValue;
+                p.quantity += order.quantity * tradeSign;
+                p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
+                positionsMap[compositeKey] = p;
+            } else { // CNC
+                 let h = holdingsMap[order.ticker] || { quantity: 0, avgPrice: 0 };
+                 if(order.type === 'SELL') {
+                    realizedPnl = (realizedPnl || 0) + ((ltp - h.avgPrice) * order.quantity);
+                 }
+                 const newTotalValue = (h.avgPrice * h.quantity) + (order.ltp * order.quantity * tradeSign);
+                 h.quantity += order.quantity * tradeSign;
+                 h.avgPrice = h.quantity > 0 ? newTotalValue / h.quantity : 0;
+                 holdingsMap[order.ticker] = h;
             }
         }
     }
 
+
     const brokerage = Math.min(20, finalTradeValue * 0.0003);
-    const otherCharges = finalTradeValue * 0.000345;
-    const totalCharges = brokerage + otherCharges;
+    const totalCharges = brokerage; // Removed other charges/taxes
     
     const executedOrderUpdate: Partial<Order> = { status: 'Executed', filled_quantity: orderToExecute.quantity, ltp, executed_at: new Date().toISOString(), realized_pnl: realizedPnl };
 
@@ -220,7 +238,7 @@ export default function BottomNav() {
         if (ordersError || !pendingOrders || pendingOrders.length === 0) return;
 
         const marketIsOpen = isMarketOpen();
-        if (!marketIsOpen) return;
+        if (!marketIsOpen && !pendingOrders.some(o => o.is_amo)) return;
         
         try {
             const tickers = [...new Set(pendingOrders.map((o: Order) => o.ticker))];
@@ -236,25 +254,27 @@ export default function BottomNav() {
                 let shouldExecute = false;
                 let executionPrice = ltp;
 
-                if (order.is_amo) { shouldExecute = true; } 
-                else if (order.order_method === "MARKET") { shouldExecute = true; }
-                else if (order.order_method === "LIMIT") {
-                    if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
-                        shouldExecute = true;
-                        executionPrice = order.limit_price;
-                    }
-                } 
-                else if (order.order_method === "SL") {
-                    if (order.trigger_price && ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price))) {
+                if (order.is_amo && marketIsOpen) { shouldExecute = true; } 
+                else if (!order.is_amo && marketIsOpen) {
+                    if (order.order_method === "MARKET") { shouldExecute = true; }
+                    else if (order.order_method === "LIMIT") {
                         if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
-                           shouldExecute = true;
-                           executionPrice = order.limit_price;
+                            shouldExecute = true;
+                            executionPrice = order.limit_price;
                         }
-                    }
-                } 
-                else if (order.order_method === "SL-M") {
-                    if (order.trigger_price && ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price))) {
-                        shouldExecute = true;
+                    } 
+                    else if (order.order_method === "SL") {
+                        if (order.trigger_price && ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price))) {
+                            if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
+                               shouldExecute = true;
+                               executionPrice = order.limit_price;
+                            }
+                        }
+                    } 
+                    else if (order.order_method === "SL-M") {
+                        if (order.trigger_price && ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price))) {
+                            shouldExecute = true;
+                        }
                     }
                 }
                 
@@ -317,5 +337,3 @@ export default function BottomNav() {
     </nav>
   );
 }
-
-    

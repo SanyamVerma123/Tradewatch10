@@ -53,7 +53,7 @@ export function FundsClient() {
       setUser(sbUser);
 
       try {
-        // Fetch Funds
+        // Fetch Funds for the current market
         const { data: fundsData, error: fundsError } = await supabase
           .from('funds')
           .select('balance')
@@ -72,11 +72,12 @@ export function FundsClient() {
             throw fundsError;
         }
         
-        // Fetch Orders to calculate realized P&L
+        // Fetch Orders to calculate realized P&L for the current market
         const { data: ordersData, error: ordersError } = await supabase
           .from('orders')
           .select('ticker, realized_pnl, executed_at')
           .eq('user_id', sbUser.id)
+          .eq('market', market) // Filter by market
           .eq('status', 'Executed')
           .not('realized_pnl', 'is', null)
           .order('executed_at', { ascending: false });
@@ -172,63 +173,67 @@ export function FundsClient() {
         </CardContent>
       </Card>
       
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Realized Profit &amp; Loss</CardTitle>
-          <CardDescription>
-            Your cumulative profit and loss from all closed trades.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-           <div className="grid grid-cols-2 gap-4 text-center">
-                <div>
-                    <div className="text-sm font-medium text-positive">Total Profit</div>
-                    <div className="text-lg font-bold text-positive">
-                        {currencySymbol}{(realizedPnlData?.totalProfit || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </div>
-                </div>
-                 <div>
-                    <div className="text-sm font-medium text-destructive">Total Loss</div>
-                    <div className="text-lg font-bold text-destructive">
-                        {currencySymbol}{(realizedPnlData?.totalLoss || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </div>
-                </div>
-           </div>
-           
-           <Separator />
-           
-           <div>
-             <h4 className="font-semibold mb-2 text-center text-base">Transactions</h4>
-             <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
-                {realizedPnlData && realizedPnlData.transactions.length > 0 ? (
-                    realizedPnlData.transactions.map((tx, index) => (
-                        <div key={index} className="flex justify-between items-center text-xs p-2 bg-muted/50 rounded-md">
-                            <div>
-                                <p className="font-semibold text-sm">{tx.ticker}</p>
-                                <p className="text-muted-foreground">{tx.date}</p>
+      <div className="mt-6">
+        <Card className="mb-4">
+            <CardHeader>
+                <CardTitle>Realized Profit &amp; Loss</CardTitle>
+                <CardDescription>
+                    Your cumulative profit and loss from all closed trades in the {marketDetails[market].name} market.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-center">
+                        <div>
+                            <div className="text-sm font-medium text-positive">Total Profit</div>
+                            <div className="text-lg font-bold text-positive">
+                                {currencySymbol}{(realizedPnlData?.totalProfit || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </div>
-                            <p className={cn("font-semibold text-sm", tx.pnl >= 0 ? "text-positive" : "text-destructive")}>
+                        </div>
+                        <div>
+                            <div className="text-sm font-medium text-destructive">Total Loss</div>
+                            <div className="text-lg font-bold text-destructive">
+                                {currencySymbol}{(realizedPnlData?.totalLoss || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </div>
+                        </div>
+                </div>
+            </CardContent>
+             {realizedPnlData && (
+                <CardFooter className="p-3 bg-card-foreground/5 mt-4">
+                    <div className="flex justify-between items-center w-full">
+                        <span className="font-bold text-base">Net Realized P&L</span>
+                        <span className={cn("font-bold text-lg", realizedPnlData.netPnl >= 0 ? 'text-positive' : 'text-destructive')}>
+                            {realizedPnlData.netPnl >= 0 ? '+' : ''}{currencySymbol}{realizedPnlData.netPnl.toLocaleString('en-IN', {minimumFractionDigits: 2, minimumFractionDigits: 2})}
+                        </span>
+                    </div>
+                </CardFooter>
+            )}
+        </Card>
+        
+        <Separator className="my-6" />
+
+        <div>
+            <h4 className="font-semibold mb-4 text-center text-lg">Transactions</h4>
+            <div className="space-y-2">
+            {realizedPnlData && realizedPnlData.transactions.length > 0 ? (
+                realizedPnlData.transactions.map((tx, index) => (
+                    <Card key={index}>
+                        <CardContent className="flex justify-between items-center text-sm p-3">
+                             <div>
+                                <p className="font-semibold text-base">{tx.ticker}</p>
+                                <p className="text-muted-foreground text-xs">{tx.date}</p>
+                            </div>
+                            <p className={cn("font-semibold text-base", tx.pnl >= 0 ? "text-positive" : "text-destructive")}>
                                 {tx.pnl >= 0 ? '+' : ''}{currencySymbol}{tx.pnl.toFixed(2)}
                             </p>
-                        </div>
-                    ))
-                ) : (
-                    <p className="text-center text-muted-foreground text-xs py-4">No closed trades yet.</p>
-                )}
-             </div>
-           </div>
-        </CardContent>
-        {realizedPnlData && (
-            <CardFooter className="p-3 bg-card-foreground/5 mt-4">
-                 <div className="flex justify-between items-center w-full">
-                    <span className="font-bold text-base">Net Realized P&L</span>
-                    <span className={cn("font-bold text-lg", realizedPnlData.netPnl >= 0 ? 'text-positive' : 'text-destructive')}>
-                        {realizedPnlData.netPnl >= 0 ? '+' : ''}{currencySymbol}{realizedPnlData.netPnl.toLocaleString('en-IN', {minimumFractionDigits: 2, minimumFractionDigits: 2})}
-                    </span>
-                </div>
-            </CardFooter>
-        )}
-      </Card>
+                        </CardContent>
+                    </Card>
+                ))
+            ) : (
+                <p className="text-center text-muted-foreground text-sm py-4">No closed trades yet for this market.</p>
+            )}
+            </div>
+        </div>
+      </div>
 
     </div>
   );
