@@ -7,28 +7,31 @@ import { marketDetails } from '@/hooks/use-market';
 import { v4 as uuidv4 } from 'uuid';
 
 // Heuristic to check if a specific market is open
-function isMarketOpen(market: keyof typeof marketDetails) {
+function isMarketOpen(market: keyof typeof marketDetails): boolean {
     const marketInfo = marketDetails[market];
-    if (!marketInfo || !marketInfo.weekend_closure) return false;
+    if (!marketInfo) return false;
 
+    // Get the current time in UTC
     const now = new Date();
-    // Use UTC hours and offset for reliability
-    const utcHour = now.getUTCHours() + (now.getUTCMinutes() / 60);
+    const utcHours = now.getUTCHours();
+    const utcMinutes = now.getUTCMinutes();
+    const utcDay = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
 
-    // Convert market open/close times to UTC
-    // The calculation needs to handle day rollovers correctly. A simple subtraction is not enough.
-    // For example, US market (offset -4) opens at 9.5. In UTC, this is 9.5 - (-4) = 13.5 UTC.
-    // German market (offset +2) opens at 9. In UTC, this is 9 - 2 = 7 UTC.
-    const localHour = (utcHour + marketInfo.offset + 24) % 24;
+    // Calculate the market's local time
+    const marketTotalMinutes = utcHours * 60 + utcMinutes + marketInfo.offset * 60;
+    const marketDay = new Date(now.getTime() + marketInfo.offset * 3600 * 1000).getUTCDay();
 
-    const dayOfWeek = new Date(now.getTime() + marketInfo.offset * 3600 * 1000).getUTCDay();
-
-    if (marketInfo.weekend_closure.includes(dayOfWeek)) {
+    // Check for weekend closure
+    if (marketInfo.weekend_closure.includes(marketDay)) {
         return false;
     }
-    
-    return localHour >= marketInfo.open && localHour < marketInfo.close;
+
+    const marketHour = (marketTotalMinutes / 60 + 24) % 24;
+
+    // Check if within trading hours
+    return marketHour >= marketInfo.open && marketHour < marketInfo.close;
 }
+
 
 // --- Bracket Order Logic ---
 
