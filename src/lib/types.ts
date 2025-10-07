@@ -62,6 +62,7 @@ export interface Order {
   target_value?: number;
   market?: string;
   parent_order_id?: string;
+  user_id: string;
 }
 
 export interface Holding {
@@ -99,7 +100,7 @@ export interface Portfolio {
     totalPnl: number;
     totalPnlPercent: number;
     dayPnl: number;
-d ayPnlPercent: number;
+    dayPnlPercent: number;
     holdings: Holding[];
     positions: Position[];
 }

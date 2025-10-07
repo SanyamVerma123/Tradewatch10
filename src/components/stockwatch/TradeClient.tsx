@@ -36,6 +36,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useMarket, marketDetails } from "@/hooks/use-market";
+import { v4 as uuidv4 } from 'uuid';
+
 
 const PageLoader = () => (
     <div className="flex justify-center items-center h-screen">
@@ -482,8 +484,8 @@ useEffect(() => {
         target = targetMode === 'PRICE' ? parseFloat(targetValue) : execPrice * (orderType === 'BUY' ? (1 + parseFloat(targetValue)/100) : (1 - parseFloat(targetValue)/100));
     }
 
-    const newOrder = {
-        id: isEditing ? orderToEdit.id : undefined, // Let Supabase generate ID for new orders
+    const newOrder: Omit<Order, 'id'> & { id?: string } = {
+        id: isEditing ? orderToEdit.id : uuidv4(),
         user_id: user.id,
         type: orderType,
         ticker,
@@ -509,10 +511,12 @@ useEffect(() => {
     
     let dbError;
     if (isEditing) {
-        const { error } = await supabase.from('orders').update(newOrder).eq('id', orderToEdit.id);
+        // We can't update the primary key, so we need to omit 'id' from the update payload.
+        const { id, ...updateData } = newOrder;
+        const { error } = await supabase.from('orders').update(updateData).eq('id', orderToEdit.id);
         dbError = error;
     } else {
-        const { error } = await supabase.from('orders').insert(newOrder);
+        const { error } = await supabase.from('orders').insert(newOrder as Order);
         dbError = error;
     }
 
