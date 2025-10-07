@@ -27,6 +27,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { supabase } from "@/lib/supabase/client";
+import { PushNotificationManager } from "./PushNotificationManager";
 
 export function SettingsClient() {
   const router = useRouter();
@@ -118,7 +119,7 @@ export function SettingsClient() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* PushNotificationManager component would go here in a real app */}
+          <PushNotificationManager />
           <div className="flex items-center justify-between rounded-lg border p-4">
             <Label htmlFor="email-notifications" className="flex flex-col space-y-1">
                 <span>Email Notifications</span>

@@ -18,4 +18,3 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const messaging = (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_VAPID_KEY) ? getMessaging(app) : null;
 
 export { app, messaging };
-
