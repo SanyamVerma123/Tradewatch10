@@ -6,7 +6,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyD1I8B1nLBQFYqFGiXX5H6BkJbpgE9u-GE",
   authDomain: "stockwatch-618pq.firebaseapp.com",
   projectId: "stockwatch-618pq",
-  storageBucket: "stockwatch-618pq.appspot.com",
+  storageBucket: "stockwatch-618pq.firebasestorage.app",
   messagingSenderId: "359207349124",
   appId: "1:359207349124:web:cb2cd702cffff150fa0bd1"
 };
