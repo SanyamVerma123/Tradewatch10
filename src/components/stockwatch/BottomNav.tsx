@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, ShoppingBag, PieChart, User } from "lucide-react";
+import { LayoutGrid, ShoppingBag, PieChart, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -21,16 +21,31 @@ function isMarketOpen(market: keyof typeof marketDetails) {
     if (!marketInfo) return false;
 
     const now = new Date();
-    const dayOfWeek = now.getUTCDay();
-    
-    // Most markets are closed on weekends.
-    if (dayOfWeek === 0 || dayOfWeek === 6) return false; 
-    
-    const localTime = new Date(now.getTime() + (marketInfo.offset * 60 * 60 * 1000));
-    const localHour = localTime.getUTCHours() + localTime.getUTCMinutes() / 60;
+    // Use UTC hours and offset for reliability
+    const utcHour = now.getUTCHours() + (now.getUTCMinutes() / 60);
 
-    return localHour >= marketInfo.open && localHour <= marketInfo.close;
+    // Convert market open/close times to UTC
+    const marketOpenUTC = marketInfo.open - marketInfo.offset;
+    const marketCloseUTC = marketInfo.close - marketInfo.offset;
+
+    const dayOfWeek = now.getUTCDay(); // Sunday = 0, Saturday = 6
+
+    // Most markets are closed on weekends
+    if (marketInfo.weekend_closure.includes(dayOfWeek)) {
+        return false;
+    }
+    
+    // Check if current UTC hour is within the market's UTC operating hours
+    return utcHour >= marketOpenUTC && utcHour < marketCloseUTC;
 }
+
+const navItems = [
+  { href: "/watchlist", label: "Watchlist", icon: LayoutGrid },
+  { href: "/orders", label: "Orders", icon: ShoppingBag },
+  { href: "/portfolio", label: "Portfolio", icon: PieChart },
+  { href: "/profile", label: "Account", icon: UserIcon },
+];
+
 
 export default function BottomNav() {
   const pathname = usePathname();
