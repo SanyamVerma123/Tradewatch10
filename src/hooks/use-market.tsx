@@ -6,14 +6,14 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 export type Market = 'IN' | 'US' | 'GB' | 'DE' | 'JP' | 'HK' | 'CA';
 export type Currency = 'INR' | 'USD' | 'GBP' | 'EUR' | 'JPY' | 'HKD' | 'CAD';
 
-export const marketDetails: Record<Market, { name: string, currency: Currency, symbol: string, initialBalance: number }> = {
-  IN: { name: 'India', currency: 'INR', symbol: '₹', initialBalance: 500000 },
-  US: { name: 'United States', currency: 'USD', symbol: '$', initialBalance: 5000 },
-  GB: { name: 'United Kingdom', currency: 'GBP', symbol: '£', initialBalance: 4000 },
-  DE: { name: 'Germany', currency: 'EUR', symbol: '€', initialBalance: 4500 },
-  JP: { name: 'Japan', currency: 'JPY', symbol: '¥', initialBalance: 750000 },
-  HK: { name: 'Hong Kong', currency: 'HKD', symbol: 'HK$', initialBalance: 40000 },
-  CA: { name: 'Canada', currency: 'CAD', symbol: '$', initialBalance: 6500 },
+export const marketDetails: Record<Market, { name: string, currency: Currency, symbol: string, initialBalance: number, open: number, close: number, offset: number, weekend_closure: number[] }> = {
+  IN: { name: 'India', currency: 'INR', symbol: '₹', initialBalance: 500000, open: 9.25, close: 15.5, offset: 5.5, weekend_closure: [0, 6] },
+  US: { name: 'United States', currency: 'USD', symbol: '$', initialBalance: 5000, open: 9.5, close: 16, offset: -4, weekend_closure: [0, 6] },
+  GB: { name: 'United Kingdom', currency: 'GBP', symbol: '£', initialBalance: 4000, open: 8, close: 16.5, offset: 1, weekend_closure: [0, 6] },
+  DE: { name: 'Germany', currency: 'EUR', symbol: '€', initialBalance: 4500, open: 9, close: 17.5, offset: 2, weekend_closure: [0, 6] },
+  JP: { name: 'Japan', currency: 'JPY', symbol: '¥', initialBalance: 750000, open: 9, close: 15, offset: 9, weekend_closure: [0, 6] },
+  HK: { name: 'Hong Kong', currency: 'HKD', symbol: 'HK$', initialBalance: 40000, open: 9.5, close: 16, offset: 8, weekend_closure: [0, 6] },
+  CA: { name: 'Canada', currency: 'CAD', symbol: '$', initialBalance: 6500, open: 9.5, close: 16, offset: -4, weekend_closure: [0, 6] },
 };
 
 interface MarketContextType {
