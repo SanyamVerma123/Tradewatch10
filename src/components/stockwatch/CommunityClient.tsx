@@ -52,18 +52,8 @@ export function CommunityClient() {
   const [dbError, setDbError] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const fetchUserAndMessages = async () => {
-      setIsLoading(true);
-      setDbError(null);
-      const { data: { user: sbUser }, error: userError } = await supabase.auth.getUser();
-      if (userError || !sbUser) {
-        router.replace('/');
-        return;
-      }
-      setUser(sbUser);
-
-      const { data: initialMessages, error: messagesError } = await supabase
+  const fetchMessages = async () => {
+      const { data: currentMessages, error: messagesError } = await supabase
         .from('messages')
         .select('*')
         .order('created_at', { ascending: true });
@@ -80,29 +70,45 @@ export function CommunityClient() {
         }
         console.error("Error fetching messages:", messagesError);
       } else {
-        if (initialMessages && initialMessages.length > 0) {
-            setMessages(initialMessages);
-        } else {
+        if (currentMessages && currentMessages.length > 0) {
+            setMessages(currentMessages);
+        } else if (messages.length === 0) { // Only set default if no messages are loaded at all
             setMessages([defaultWelcomeMessage]);
         }
       }
       setIsLoading(false);
+  }
+
+  useEffect(() => {
+    const fetchUserAndInitialMessages = async () => {
+      setIsLoading(true);
+      setDbError(null);
+      const { data: { user: sbUser }, error: userError } = await supabase.auth.getUser();
+      if (userError || !sbUser) {
+        router.replace('/');
+        return;
+      }
+      setUser(sbUser);
+      await fetchMessages();
     };
 
-    fetchUserAndMessages();
+    fetchUserAndInitialMessages();
+    
+    // Set up polling
+    const interval = setInterval(fetchMessages, 5000);
 
+    // Set up realtime subscription
     const channel = supabase
       .channel('public:messages')
       .on<Message>(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
+            // Instantly add new message from subscription
             setMessages((prevMessages) => {
-                // If the only message is the default one, replace it
                 if (prevMessages.length === 1 && prevMessages[0].id === 0) {
                     return [payload.new];
                 }
-                // Prevent adding duplicates from optimistic update
                 if (prevMessages.some(m => m.id === payload.new.id)) {
                     return prevMessages;
                 }
@@ -123,8 +129,10 @@ export function CommunityClient() {
       });
 
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, toast]);
 
 
@@ -140,7 +148,6 @@ export function CommunityClient() {
 
     setIsSending(true);
     
-    // Optimistic update
     const optimisticMessage: Message = {
         id: Date.now(), // Temporary ID
         created_at: new Date().toISOString(),
@@ -167,7 +174,6 @@ export function CommunityClient() {
       } else {
         toast({ variant: 'destructive', title: 'Could not send message', description: error.message });
       }
-      // Revert optimistic update on error
       setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
     }
     
