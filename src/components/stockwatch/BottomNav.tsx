@@ -58,7 +58,6 @@ export default function BottomNav() {
 
   const executeOrder = useCallback(async (orderToExecute: Order, ltp: number) => {
     const market = orderToExecute.market as keyof typeof marketDetails;
-    const finalTradeValue = orderToExecute.quantity * ltp;
     let realizedPnl: number | undefined = undefined;
 
     if (orderToExecute.type === 'SELL') {
@@ -107,6 +106,7 @@ export default function BottomNav() {
     if (orderToExecute.type === 'SELL') {
       const { data: fundsData, error: fundsError } = await supabase.from('funds').select('balance').eq('user_id', orderToExecute.user_id).eq('market', market).single();
       if (!fundsError && fundsData) {
+        const finalTradeValue = orderToExecute.quantity * ltp;
         let newBalance = fundsData.balance + finalTradeValue;
         await supabase.from('funds').update({ balance: newBalance }).eq('user_id', orderToExecute.user_id).eq('market', market);
       }
