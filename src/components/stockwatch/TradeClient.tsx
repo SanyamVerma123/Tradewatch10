@@ -199,11 +199,11 @@ export function TradeClient({ ticker, orderToEdit }: TradeClientProps) {
   const [product, setProduct] = useState(orderToEdit?.product || "CNC");
   const [orderMethod, setOrderMethod] = useState(orderToEdit?.order_method || "LIMIT");
   
-  const [useStopLoss, setUseStopLoss] = useState(false);
+  const [useStopLoss, setUseStopLoss] = useState(!!orderToEdit?.stop_loss_value);
   const [stopLossValue, setStopLossValue] = useState("");
   const [stopLossMode, setStopLossMode] = useState<StopLossTargetMode>('PERCENT');
 
-  const [useTarget, setUseTarget] = useState(false);
+  const [useTarget, setUseTarget] = useState(!!orderToEdit?.target_value);
   const [targetValue, setTargetValue] = useState("");
   const [targetMode, setTargetMode] = useState<StopLossTargetMode>('PRICE');
   
@@ -299,6 +299,17 @@ useEffect(() => {
                     setTriggerPrice(orderToEdit.trigger_price?.toString() || "");
                     setOrderMethod(orderToEdit.order_method?.toUpperCase() || "LIMIT");
 
+                    if(orderToEdit.stop_loss_value) {
+                        setUseStopLoss(true);
+                        setStopLossMode('PRICE');
+                        setStopLossValue(orderToEdit.stop_loss_value.toString());
+                    }
+                     if(orderToEdit.target_value) {
+                        setUseTarget(true);
+                        setTargetMode('PRICE');
+                        setTargetValue(orderToEdit.target_value.toString());
+                    }
+
                     // If this is a new short sell from watchlist, enforce MIS
                     if (orderToEdit.is_short_sell && !orderToEdit.is_exit) {
                         setProduct('MIS');
@@ -368,7 +379,7 @@ useEffect(() => {
   const approxMargin = product === 'MIS' ? tradeValue / 5 : tradeValue;
   const brokerage = Math.min(20, tradeValue * 0.0003);
   const totalCharges = brokerage;
-  const requiredFunds = approxMargin + totalCharges;
+  const requiredFunds = approxMargin;
   
   const holdingForTicker = useMemo(() => {
     return portfolio.holdings.find(h => h.ticker === ticker);
@@ -421,9 +432,7 @@ useEffect(() => {
     if (isEditing && orderToEdit?.type === 'BUY') {
         const oldOrderValue = orderToEdit.quantity * (orderToEdit.order_method === "MARKET" ? orderToEdit.ltp : orderToEdit.limit_price);
         const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
-        const oldCharges = Math.min(20, oldOrderValue * 0.0003);
-        const fundsToRefund = oldMargin + oldCharges;
-        currentBalance += fundsToRefund;
+        currentBalance += oldMargin;
         await supabase.from('funds').update({ balance: currentBalance }).eq('user_id', user.id).eq('market', market);
         setAvailableFunds(currentBalance);
     }
@@ -434,9 +443,7 @@ useEffect(() => {
        if (isEditing && orderToEdit?.type === 'BUY') {
             const oldOrderValue = orderToEdit.quantity * (orderToEdit.order_method === "MARKET" ? orderToEdit.ltp : orderToEdit.limit_price);
             const oldMargin = orderToEdit.product === 'MIS' ? oldOrderValue / 5 : oldOrderValue;
-            const oldCharges = Math.min(20, oldOrderValue * 0.0003);
-            const fundsToRefund = oldMargin + oldCharges;
-            const newBalance = currentBalance - fundsToRefund;
+            const newBalance = currentBalance - oldMargin;
             await supabase.from('funds').update({ balance: newBalance }).eq('user_id', user.id).eq('market', market);
             setAvailableFunds(newBalance);
        }
@@ -468,15 +475,15 @@ useEffect(() => {
     const execPrice = getExecutionPrice();
 
     if(useStopLoss && stopLossValue) {
-        sl = stopLossMode === 'PRICE' ? parseFloat(stopLossValue) : execPrice * (1 - parseFloat(stopLossValue)/100);
+        sl = stopLossMode === 'PRICE' ? parseFloat(stopLossValue) : execPrice * (orderType === 'BUY' ? (1 - parseFloat(stopLossValue)/100) : (1 + parseFloat(stopLossValue)/100));
     }
 
     if(useTarget && targetValue) {
-        target = targetMode === 'PRICE' ? parseFloat(targetValue) : execPrice * (1 + parseFloat(targetValue)/100);
+        target = targetMode === 'PRICE' ? parseFloat(targetValue) : execPrice * (orderType === 'BUY' ? (1 + parseFloat(targetValue)/100) : (1 - parseFloat(targetValue)/100));
     }
 
     const newOrder = {
-        id: isEditing ? orderToEdit.id : `order-${Date.now()}`,
+        id: isEditing ? orderToEdit.id : undefined, // Let Supabase generate ID for new orders
         user_id: user.id,
         type: orderType,
         ticker,
@@ -502,12 +509,10 @@ useEffect(() => {
     
     let dbError;
     if (isEditing) {
-        // Supabase update doesn't allow changing the primary key 'id'
-        const { id, user_id, ...updateData } = newOrder;
-        const { error } = await supabase.from('orders').update(updateData).eq('id', newOrder.id);
+        const { error } = await supabase.from('orders').update(newOrder).eq('id', orderToEdit.id);
         dbError = error;
     } else {
-        const { error } = await supabase.from('orders').insert({ ...newOrder });
+        const { error } = await supabase.from('orders').insert(newOrder);
         dbError = error;
     }
 
@@ -540,9 +545,7 @@ useEffect(() => {
         if (currentBalance !== undefined) {
              const orderValue = orderToEdit.quantity * (orderToEdit.order_method === "MARKET" ? orderToEdit.ltp : orderToEdit.limit_price);
              const orderMargin = orderToEdit.product === 'MIS' ? orderValue / 5 : orderValue;
-             const orderBrokerage = Math.min(20, orderValue * 0.0003);
-             const orderCharges = orderBrokerage;
-             const fundsToRefund = orderMargin + orderCharges;
+             const fundsToRefund = orderMargin;
 
             const newBalance = currentBalance + fundsToRefund;
             await supabase.from('funds').update({ balance: newBalance }).eq('user_id', user.id).eq('market', market);

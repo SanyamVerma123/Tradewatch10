@@ -133,24 +133,15 @@ async function cancelPeerBracketOrders(executedOrder: Order) {
 }
 
 async function executeOrder(orderToExecute: Order, ltp: number, userId: string) {
-    const { data: currentOrder, error: fetchError } = await supabaseAdmin
-      .from('orders')
-      .select('*')
-      .eq('id', orderToExecute.id)
-      .single();
-
-    if (fetchError || !currentOrder || currentOrder.status !== 'Pending') {
-      return { success: false, reason: 'Order already processed or not found' };
-    }
     
-    const market = currentOrder.market as keyof typeof marketDetails;
+    const market = orderToExecute.market as keyof typeof marketDetails;
 
     const finalTradeValue = orderToExecute.quantity * ltp;
-    const brokerage = Math.min(20, finalTradeValue * 0.0003); // Simplified brokerage
 
     let realizedPnl: number | undefined = undefined;
 
     if (orderToExecute.type === 'SELL') {
+        // Fetch purchase orders to calculate average buy price for PNL
         const { data: purchaseOrders, error: poError } = await supabaseAdmin
             .from('orders')
             .select('quantity, limit_price')
@@ -200,7 +191,7 @@ async function executeOrder(orderToExecute: Order, ltp: number, userId: string) 
         return { success: false, reason: 'Failed to fetch user funds for sell transaction.' };
       }
       
-      let newBalance = fundsData.balance + (finalTradeValue - brokerage);
+      let newBalance = fundsData.balance + finalTradeValue;
       newBalance = Math.max(0, newBalance); // Ensure balance doesn't go negative
       await supabaseAdmin.from('funds').update({ balance: newBalance }).eq('user_id', userId).eq('market', market);
     }
