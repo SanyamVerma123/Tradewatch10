@@ -13,7 +13,7 @@ import { MarketProvider } from "@/hooks/use-market";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "StockWatch",
+  title: "StockImage",
   description: "A modern stock trading application.",
 };
 

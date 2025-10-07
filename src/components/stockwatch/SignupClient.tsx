@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState } from "react";
@@ -15,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { watchlists as initialWatchlistsData } from "@/lib/data";
 import { supabase } from "@/lib/supabase/client";
 import { marketDetails } from "@/hooks/use-market";
 
@@ -57,57 +57,12 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
     } 
     
     if (user) {
-      try {
-        // Initialize data for all markets in Supabase
-        for (const market of Object.keys(marketDetails)) {
-          const marketKey = market as keyof typeof initialWatchlistsData;
-          
-          // 1. Insert default watchlists
-          const watchlistsToInsert = initialWatchlistsData[marketKey].map(wl => ({
-            user_id: user.id,
-            market: marketKey,
-            name: wl.name,
-            stock_tickers: wl.stocks,
-          }));
-
-          const { error: watchlistError } = await supabase.from('watchlists').insert(watchlistsToInsert);
-          if (watchlistError) throw watchlistError;
-
-          // 2. Initialize funds for the market
-          const getInitialBalance = () => {
-            switch (marketDetails[marketKey].currency) {
-                case 'INR': return 500000;
-                case 'USD': return 5000;
-                case 'GBP': return 4000;
-                case 'EUR': return 4500;
-                case 'JPY': return 750000;
-                case 'HKD': return 40000;
-                case 'CAD': return 6500;
-                default: return 5000;
-            }
-          };
-          const { error: fundsError } = await supabase.from('funds').insert({
-            user_id: user.id,
-            market: marketKey,
-            balance: getInitialBalance(),
-          });
-          if (fundsError) throw fundsError;
-        }
-
-        toast({
-          title: "Account Created!",
-          description: "Please check your email to confirm your account and sign in.",
-          duration: 10000,
-        });
-        onToggleView(); // Switch back to login view
-
-      } catch (dbError: any) {
-         toast({
-          variant: "destructive",
-          title: "Initialization Failed",
-          description: "Your account was created, but we couldn't set up your initial data. Please try logging in. " + dbError.message,
-        });
-      }
+      toast({
+        title: "Account Created!",
+        description: "Please check your email to confirm your account and sign in.",
+        duration: 10000,
+      });
+      onToggleView(); // Switch back to login view
     }
     setIsLoading(false);
   };
@@ -117,7 +72,7 @@ export function SignupClient({ onToggleView }: SignupClientProps) {
       <CardHeader className="text-center">
         <CardTitle className="text-2xl font-bold">Create an Account</CardTitle>
         <CardDescription>
-          Get started with StockWatch today.
+          Get started with StockImage today.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSignup}>
