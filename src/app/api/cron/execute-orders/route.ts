@@ -35,7 +35,7 @@ const createBracketOrders = async (parentOrder: Order) => {
     if (!parentOrder.id || (!parentOrder.stop_loss_value && !parentOrder.target_value)) return;
     
     const exitOrderType = parentOrder.type === 'BUY' ? 'SELL' : 'BUY';
-    const newOrders: Omit<Order, 'id'>[] = [];
+    const newOrders: Omit<Order, 'id' | 'user_id'>[] = [];
 
     if (parentOrder.stop_loss_value) {
         newOrders.push({
@@ -61,7 +61,7 @@ const createBracketOrders = async (parentOrder: Order) => {
     
     if (newOrders.length > 0) {
         // Add UUIDs to new orders
-        const ordersToInsert = newOrders.map(o => ({...o, id: uuidv4()}));
+        const ordersToInsert = newOrders.map(o => ({...o, id: uuidv4(), user_id: parentOrder.user_id}));
         await supabase.from('orders').insert(ordersToInsert);
     }
 };
@@ -180,7 +180,7 @@ export async function GET() {
             
             const marketIsOpen = isMarketOpen(order.market as keyof typeof marketDetails);
             let shouldExecute = false;
-            let executionPrice = ltp;
+            let executionPrice = ltp; // Default to LTP for Market orders
 
             if (order.is_amo && marketIsOpen) {
                 shouldExecute = true; // Execute AMO as market order
@@ -192,15 +192,16 @@ export async function GET() {
                     case "LIMIT":
                         if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
                             shouldExecute = true;
-                            executionPrice = order.limit_price;
+                            executionPrice = order.limit_price; // Use the limit price for execution
                         }
                         break;
                     case "SL":
                         if (order.trigger_price) {
                             if ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price)) {
+                                // Trigger is hit, now check limit condition
                                 if ((order.type === 'BUY' && ltp <= order.limit_price) || (order.type === 'SELL' && ltp >= order.limit_price)) {
                                     shouldExecute = true;
-                                    executionPrice = order.limit_price;
+                                    executionPrice = order.limit_price; // Execute at the limit price
                                 }
                             }
                         }
@@ -209,6 +210,7 @@ export async function GET() {
                         if (order.trigger_price) {
                             if ((order.type === 'BUY' && ltp >= order.trigger_price) || (order.type === 'SELL' && ltp <= order.trigger_price)) {
                                 shouldExecute = true;
+                                // executionPrice is already ltp, which is correct for a market order
                             }
                         }
                         break;
