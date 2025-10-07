@@ -15,19 +15,35 @@ const yahooFinanceOptions = {
     validateResult: false
 };
 
+// Market open/close times in UTC for simplicity in this example
+// A robust solution would use a library aware of market holidays, specific exchange hours, etc.
+const marketHours: { [key: string]: { open: number, close: number, offset: number } } = {
+    'IN': { open: 3.75, close: 10, offset: 5.5 }, // 9:15 AM - 3:30 PM IST
+    'US': { open: 14.5, close: 21, offset: -4 },  // 9:30 AM - 4:00 PM EDT
+    'GB': { open: 8, close: 16.5, offset: 1 },    // 8:00 AM - 4:30 PM BST
+    'DE': { open: 7, close: 15.5, offset: 2 },    // 9:00 AM - 5:30 PM CEST
+    'JP': { open: 0, close: 6, offset: 9 },      // 9:00 AM - 3:00 PM JST
+    'HK': { open: 1.5, close: 8, offset: 8 },      // 9:30 AM - 4:00 PM HKT
+    'CA': { open: 13.5, close: 20, offset: -4 },   // 9:30 AM - 4:00 PM EDT
+};
+
+
 // Heuristic to check if a specific market is open
 function isMarketOpen(market: keyof typeof marketDetails) {
+    const marketInfo = marketHours[market];
+    if (!marketInfo) return false; // Default to closed if market not defined
+
     const now = new Date();
-    // This is a simplified check. A real implementation would use a library
-    // that knows about all global market holidays and hours.
-    // For this demo, we'll assume most markets are open during standard business hours in their timezone.
     const day = now.getUTCDay();
-    const hour = now.getUTCHours();
     
-    if (day === 0 || day === 6) return false; // Weekend
+    // Check for weekends (Saturday=6, Sunday=0)
+    if (day === 0 || day === 6) return false; 
     
-    // Rough check for typical market hours (e.g., 9 AM - 5 PM)
-    if(hour > 1 && hour < 22) return true;
+    const utcHour = now.getUTCHours() + now.getUTCMinutes() / 60;
+
+    if (utcHour >= marketInfo.open && utcHour <= marketInfo.close) {
+        return true;
+    }
 
     return false;
 }
