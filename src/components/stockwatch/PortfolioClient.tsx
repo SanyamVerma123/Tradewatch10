@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -116,8 +117,8 @@ export function PortfolioClient() {
                 }
             }
             
-            // Intraday (MIS) Positions & NEW CNC Buy Positions for the day
-            if (product === 'MIS' || (product === 'CNC' && order.type === 'BUY' && isToday(new Date(order.executed_at!)))) {
+            // Intraday (MIS) Positions for the day
+            if (product === 'MIS' && isToday(new Date(order.executed_at!))) {
                 const compositeKey = `${order.ticker}-${product}`;
                 let p = positionMap[compositeKey];
                 if (!p) {
@@ -507,3 +508,5 @@ export function PortfolioClient() {
     </div>
   );
 }
+
+    
