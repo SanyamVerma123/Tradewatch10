@@ -25,6 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <meta name="google-site-verification" content="D6BbFMhmaGVtCjCmlSBT6KRYYXGAKCeLtqcTxjqd42s" />
         <title>Next.js</title>
       </head>
       <body className={inter.className}>
