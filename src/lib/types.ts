@@ -57,7 +57,7 @@ export interface Order {
   is_exit?: boolean;
   is_adding?: boolean;
   executed_at?: string; // ISO date string
-  realized_pnl?: number;
+  realized_pnl?: number | null;
   stop_loss_value?: number;
   target_value?: number;
   market?: string;
@@ -99,7 +99,7 @@ export interface Portfolio {
     totalPnl: number;
     totalPnlPercent: number;
     dayPnl: number;
-    dayPnlPercent: number;
+d ayPnlPercent: number;
     holdings: Holding[];
     positions: Position[];
 }

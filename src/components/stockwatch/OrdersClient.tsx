@@ -50,36 +50,61 @@ export function OrdersClient() {
     checkUser();
   }, [router]);
 
+  const fetchOrdersAndLivePrices = useCallback(async (sbUser: User) => {
+    setIsLoading(true);
+    try {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('user_id', sbUser.id)
+            .eq('market', market)
+            .order('timestamp', { ascending: false });
+
+        if (error) {
+            toast({ variant: 'destructive', title: 'Error fetching orders', description: error.message });
+            setOrders([]);
+            setIsLoading(false);
+            return;
+        }
+
+        const initialOrders = data || [];
+        const pendingTickers = [...new Set(initialOrders.filter(o => o.status === 'Pending').map(o => o.ticker))];
+
+        if (pendingTickers.length > 0) {
+            const stockData = await getStockData(pendingTickers);
+            const stockPriceMap = new Map(stockData.map(s => [s.ticker, s.price]));
+            
+            const updatedOrders = initialOrders.map(order => {
+                if (order.status === 'Pending' && stockPriceMap.has(order.ticker)) {
+                    return { ...order, ltp: stockPriceMap.get(order.ticker)! };
+                }
+                return order;
+            });
+            setOrders(updatedOrders);
+        } else {
+            setOrders(initialOrders);
+        }
+        
+    } catch (e: any) {
+         toast({ variant: 'destructive', title: 'Error loading data', description: e.message });
+    } finally {
+        setIsLoading(false);
+    }
+  }, [market, toast]);
+
+
   // Effect to load orders from Supabase once the user is confirmed
   useEffect(() => {
     if (!user) return;
 
-    const fetchOrders = async () => {
-      setIsLoading(true);
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('market', market)
-        .order('timestamp', { ascending: false });
-
-      if (error) {
-        toast({ variant: 'destructive', title: 'Error fetching orders', description: error.message });
-        setOrders([]);
-      } else {
-        setOrders(data || []);
-      }
-      setIsLoading(false);
-    };
-
-    fetchOrders();
+    fetchOrdersAndLivePrices(user);
 
     const channel = supabase.channel(`orders_channel_${user.id}`)
       .on<Order>(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders', filter: `user_id=eq.${user.id}` },
         (payload) => {
-           fetchOrders(); // Refetch all orders on any change
+           fetchOrdersAndLivePrices(user); // Refetch all orders on any change
         }
       )
       .subscribe();
@@ -87,7 +112,7 @@ export function OrdersClient() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, market, toast]);
+  }, [user, market, toast, fetchOrdersAndLivePrices]);
 
 
   // Effect to update live prices for pending orders
@@ -143,7 +168,7 @@ export function OrdersClient() {
   
   const pendingOrders = orders.filter(o => o.status === 'Pending');
   const todaysExecutedOrders = orders.filter(o => o.status === 'Executed' && o.executed_at && isToday(new Date(o.executed_at)));
-  const todaysCancelledOrders = orders.filter(o => o.status === 'Cancelled' && o.timestamp && isToday(new Date(o.timestamp)));
+  const todaysCancelledOrders = orders.filter(o => (o.status === 'Cancelled' || o.status === 'Cancelled') && o.timestamp && isToday(new Date(o.timestamp)));
 
   const filteredPendingOrders = pendingOrders.filter(
     (order) => order.ticker.toLowerCase().includes(searchTerm.toLowerCase())
@@ -198,8 +223,8 @@ export function OrdersClient() {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.order_type}</p>
                     </div>
                     <div className="text-right">
-                        <p className="font-semibold">{currencySymbol}{order.limit_price.toFixed(2)}</p>
-                        <p className="text-xs text-muted-foreground">LTP {currencySymbol}{order.ltp.toFixed(2)}</p>
+                        <p className="font-semibold">{currencySymbol}{(order.limit_price || 0).toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">LTP {currencySymbol}{(order.ltp || 0).toFixed(2)}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -228,7 +253,7 @@ export function OrdersClient() {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.order_type}</p>
                     </div>
                      <div className="text-right">
-                        <p className="font-semibold">Avg. {currencySymbol}{order.ltp.toFixed(2)}</p>
+                        <p className="font-semibold">Avg. {currencySymbol}{(order.ltp || 0).toFixed(2)}</p>
                         {order.realized_pnl != null && (
                             <p className={cn("text-xs font-semibold", order.realized_pnl >= 0 ? "text-positive" : "text-destructive")}>
                                 P&L: {order.realized_pnl >= 0 ? '+' : ''}{currencySymbol}{order.realized_pnl.toFixed(2)}
@@ -261,7 +286,8 @@ export function OrdersClient() {
                         <p className="text-xs text-muted-foreground">{order.exchange} {order.order_type}</p>
                     </div>
                      <div className="text-right">
-                        <p className="font-semibold">{currencySymbol}{order.limit_price.toFixed(2)}</p>                    </div>
+                        <p className="font-semibold">{currencySymbol}{(order.limit_price || 0).toFixed(2)}</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -277,5 +303,3 @@ export function OrdersClient() {
     </div>
   );
 }
-
-    
