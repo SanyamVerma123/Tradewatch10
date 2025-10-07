@@ -16,16 +16,18 @@ function isMarketOpen(market: keyof typeof marketDetails) {
     const utcHour = now.getUTCHours() + (now.getUTCMinutes() / 60);
 
     // Convert market open/close times to UTC
-    const marketOpenUTC = marketInfo.open - marketInfo.offset;
-    const marketCloseUTC = marketInfo.close - marketInfo.offset;
+    // The calculation needs to handle day rollovers correctly. A simple subtraction is not enough.
+    // For example, US market (offset -4) opens at 9.5. In UTC, this is 9.5 - (-4) = 13.5 UTC.
+    // German market (offset +2) opens at 9. In UTC, this is 9 - 2 = 7 UTC.
+    const localHour = (utcHour + marketInfo.offset + 24) % 24;
 
-    const dayOfWeek = now.getUTCDay(); // Sunday = 0, Saturday = 6
+    const dayOfWeek = new Date(now.getTime() + marketInfo.offset * 3600 * 1000).getUTCDay();
 
     if (marketInfo.weekend_closure.includes(dayOfWeek)) {
         return false;
     }
     
-    return utcHour >= marketOpenUTC && utcHour < marketCloseUTC;
+    return localHour >= marketInfo.open && localHour < marketInfo.close;
 }
 
 // --- Bracket Order Logic ---
