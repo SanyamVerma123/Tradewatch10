@@ -20,22 +20,6 @@ const navItems = [
   { href: "/profile", label: "Account", icon: User },
 ];
 
-async function showDelayedFundNotification() {
-    if (!('serviceWorker' in navigator) || !window.Notification || Notification.permission !== 'granted') {
-      return;
-    }
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      registration.showNotification("Funds Credited!", {
-        body: "Your starting fund has been credited to your account.",
-        icon: "/icon-192x192.png",
-        badge: "/badge-72x72.png",
-      });
-    } catch (err) {
-      console.error('Error showing fund notification:', err);
-    }
-}
-
 // Heuristic to check if market is open (9:15 AM to 3:30 PM India time on weekdays)
 function isMarketOpen() {
     const now = new Date();
@@ -96,7 +80,7 @@ export default function BottomNav() {
       if (fundsData && fundsData.balance !== undefined) {
         const tradeValue = orderToCancel.quantity * (orderToCancel.order_method === "MARKET" ? orderToCancel.ltp : orderToCancel.limit_price);
         const brokerage = Math.min(20, tradeValue * 0.0003);
-        const totalCharges = brokerage; // Removed taxes
+        const totalCharges = brokerage;
         const approxMargin = orderToCancel.product === 'MIS' ? tradeValue / 5 : tradeValue;
         const blockedFunds = approxMargin + totalCharges;
         const newBalance = fundsData.balance + blockedFunds;
@@ -133,55 +117,37 @@ export default function BottomNav() {
     const finalTradeValue = orderToExecute.quantity * ltp;
     
     let realizedPnl: number | undefined = undefined;
-    
-    const { data: executedOrders, error: ordersError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('market', market)
-        .eq('status', 'Executed')
-        .order('executed_at', { ascending: true });
 
-    if (ordersError) {
-        console.error("Could not fetch orders for PNL calc", ordersError);
-    } else {
-        const allRelevantOrders = [...executedOrders, { ...orderToExecute, ltp: ltp, executed_at: new Date().toISOString() }];
+    if (orderToExecute.type === 'SELL') {
+        const { data: purchaseOrders, error: poError } = await supabase
+            .from('orders')
+            .select('quantity, limit_price')
+            .eq('user_id', userId)
+            .eq('market', market)
+            .eq('ticker', orderToExecute.ticker)
+            .eq('product', product)
+            .eq('type', 'BUY')
+            .eq('status', 'Executed');
 
-        const holdingsMap: { [ticker: string]: { quantity: number; avgPrice: number; } } = {};
-        const positionsMap: { [compositeKey: string]: { quantity: number; avgPrice: number; } } = {};
-        
-        for (const order of allRelevantOrders) {
-            const compositeKey = `${order.ticker}-${order.product}`;
-            const tradeValue = order.ltp * order.quantity;
-            const tradeSign = order.type === 'BUY' ? 1 : -1;
-
-            if (order.product === 'MIS') {
-                let p = positionsMap[compositeKey] || { quantity: 0, avgPrice: 0 };
-                const currentQty = p.quantity;
-                if (Math.sign(tradeSign) !== Math.sign(currentQty) && currentQty !== 0) { // Reducing position
-                    const qtyToSquareOff = Math.min(Math.abs(currentQty), order.quantity);
-                    realizedPnl = (realizedPnl || 0) + ((ltp - p.avgPrice) * qtyToSquareOff * -Math.sign(currentQty));
-                }
-                const newTotalValue = (p.avgPrice * Math.abs(currentQty)) + tradeValue;
-                p.quantity += order.quantity * tradeSign;
-                p.avgPrice = Math.abs(p.quantity) > 0 ? newTotalValue / Math.abs(p.quantity) : 0;
-                positionsMap[compositeKey] = p;
-            } else { // CNC
-                 let h = holdingsMap[order.ticker] || { quantity: 0, avgPrice: 0 };
-                 if(order.type === 'SELL') {
-                    realizedPnl = (realizedPnl || 0) + ((ltp - h.avgPrice) * order.quantity);
-                 }
-                 const newTotalValue = (h.avgPrice * h.quantity) + (order.ltp * order.quantity * tradeSign);
-                 h.quantity += order.quantity * tradeSign;
-                 h.avgPrice = h.quantity > 0 ? newTotalValue / h.quantity : 0;
-                 holdingsMap[order.ticker] = h;
+        if (poError) {
+            console.error("Error fetching purchase orders for PNL calc", poError);
+        } else if (purchaseOrders && purchaseOrders.length > 0) {
+            let totalCost = 0;
+            let totalQuantity = 0;
+            for (const po of purchaseOrders) {
+                totalCost += po.quantity * po.limit_price;
+                totalQuantity += po.quantity;
+            }
+            const avgBuyPrice = totalQuantity > 0 ? totalCost / totalQuantity : 0;
+            if (avgBuyPrice > 0) {
+              realizedPnl = (ltp - avgBuyPrice) * orderToExecute.quantity;
             }
         }
     }
 
 
     const brokerage = Math.min(20, finalTradeValue * 0.0003);
-    const totalCharges = brokerage; // Removed other charges/taxes
+    const totalCharges = brokerage;
     
     const executedOrderUpdate: Partial<Order> = { status: 'Executed', filled_quantity: orderToExecute.quantity, ltp, executed_at: new Date().toISOString(), realized_pnl: realizedPnl };
 
