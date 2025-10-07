@@ -2,7 +2,7 @@ import { MetadataRoute } from 'next'
  
 export default function sitemap(): MetadataRoute.Sitemap {
   // IMPORTANT: Replace this with your actual production domain
-  const baseUrl = 'https://stockimage.com';
+  const baseUrl = 'https://tradewatch10.vercel.app';
 
   return [
     {
