@@ -28,13 +28,6 @@ const isToday = (someDate: Date) => {
         someDate.getFullYear() === today.getFullYear();
 };
 
-function getISTDate() {
-    const now = new Date();
-    const istOffset = 330; // 5.5 hours in minutes
-    const utcOffset = now.getTimezoneOffset();
-    return new Date(now.getTime() + (istOffset + utcOffset) * 60000);
-}
-
 export function PortfolioClient() {
   const router = useRouter();
   const { toast } = useToast();
@@ -186,6 +179,7 @@ export function PortfolioClient() {
     let totalHoldingsInvested = 0;
     let totalHoldingsCurrentValue = 0;
     let holdingsDayPnl = 0;
+    let holdingsUnrealizedPnl = 0;
 
     const updatedHoldings = currentPortfolio.holdings.map(h => {
         const liveData = newStocksMap[h.ticker];
@@ -193,6 +187,7 @@ export function PortfolioClient() {
         const invested = h.avgPrice * h.quantity;
         const current = ltp * h.quantity;
         const pnl = current - invested;
+        holdingsUnrealizedPnl += pnl;
         
         totalHoldingsInvested += invested;
         totalHoldingsCurrentValue += current;
@@ -218,35 +213,22 @@ export function PortfolioClient() {
 
         return { ...p, ltp, pnl: unrealizedPnl, investedValue: margin, dayChange: liveData?.change || 0, dayChangePercent: liveData?.changePercent || 0, pnlPercent: margin > 0 ? (unrealizedPnl / margin) * 100 : 0, };
     });
-
-    const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('realized_pnl')
-        .eq('user_id', user.id)
-        .eq('market', market)
-        .eq('status', 'Executed')
-        .not('realized_pnl', 'is', null)
-        .gte('executed_at', new Date(new Date().setHours(0,0,0,0)).toISOString());
-        
-    const todayAllRealizedPnl = ordersData?.reduce((acc, o) => acc + (o.realized_pnl || 0), 0) || 0;
-
-
-    const dayPnl = holdingsDayPnl + todayAllRealizedPnl + openPositionsUnrealizedPnl;
-    const totalInvested = totalHoldingsInvested; // Only holdings contribute to the main invested value
-    const totalPnl = (totalHoldingsCurrentValue - totalHoldingsInvested) + todayAllRealizedPnl + openPositionsUnrealizedPnl;
+    
+    const dayPnl = holdingsDayPnl + openPositionsUnrealizedPnl;
+    const totalPnl = holdingsUnrealizedPnl + openPositionsUnrealizedPnl;
     
     setPortfolio({
-        investedValue: totalInvested,
+        investedValue: totalHoldingsInvested,
         currentValue: totalHoldingsCurrentValue,
         totalPnl: totalPnl,
-        totalPnlPercent: totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0,
+        totalPnlPercent: totalHoldingsInvested > 0 ? (totalPnl / totalHoldingsInvested) * 100 : 0,
         dayPnl: dayPnl,
-        dayPnlPercent: (totalInvested + totalPositionsInvested) > 0 ? (dayPnl / (totalInvested + totalPositionsInvested)) * 100 : 0,
+        dayPnlPercent: (totalHoldingsInvested + totalPositionsInvested) > 0 ? (dayPnl / (totalHoldingsInvested + totalPositionsInvested)) * 100 : 0,
         holdings: updatedHoldings,
         positions: updatedPositions,
     });
 
-  }, [user, market, supabase]);
+  }, [user, market]);
 
   useEffect(() => {
     if (!user) return;
@@ -509,5 +491,7 @@ export function PortfolioClient() {
     </div>
   );
 }
+
+    
 
     
