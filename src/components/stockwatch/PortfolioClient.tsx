@@ -99,9 +99,10 @@ export function PortfolioClient() {
             const ltp = newStocksMap[order.ticker]?.price || order.ltp;
             const product = order.product || 'CNC';
             const tradeValue = order.ltp * order.quantity;
+            const orderDate = new Date(order.executed_at!);
 
-            // CNC Holdings Logic
-            if (product === 'CNC') {
+            // CNC Holdings Logic (only for previous days)
+            if (product === 'CNC' && !isToday(orderDate)) {
                 let h = holdingsMap[order.ticker];
                 if (!h) {
                     h = { id: `holding-${order.ticker}`, ticker: order.ticker, quantity: 0, avgPrice: 0, investedValue: 0, ltp: 0, pnl: 0, pnlPercent: 0, dayChange: 0, dayChangePercent: 0 };
@@ -117,8 +118,8 @@ export function PortfolioClient() {
                 }
             }
             
-            // Intraday (MIS) Positions for the day
-            if (product === 'MIS' && isToday(new Date(order.executed_at!))) {
+            // Intraday (MIS) and today's CNC trades go into positions
+            if (isToday(orderDate)) {
                 const compositeKey = `${order.ticker}-${product}`;
                 let p = positionMap[compositeKey];
                 if (!p) {
