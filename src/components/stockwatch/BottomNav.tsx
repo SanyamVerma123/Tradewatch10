@@ -5,12 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGrid, ShoppingBag, PieChart, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import type { Order } from "@/lib/types";
-import { useToast } from "@/hooks/use-toast";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { executeInAppOrders } from "@/app/actions";
 
 const navItems = [
   { href: "/watchlist", label: "Watchlist", icon: LayoutGrid },
@@ -24,6 +23,7 @@ export default function BottomNav() {
   const router = useRouter();
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const executionIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     let sessionChecked = false;
@@ -35,7 +35,6 @@ export default function BottomNav() {
       setIsLoading(false);
       sessionChecked = true;
 
-      // If there's no user and we are not on the auth page, redirect.
       if (!sbUser && pathname !== '/') {
         router.replace('/');
       }
@@ -47,11 +46,9 @@ export default function BottomNav() {
         const sbUser = session?.user || null;
         setUser(sbUser);
 
-        // If user signs out, redirect to auth page.
         if (_event === 'SIGNED_OUT' && pathname !== '/') {
             router.replace('/');
         } 
-        // If user signs in, redirect to watchlist.
         else if (_event === 'SIGNED_IN' && pathname === '/') {
             router.replace('/watchlist');
         }
@@ -63,11 +60,39 @@ export default function BottomNav() {
 
   }, [pathname, router]);
 
+  // In-app order execution heartbeat
+  useEffect(() => {
+    const startExecutionEngine = () => {
+      if (user && !executionIntervalRef.current) {
+        console.log("Starting in-app order execution engine...");
+        // Immediately run once, then set interval
+        executeInAppOrders(); 
+        executionIntervalRef.current = setInterval(executeInAppOrders, 5000); // Check every 5 seconds
+      }
+    };
+
+    const stopExecutionEngine = () => {
+      if (executionIntervalRef.current) {
+        console.log("Stopping in-app order execution engine.");
+        clearInterval(executionIntervalRef.current);
+        executionIntervalRef.current = null;
+      }
+    };
+
+    if (user) {
+      startExecutionEngine();
+    } else {
+      stopExecutionEngine();
+    }
+
+    // Cleanup on component unmount
+    return () => stopExecutionEngine();
+  }, [user]);
+
+
   const isLoggedIn = !!user;
   const hideOnPages = ['/', '/community'];
 
-  // Don't render the nav if we're on a page where it should be hidden,
-  // or if we are still loading the user state.
   if (hideOnPages.includes(pathname) || isLoading || !isLoggedIn) {
     return null;
   }
@@ -95,3 +120,5 @@ export default function BottomNav() {
     </nav>
   );
 }
+
+    
