@@ -111,11 +111,12 @@ const executeOrder = async (orderToExecute: Order, ltp: number) => {
     const { error: updateError } = await supabase.from('orders').update(executedOrderUpdate).eq('id', orderToExecute.id);
     if (updateError) { console.error("Failed to update order:", updateError); return; }
     
-    if (orderToExecute.type === 'SELL') {
+    if (orderToExecute.type === 'SELL' && realizedPnl !== undefined) {
       const { data: fundsData } = await supabase.from('funds').select('balance').eq('user_id', orderToExecute.user_id).eq('market', orderToExecute.market!).single();
       if (fundsData) {
-        const finalTradeValue = orderToExecute.quantity * ltp;
-        let newBalance = fundsData.balance + finalTradeValue;
+        // When selling, the margin is returned + PnL is added.
+        const marginReturned = orderToExecute.product === 'MIS' ? (orderToExecute.quantity * orderToExecute.ltp) / 5 : (orderToExecute.quantity * orderToExecute.ltp);
+        let newBalance = fundsData.balance + marginReturned + realizedPnl;
         await supabase.from('funds').update({ balance: newBalance }).eq('user_id', orderToExecute.user_id).eq('market', orderToExecute.market!);
       }
     }
@@ -157,10 +158,15 @@ export async function executeInAppOrders() {
         
         const stockPriceMap = new Map<string, number>();
         for (const market in tickersByMarket) {
-            const liveData = await getStockData(tickersByMarket[market]);
-            // IMPORTANT FIX: Handle both single object and array response from getStockData
+            if(tickersByMarket[market].length === 0) continue;
+            const liveData = await yahooFinance.quote(tickersByMarket[market], {}, yahooFinanceOptions);
+            // IMPORTANT FIX: Handle both single object and array response from yahooFinance.quote
             const dataArray = Array.isArray(liveData) ? liveData : [liveData];
-            dataArray.forEach(stock => stockPriceMap.set(stock.ticker, stock.price));
+            dataArray.forEach(stock => {
+                if(stock && stock.symbol && stock.regularMarketPrice) {
+                    stockPriceMap.set(stock.symbol, stock.regularMarketPrice)
+                }
+            });
         }
 
         let executedCount = 0;
@@ -258,7 +264,7 @@ export async function getStockAnalysisAction(input: GetStockAnalysisInput) {
 }
 
 
-export async function getStockData(tickers: string[]) {
+export async function getStockData(tickers: string | string[]) {
     if (!tickers || tickers.length === 0) {
         return [];
     }
@@ -282,6 +288,7 @@ export async function getStockData(tickers: string[]) {
             fiftyTwoWeekLow: stock.fiftyTwoWeekLow ?? 0,
             ask: stock.ask ?? 0,
             bid: stock.bid ?? 0,
+            exchange: stock.exchange
         }));
     } catch (error) {
         console.error('Error fetching stock data from Yahoo Finance:', error);

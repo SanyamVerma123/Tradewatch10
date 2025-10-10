@@ -147,25 +147,19 @@ const SwipeButton = ({ onSwipe, orderType, disabled, buttonText }: { onSwipe: ()
 
 
 
-function isMarketOpen() {
+function isMarketOpen(market: keyof typeof marketDetails) {
+    const marketInfo = marketDetails[market];
+    if (!marketInfo) return false;
+
     const now = new Date();
-    const istOffset = 330; 
-    const utcOffset = now.getTimezoneOffset();
-    const istTime = new Date(now.getTime() + (istOffset + utcOffset) * 60000);
-    
-    const day = istTime.getDay();
-    if (day === 0 || day === 6) return false;
+    const marketTime = new Date(now.getTime() + marketInfo.offset * 3600 * 1000);
+    const marketDay = marketTime.getUTCDay();
+    const marketHour = marketTime.getUTCHours() + marketTime.getUTCMinutes() / 60;
 
-    const hour = istTime.getHours();
-    const minute = istTime.getMinutes();
-
-    if (hour > 9 || (hour === 9 && minute >= 15)) {
-        if (hour < 15 || (hour === 15 && minute <= 30)) {
-            return true;
-        }
-    }
-    return false;
+    if (marketInfo.weekend_closure.includes(marketDay)) return false;
+    return marketHour >= marketInfo.open && marketHour < marketInfo.close;
 }
+
 
 async function showOrderNotification(ticker: string) {
     if (!('serviceWorker' in navigator) || !window.Notification || Notification.permission !== 'granted') {
@@ -452,7 +446,6 @@ useEffect(() => {
       return;
     }
     
-    const marketIsOpen = isMarketOpen();
     const executionPrice = getExecutionPrice();
     
     if ((orderMethod === 'LIMIT' || orderMethod === 'SL') && executionPrice <= 0) {
@@ -498,7 +491,7 @@ useEffect(() => {
         exchange: stock.exchange || 'NSE',
         order_type: `${finalProduct} ${orderMethod}`,
         ltp: stock?.price || 0,
-        is_amo: !marketIsOpen,
+        is_amo: !isMarketOpen(market),
         product: finalProduct,
         order_method: orderMethod,
         is_short_sell: isNewShortSell,
@@ -534,7 +527,7 @@ useEffect(() => {
 
     toast({
         title: `Order ${isEditing ? 'Modified' : 'Placed'} (${orderType})`,
-        description: `${quantity} shares of ${ticker} at ${orderMethod.includes('MARKET') ? 'Market Price' : `${currencySymbol}${price}`}. ${!marketIsOpen ? '(AMO)' : ''}`,
+        description: `${quantity} shares of ${ticker} at ${orderMethod.includes('MARKET') ? 'Market Price' : `${currencySymbol}${price}`}. ${!isMarketOpen(market) ? '(AMO)' : ''}`,
     });
 
     router.push('/orders');
@@ -801,3 +794,5 @@ useEffect(() => {
     </div>
   );
 }
+
+    
